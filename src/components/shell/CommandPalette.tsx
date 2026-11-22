@@ -50,7 +50,6 @@ function highlightMatch(text: string, query: string): React.ReactNode {
 export const CommandPalette: React.FC = () => {
   const {
     importLegacyBackup,
-    restorePreviousWorkspace,
     commandPaletteOpen,
     setCommandPaletteOpen,
     subjects,
@@ -147,12 +146,6 @@ export const CommandPalette: React.FC = () => {
       onSelect: () => { close(); void importLegacyBackup(); },
     });
 
-    if (q && restorePreviousWorkspace) quickActions.push({
-      id: 'act-restore-workspace', section: 'Quick Actions', title: 'Restore Previous Workspace',
-      subtitle: 'Open the workspace saved before the last import', icon: FileText,
-      onSelect: () => { close(); void restorePreviousWorkspace(); },
-    });
-
     const themeActions: CommandItem[] = THEME_OPTIONS.map((t) => ({
       id: `thm-${t.id}`,
       section: 'Switch Theme',
@@ -200,7 +193,6 @@ export const CommandPalette: React.FC = () => {
   }, [
     query,
     importLegacyBackup,
-    restorePreviousWorkspace,
     subjects,
     tasks,
     notes,

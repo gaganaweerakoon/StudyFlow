@@ -85,7 +85,6 @@ export interface UserPreferences {
 
 interface AppContextValue {
   importLegacyBackup?: () => Promise<void>;
-  restorePreviousWorkspace?: () => Promise<void>;
   legacyCalendar: boolean;
   cardReviews: Record<string, number>;
   exportWorkspace: () => void;
@@ -811,17 +810,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     }
   });
 
-  const restorePreviousWorkspace = workspace && initial?.previousWorkspace && (async () => {
-    if (!window.confirm('Restore the workspace from before your last import?')) return;
-    try {
-      const { previousWorkspace: _previous, ...rollback } = snapshot;
-      await workspace.writer.save({ ...initial.previousWorkspace!, previousWorkspace: rollback });
-      window.location.reload();
-    } catch (error) {
-      window.alert(`Could not restore workspace. ${String(error)}`);
-    }
-  });
-
   const exportWorkspace = () => {
     const data = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(data);
@@ -837,7 +825,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     <AppContext.Provider
       value={{
         importLegacyBackup,
-        restorePreviousWorkspace,
         legacyCalendar: desktop,
         cardReviews,
         exportWorkspace,

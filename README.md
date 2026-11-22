@@ -36,7 +36,7 @@ bun run tauri build --target x86_64-pc-windows-msvc -- --locked
 ```
 
 The Windows setup executable is written to `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`.
-The desktop app saves study records, focus timer state, and AI usage in its local SQLite database. Go to **Settings → Data & Backup → Import Legacy SQLite Backup** to inspect and migrate a schema 17 backup. The importer retains the source records in the workspace archive. To switch back to your pre-import data, search for **Restore Previous Workspace**. **Settings → Data & Backup → Export Workspace JSON** writes a copy of the current workspace.
+The desktop app saves study records, focus timer state, and AI usage in its local SQLite database. Go to **Settings → Data & Backup → Import** to inspect and migrate a schema 17 backup. The importer retains the source records in the workspace archive. **Settings → Data & Backup → Export Workspace JSON** writes a copy of the current workspace.
 
 ### Google sign-in
 

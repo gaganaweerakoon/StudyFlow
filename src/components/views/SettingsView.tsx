@@ -59,7 +59,6 @@ export const SettingsView: React.FC = () => {
     updatePreferences,
     exportWorkspace,
     importLegacyBackup,
-    restorePreviousWorkspace,
     legacyCalendar,
     pushToast,
   } = useApp();
@@ -494,13 +493,8 @@ export const SettingsView: React.FC = () => {
                   onClick={() => void importLegacyBackup()}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3.5 py-2 text-[12.5px] font-medium"
                 >
-                  <Database className="w-3.5 h-3.5" /> Import Legacy SQLite Backup
+                  <Database className="w-3.5 h-3.5" /> Import
                 </button>}
-                {restorePreviousWorkspace && <button
-                  type="button"
-                  onClick={() => void restorePreviousWorkspace()}
-                  className="rounded-lg border border-[var(--border-subtle)] px-3.5 py-2 text-[12.5px] font-medium"
-                >Restore Previous Workspace</button>}
               </div>
             </div>
           )}
