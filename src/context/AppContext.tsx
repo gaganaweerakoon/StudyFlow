@@ -2,7 +2,6 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import type {
   AchievementBadge,
   ActiveModalType,
-  AiConversation,
   ChallengeItem,
   DashboardWidgetConfig,
   DensityMode,
@@ -23,7 +22,6 @@ import type {
 } from '../types/studyflow';
 import {
   INITIAL_ACHIEVEMENTS,
-  INITIAL_AI_CONVERSATIONS,
   INITIAL_CHALLENGES,
   INITIAL_DASHBOARD_WIDGETS,
   INITIAL_DECKS,
@@ -161,8 +159,6 @@ interface AppContextValue {
   dismissFocusCompletion: () => void;
   focusHistory: FocusHistoryItem[];
 
-  conversations: AiConversation[];
-  setConversations: React.Dispatch<React.SetStateAction<AiConversation[]>>;
 
   achievements: AchievementBadge[];
   challenges: ChallengeItem[];
@@ -218,7 +214,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [exams, setExams] = useState<ExamItem[]>(INITIAL_EXAMS);
   const [quizzes, setQuizzes] = useState<PracticeQuiz[]>(INITIAL_QUIZZES);
   const [focusHistory, setFocusHistory] = useState<FocusHistoryItem[]>(INITIAL_FOCUS_HISTORY);
-  const [conversations, setConversations] = useState<AiConversation[]>(INITIAL_AI_CONVERSATIONS);
   const [achievements] = useState<AchievementBadge[]>(INITIAL_ACHIEVEMENTS);
   const [challenges, setChallenges] = useState<ChallengeItem[]>(INITIAL_CHALLENGES);
   const [xpPoints, setXpPoints] = useState<number>(4280);
@@ -766,8 +761,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submitFocusCompletion,
         dismissFocusCompletion,
         focusHistory,
-        conversations,
-        setConversations,
         achievements,
         challenges,
         claimChallenge,

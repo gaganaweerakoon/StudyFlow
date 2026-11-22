@@ -9,8 +9,9 @@ StudyFlow is a study workspace for planning sessions, tracking academic goals, a
 - Organize notes, review flashcards with spaced repetition, and take practice quizzes.
 - Track exams and review study activity through dashboards and analytics.
 - Customize the workspace with themes, accent colors, and display density.
+- Chat with Pip using planner context, selected notes, and attached screenshots.
 
-V1 opens with sample data, and edits reset when the page reloads. The study assistant uses built-in example responses. You can run the app without an account or API key.
+V1 opens with sample data, and workspace edits reset when the page reloads. The planner, timer, and other study tools work without an API key.
 
 ## Run locally
 
@@ -22,6 +23,15 @@ bun run dev
 ```
 
 Open [localhost:3000](http://localhost:3000).
+
+## Pip study assistant
+
+Open the floating pet or the AI Assistant screen. In **Settings → AI Usage**, choose OpenAI, Gemini, or Claude and enter your own provider API key. The suggested models support images. If you enter a different model, check that it accepts image input before attaching a screenshot.
+
+- The assistant runs through the local server started by `bun run dev` or `bun run preview`. Open the displayed localhost address. Static hosting of `dist/` serves the study workspace without the chat backend.
+- Keys and chat sessions stay in memory and reset when you reload. Provider preferences and reported token totals stay in this browser. Messages, any enabled workspace excerpt, and images you send are passed to your chosen provider.
+- Preview or turn off workspace context before sending. Paste or attach a PNG, JPEG, or WebP. Choose **Fine text** before attaching a screenshot with small print. Use **Reuse image** if a follow-up needs the image again.
+- The daily budget uses a pre-send estimate. **AI Usage** shows reported counts when available. Stopped or failed requests may still count on your provider account even if StudyFlow receives no final usage report.
 
 ## Build and test
 

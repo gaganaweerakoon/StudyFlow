@@ -1,0 +1,241 @@
+.pip-float {
+  position: fixed;
+  z-index: 45;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.pip-float.pip-above-timer { bottom: 95px; }
+
+.pip-launcher {
+  display: grid;
+  place-items: center;
+  width: 57px;
+  height: 57px;
+  border: 1px solid var(--accent-border);
+  border-radius: 19px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-floating);
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.pip-launcher:hover { transform: translateY(-2px); background: var(--accent-soft); }
+
+.pip-pet {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 29px;
+  color: var(--accent-fg);
+  isolation: isolate;
+}
+
+.pip-face {
+  position: relative;
+  display: grid;
+  z-index: 1;
+  justify-items: center;
+  width: 34px;
+  height: 25px;
+  padding-top: 9px;
+  border-radius: 43% 43% 42% 42%;
+  background: var(--accent);
+  box-shadow: inset 0 -3px 0 #15133430;
+}
+
+.pip-ear {
+  position: absolute;
+  top: 0;
+  width: 12px;
+  height: 13px;
+  border-radius: 3px 7px 1px;
+  background: var(--accent);
+}
+
+.pip-ear-left { left: 2px; transform: rotate(-13deg); }
+.pip-ear-right { right: 2px; transform: scaleX(-1) rotate(-13deg); }
+.pip-eyes { display: flex; gap: 9px; }
+.pip-eyes i { width: 4px; height: 5px; border-radius: 50%; background: currentColor; }
+.pip-beak { width: 5px; height: 3px; border-radius: 50%; margin-top: -2px; background: #ffce77; }
+.pip-pet[data-mood='working'] .pip-face { animation: pip-bob 0.9s ease-in-out infinite alternate; }
+.pip-pet[data-mood='focus'] .pip-eyes i { height: 2px; transform: rotate(9deg); }
+.pip-pet[data-mood='focus'] .pip-eyes i + i { transform: rotate(-9deg); }
+.pip-pet[data-mood='break'] .pip-eyes i { height: 2px; border-radius: 100%; }
+@keyframes pip-bob { to { transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) {
+  .pip-launcher { transition: none; }
+  .pip-pet[data-mood='working'] .pip-face { animation: none; }
+}
+
+.pip-chat {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  font-size: 13px;
+}
+
+.pip-chat-floating {
+  width: min(410px, calc(100vw - 36px));
+  height: min(630px, calc(100dvh - 105px));
+  box-shadow: var(--shadow-floating);
+}
+
+.pip-above-timer .pip-chat-floating { height: min(630px, calc(100dvh - 175px)); }
+.pip-chat-page { width: min(810px, 100%); height: max(450px, calc(100dvh - 103px)); margin: 0 auto; }
+
+.pip-header,
+.pip-settings-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pip-header { padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); }
+.pip-header-id { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.pip-header-id > div { overflow: hidden; }
+.pip-header h2, .pip-settings h2 { font: 700 15px var(--font-display); }
+.pip-header h2 span { color: var(--text-secondary); font-size: 11px; font-weight: 500; margin-left: 4px; }
+.pip-header p { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+.pip-actions { display: flex; align-items: center; gap: 5px; min-width: 0; flex-wrap: wrap; }
+.pip-header .pip-actions { flex: none; flex-wrap: nowrap; }
+
+.pip-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+}
+
+.pip-icon:hover, .pip-starters button:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.pip-icon:disabled, .pip-send:disabled { opacity: 0.4; cursor: default; }
+
+.pip-conversations {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.pip-chat select, .pip-settings select, .pip-settings input {
+  max-width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-surface-subtle);
+  color: var(--text-primary);
+}
+
+.pip-conversations select { flex: 1; }
+.pip-messages { overflow-y: auto; flex: 1; min-height: 80px; padding: 15px; display: flex; flex-direction: column; gap: 16px; }
+.pip-welcome { margin: auto; text-align: center; max-width: 370px; display: grid; justify-items: center; gap: 10px; padding-block: 8px; }
+.pip-welcome h3 { font: 700 19px var(--font-display); }
+.pip-welcome p, .pip-muted { color: var(--text-muted); }
+.pip-starters { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.pip-starters button { border: 1px solid var(--border-subtle); border-radius: 15px; padding: 5px 9px; font-size: 11px; }
+.pip-primary-text, .pip-reuse { color: var(--accent); font-weight: 650; }
+.pip-message { max-width: 100%; overflow-wrap: anywhere; flex-shrink: 0; }
+.pip-user { align-self: flex-end; max-width: 88%; border-radius: 16px 16px 4px 16px; padding: 9px 12px; background: var(--accent-soft); }
+.pip-user-text { white-space: pre-wrap; }
+.pip-assistant { padding: 0 1px; }
+.pip-message-name { color: var(--accent); font-weight: 700; font-size: 11px; margin-bottom: 4px; }
+.pip-message-meta, .pip-message-file { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 11px; }
+.pip-message-meta { margin-top: 3px; }
+.pip-message-file { margin-bottom: 5px; overflow-wrap: anywhere; }
+.pip-markdown { line-height: 1.6; }
+.pip-markdown > * + * { margin-top: 9px; }
+.pip-markdown :is(h1, h2, h3, h4) { font-weight: 700; }
+.pip-markdown :is(h1, h2) { font-size: 16px; }
+.pip-markdown ol { list-style: decimal; padding-left: 23px; }
+.pip-markdown ul { list-style: disc; padding-left: 19px; }
+.pip-markdown li + li { margin-top: 4px; }
+.pip-markdown :is(code, pre) { background: var(--bg-surface-subtle); border-radius: 5px; }
+.pip-markdown code { padding: 1px 4px; font: 11px var(--font-mono); }
+.pip-markdown pre { padding: 10px; overflow-x: auto; }
+.pip-markdown pre code { padding: 0; }
+.pip-markdown a { color: var(--accent); text-decoration: underline; }
+.pip-markdown blockquote { border-left: 2px solid var(--accent-border); padding-left: 10px; color: var(--text-secondary); }
+.pip-markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.pip-markdown :is(td, th) { border: 1px solid var(--border-subtle); padding: 4px 8px; }
+.pip-markdown .katex-display { overflow: auto hidden; padding: 3px 0; }
+
+.pip-composer { flex-shrink: 0; padding: 9px 12px 12px; border-top: 1px solid var(--border-subtle); }
+.pip-context { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 7px; color: var(--text-secondary); font-size: 11px; }
+.pip-context label, .pip-context summary { display: flex; align-items: center; gap: 5px; }
+.pip-context input { accent-color: var(--accent); }
+.pip-context details { min-width: 0; position: relative; }
+.pip-context summary { color: var(--accent); cursor: pointer; }
+.pip-context pre {
+  position: absolute;
+  z-index: 1;
+  bottom: 22px;
+  right: min(0px, calc(250px - 60vw));
+  max-height: 205px;
+  overflow: auto;
+  width: min(270px, 68vw);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-floating);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 11px/1.5 var(--font-mono);
+}
+.pip-notice { margin-bottom: 7px; color: var(--text-secondary); font-size: 11px; }
+.pip-input { border: 1px solid var(--border-subtle); border-radius: 13px; background: var(--bg-surface-subtle); padding: 5px; }
+.pip-input:focus-within { border-color: var(--accent-border); }
+.pip-input textarea { display: block; padding: 5px 6px; resize: vertical; min-height: 36px; max-height: 112px; outline: none; width: 100%; font-size: 13px; }
+.pip-input-bar { display: flex; gap: 5px; align-items: center; justify-content: space-between; }
+.pip-input-bar select { padding: 3px 5px; font-size: 11px; }
+.pip-input-bar :is(.pip-reuse, .pip-muted) { font-size: 11px; }
+.pip-send { display: grid; place-items: center; border-radius: 9px; width: 32px; height: 32px; flex: 0 0 auto; color: var(--accent-fg); background: var(--accent); }
+.pip-send:hover:not(:disabled) { background: var(--accent-hover); }
+.pip-attachment { display: flex; gap: 7px; align-items: center; margin-bottom: 6px; font-size: 11px; }
+.pip-attachment img { width: 36px; height: 29px; object-fit: cover; border-radius: 5px; }
+.pip-attachment span { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+
+.pip-settings { display: grid; gap: 12px; font-size: 13px; color: var(--text-primary); }
+.pip-settings h2 { display: flex; align-items: center; gap: 7px; }
+.pip-settings p, .pip-settings label, .pip-settings-actions { color: var(--text-secondary); }
+.pip-settings label { display: grid; gap: 4px; align-content: start; }
+.pip-settings-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 9px; }
+.pip-settings-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
+.pip-settings-actions button { border: 1px solid var(--border-subtle); border-radius: 8px; padding: 5px 10px; }
+.pip-settings-actions .pip-settings-primary { color: var(--accent-fg); background: var(--accent); }
+.pip-settings-budget, .pip-usage { border-top: 1px solid var(--border-subtle); padding-top: 12px; }
+.pip-usage { display: grid; gap: 12px; }
+.pip-settings-heading { flex-wrap: wrap; }
+.pip-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.pip-stats div { background: var(--bg-surface-subtle); border-radius: 10px; display: grid; gap: 3px; padding: 9px; }
+.pip-stats span { color: var(--text-secondary); font-size: 11px; }
+.pip-stats strong { font: 700 clamp(14px, 2vw, 19px) var(--font-display); overflow-wrap: anywhere; }
+.pip-table-wrap { overflow-x: auto; }
+.pip-usage table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 11px; }
+.pip-usage caption { text-align: left; color: var(--text-secondary); font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+.pip-usage :is(th, td) { border-bottom: 1px solid var(--border-subtle); padding: 5px 7px; text-align: left; }
+
+@media (max-width: 420px) {
+  .pip-header { padding-inline: 8px; }
+  .pip-maximize, .pip-header h2 span { display: none; }
+  .pip-chat-page .pip-messages { padding: 10px; }
+}

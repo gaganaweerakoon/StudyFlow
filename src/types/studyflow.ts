@@ -210,34 +210,6 @@ export interface AnalyticsSessionRow {
   mode: string;
 }
 
-export interface AiMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  equation?: string;
-  attachmentName?: string;
-}
-
-export interface AiConversation {
-  id: string;
-  title: string;
-  subjectId: string;
-  updatedAt: string;
-  messages: AiMessage[];
-}
-
-export type AiToolId =
-  | 'chat'
-  | 'explain'
-  | 'study_plan'
-  | 'summarize'
-  | 'flashcards'
-  | 'quiz'
-  | 'weak_topics'
-  | 'revision'
-  | 'analyze';
-
 export interface AchievementBadge {
   id: string;
   title: string;

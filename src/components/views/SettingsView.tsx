@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   User,
   Monitor,
@@ -12,8 +12,11 @@ import {
   Accessibility,
   Check,
   Download,
+  Sparkles,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAssistant } from '../../assistant/AssistantContext';
+import { AssistantSettings } from '../../assistant/AssistantSettings';
 import { ACCENT_PRESETS, THEME_OPTIONS, USER_AVATAR_URL } from '../../data/mockData';
 
 type SettingsSection =
@@ -25,6 +28,7 @@ type SettingsSection =
   | 'notifications'
   | 'privacy'
   | 'backup'
+  | 'assistant'
   | 'shortcuts'
   | 'accessibility';
 
@@ -36,6 +40,7 @@ const SECTIONS: { id: SettingsSection; label: string; icon: React.ComponentType<
   { id: 'timer', label: 'Focus Timer', icon: Timer },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'privacy', label: 'Privacy', icon: Shield },
+  { id: 'assistant', label: 'AI Usage', icon: Sparkles },
   { id: 'backup', label: 'Data & Backup', icon: Database },
   { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: Keyboard },
   { id: 'accessibility', label: 'Accessibility', icon: Accessibility },
@@ -54,7 +59,15 @@ export const SettingsView: React.FC = () => {
     pushToast,
   } = useApp();
 
-  const [section, setSection] = useState<SettingsSection>('themes');
+  const { settingsRequested, clearSettingsRequest } = useAssistant();
+  const [section, setSection] = useState<SettingsSection>(settingsRequested ? 'assistant' : 'themes');
+
+  useEffect(() => {
+    if (settingsRequested) {
+      setSection('assistant');
+      clearSettingsRequest();
+    }
+  }, [settingsRequested, clearSettingsRequest]);
 
   const surfaceStyle: React.CSSProperties = {
     backgroundColor: 'var(--bg-surface)',
@@ -136,6 +149,7 @@ export const SettingsView: React.FC = () => {
 
         {/* Settings Main Panel */}
         <div className="lg:col-span-9 rounded-xl p-5 space-y-5" style={surfaceStyle}>
+          {section === 'assistant' && <AssistantSettings />}
           {section === 'profile' && (
             <div className="space-y-4">
               <h2 className="font-display text-[16px] font-semibold text-[var(--text-primary)]">

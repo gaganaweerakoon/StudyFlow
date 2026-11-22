@@ -25,6 +25,8 @@ import { AnalyticsView } from './components/views/AnalyticsView';
 import { AiAssistantView } from './components/views/AiAssistantView';
 import { AchievementsView } from './components/views/AchievementsView';
 import { SettingsView } from './components/views/SettingsView';
+import { AssistantProvider } from './assistant/AssistantContext';
+import { FloatingAssistant } from './assistant/FloatingAssistant';
 
 const StudyFlowShell: React.FC = () => {
   const { route, preferences } = useApp();
@@ -96,6 +98,7 @@ const StudyFlowShell: React.FC = () => {
 
       <CommandPalette />
       <FloatingMiniTimer />
+      <FloatingAssistant />
       <QuickModals />
     </div>
   );
@@ -104,7 +107,9 @@ const StudyFlowShell: React.FC = () => {
 export default function App() {
   return (
     <AppProvider>
-      <StudyFlowShell />
+      <AssistantProvider>
+        <StudyFlowShell />
+      </AssistantProvider>
     </AppProvider>
   );
 }

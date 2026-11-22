@@ -1,6 +1,5 @@
 import type {
   AchievementBadge,
-  AiConversation,
   AnalyticsSessionRow,
   ChallengeItem,
   DashboardWidgetConfig,
@@ -1101,62 +1100,6 @@ export const PEAK_HOURS_HEATMAP: { day: string; slots: number[] }[] = [
   { day: 'Fri', slots: [3, 4, 3, 2, 2, 1, 1, 0] },
   { day: 'Sat', slots: [1, 4, 4, 3, 3, 2, 1, 0] },
   { day: 'Sun', slots: [2, 4, 3, 4, 3, 2, 1, 0] },
-];
-
-export const INITIAL_AI_CONVERSATIONS: AiConversation[] = [
-  {
-    id: 'conv-1',
-    title: "Stokes' Theorem vs Green's Theorem",
-    subjectId: 'math241',
-    updatedAt: 'Today, 9:50 AM',
-    messages: [
-      {
-        id: 'msg-1',
-        role: 'user',
-        content: "Can you clarify when to switch the surface S when applying Stokes' Theorem on Midterm III?",
-        timestamp: '09:48 AM',
-      },
-      {
-        id: 'msg-2',
-        role: 'assistant',
-        content: `Great instinct — **surface invariance** is the highest-leverage trick on vector calculus exams.
-
-### Rule of Thumb
-Because the circulation integral depends **only on the boundary curve $C$**, any two piecewise-smooth oriented surfaces $S_1$ and $S_2$ sharing the same positively oriented boundary $C$ yield the exact same curl flux.
-
-### 3-Step Exam Procedure
-1. **Identify the boundary $C$** (often a circle or ellipse in a plane like $z = 1$).
-2. **Choose the flattest cap $S_2$** bounded by $C$ so the unit normal $\\mathbf{n}$ is constant (e.g., $\\mathbf{n} = \\langle 0, 0, 1 \\rangle$).
-3. **Evaluate only the matching curl component** $(\\nabla \\times \\mathbf{F})_z$ over the flat disk — avoiding ugly spherical or paraboloid parametrizations.`,
-        equation: '∬_{S₁} (∇ × F) · dS = ∮_C F · dr = ∬_{S₂} (∇ × F) · k dA',
-        timestamp: '09:49 AM',
-      },
-    ],
-  },
-  {
-    id: 'conv-2',
-    title: '3-SAT to Independent Set Proof',
-    subjectId: 'cs340',
-    updatedAt: 'Yesterday',
-    messages: [
-      {
-        id: 'msg-3',
-        role: 'user',
-        content: 'Double-check my gadget count in the 3-SAT to Independent Set reduction.',
-        timestamp: 'Yesterday, 5:12 PM',
-      },
-      {
-        id: 'msg-4',
-        role: 'assistant',
-        content: `For a 3-CNF formula $\\Phi$ with **$m$ clauses**, your constructed graph $G = (V, E)$ has:
-- **$|V| = 3m$ vertices** (one triangle per clause).
-- **Target independent set size $k = m$** (at most one vertex can be chosen from each triangle).
-- **Conflict edges** connecting every literal $x_i$ to every occurrence of $\\neg x_i$ in other clauses, ensuring a consistent truth assignment.`,
-        equation: 'Φ is satisfiable  ⟺  G has an Independent Set of size k = m',
-        timestamp: 'Yesterday, 5:13 PM',
-      },
-    ],
-  },
 ];
 
 export const INITIAL_ACHIEVEMENTS: AchievementBadge[] = [
