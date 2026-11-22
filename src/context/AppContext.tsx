@@ -86,6 +86,8 @@ export interface UserPreferences {
 }
 
 interface AppContextValue {
+  recurringSeries: LegacyArchive[string];
+  updateRecurringSeries?: (id: number, title: string, startHour: number, durationHours: number) => void;
   wipeData?: (section: WipeSection) => Promise<void>;
   importLegacyBackup?: () => Promise<void>;
   legacyCalendar: boolean;
@@ -316,7 +318,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   }));
 
   const [removedOccurrences, setRemovedOccurrences] = useState(initial?.removedOccurrences ?? []);
-  const archive = initial?.legacyArchive;
+  const [archive, setArchive] = useState(initial?.legacyArchive);
   const calendarDay = localDay();
   const sessions = useMemo(() => {
     if (!archive) return savedSessions;
@@ -668,6 +670,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     });
   }, [sessions]);
 
+  const updateRecurringSeries = archive && ((id: number, title: string, startHour: number, durationHours: number) => {
+    const clock = (hours: number) => {
+      const minutes = Math.round(hours * 60) % 1440;
+      return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    };
+    setArchive(previous => previous && ({
+      ...previous,
+      recurring_events: previous.recurring_events.map(row => row.id === id
+        ? { ...row, title, start_time: clock(startHour), end_time: clock(startHour + durationHours) }
+        : row),
+    }));
+  });
+
   const deleteSession = useCallback(
     (id: string) => {
       setSessions((prev) => prev.filter((s) => s.id !== id));
@@ -853,6 +868,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   return (
     <AppContext.Provider
       value={{
+        recurringSeries: archive?.recurring_events ?? [],
+        updateRecurringSeries,
         importLegacyBackup,
         wipeData,
         legacyCalendar: desktop,

@@ -36,6 +36,7 @@ export function workspaceContext(app: Workspace, page: WorkspacePage, prompt: st
   }));
   const header = [
     `Screen: ${labels[page]}. Local date: ${localDay()}.`,
+    app.recurringSeries.length ? `Recurring calendar rules: ${JSON.stringify(app.recurringSeries).slice(0, 32000)}` : '',
     `Section totals: ${sections.map(({ name, rows }) => `${name}: ${rows.length}`).join(', ')}.`,
     note ? `Selected note: ${JSON.stringify(note).slice(0, 6000)}` : '',
     focusTimer.running ? `Active focus: ${JSON.stringify(focusTimer)}` : '',

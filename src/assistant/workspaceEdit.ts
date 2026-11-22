@@ -52,6 +52,33 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
         },
       };
     }
+    if (edit.action === 'update_event' && edit.scope === 'series') {
+      const match = id?.match(/^legacy-series-(\d+)-\d{4}-\d{2}-\d{2}$/);
+      if (!match || !app.updateRecurringSeries || edit.date !== undefined) return;
+      const seriesId = Number(match[1]);
+      const series = app.recurringSeries.find(row => row.id === seriesId);
+      if (!series || typeof series.title !== 'string') return;
+      const toHour = (value: unknown) => {
+        if (typeof value !== 'string' || !/^\d{2}:\d{2}$/.test(value)) return NaN;
+        const [hour, minute] = value.split(':').map(Number);
+        return hour + minute / 60;
+      };
+      const priorStart = toHour(series.start_time);
+      const priorEnd = toHour(series.end_time);
+      const start = edit.startHour ?? priorStart;
+      const duration = edit.durationHours ?? ((priorEnd - priorStart + 24) % 24 || 24);
+      if (typeof start !== 'number' || !Number.isFinite(start) || start < 0 || start >= 24 ||
+          typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0 || duration > 24) return;
+      const name = title ?? series.title;
+      return {
+        title: `Update entire series “${series.title}” to “${name}” · start hour ${start}, duration ${duration}h (existing exceptions and overrides stay in place)`,
+        apply: current => {
+          if (!current.updateRecurringSeries || current.recurringSeries.find(row => row.id === seriesId) !== series) return false;
+          current.updateRecurringSeries(seriesId, name, start, duration);
+          return true;
+        },
+      };
+    }
     if (edit.action !== 'create_event' && edit.action !== 'update_event') return;
     const existing = edit.action === 'update_event' ? app.sessions.find(item => item.id === id) : undefined;
     if (edit.action === 'update_event' && (!existing || existing.recurring && edit.scope !== 'occurrence')) return;
