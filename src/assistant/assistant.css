@@ -145,17 +145,19 @@
 }
 
 .pip-conversations select { flex: 1; }
-.pip-messages { overflow-y: auto; flex: 1; min-height: 80px; padding: 15px; display: flex; flex-direction: column; gap: 16px; }
+.pip-messages { overflow-y: auto; flex: 1; min-height: 80px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; background: var(--bg-surface-subtle); overscroll-behavior: contain; }
 .pip-welcome { margin: auto; text-align: center; max-width: 370px; display: grid; justify-items: center; gap: 10px; padding-block: 8px; }
 .pip-welcome h3 { font: 700 19px var(--font-display); }
 .pip-welcome p, .pip-muted { color: var(--text-muted); }
 .pip-starters { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .pip-starters button { border: 1px solid var(--border-subtle); border-radius: 15px; padding: 5px 9px; font-size: 11px; }
 .pip-primary-text, .pip-reuse { color: var(--accent); font-weight: 650; }
-.pip-message { max-width: 100%; overflow-wrap: anywhere; flex-shrink: 0; }
-.pip-user { align-self: flex-end; max-width: 88%; border-radius: 16px 16px 4px 16px; padding: 9px 12px; background: var(--accent-soft); }
+.pip-message { position: relative; width: fit-content; max-width: min(88%, 48rem); overflow-wrap: anywhere; flex-shrink: 0; padding: 9px 12px; box-shadow: 0 1px 2px #0002; }
+.pip-user { align-self: flex-end; border-radius: 14px 4px 14px 14px; background: color-mix(in srgb, var(--accent) 18%, var(--bg-surface)); }
 .pip-user-text { white-space: pre-wrap; }
-.pip-assistant { padding: 0 1px; }
+.pip-assistant { align-self: flex-start; border-radius: 4px 14px 14px; background: var(--bg-surface); border: 1px solid var(--border-subtle); }
+.pip-assistant :where(pre, table) { max-width: 100%; overflow: auto; }
+.pip-message-meta { flex-wrap: wrap; }
 .pip-message-name { color: var(--accent); font-weight: 700; font-size: 11px; margin-bottom: 4px; }
 .pip-message-meta, .pip-message-file { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 11px; }
 .pip-message-meta { margin-top: 3px; }
