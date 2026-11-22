@@ -1,3 +1,4 @@
+import { wipeWorkspace, WIPE_OPTIONS, type WipeSection } from '../desktop/wipeWorkspace';
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type {
   AchievementBadge,
@@ -84,6 +85,7 @@ export interface UserPreferences {
 }
 
 interface AppContextValue {
+  wipeData?: (section: WipeSection) => Promise<void>;
   importLegacyBackup?: () => Promise<void>;
   legacyCalendar: boolean;
   cardReviews: Record<string, number>;
@@ -810,6 +812,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     }
   });
 
+  const wipeData = workspace && (async (section: WipeSection) => {
+    const { label, detail } = WIPE_OPTIONS[section];
+    if (!window.confirm(`Delete ${label}? ${detail} This also clears matching records from the saved pre-import snapshot.`)) return;
+    try {
+      await workspace.writer.save(wipeWorkspace(snapshot, section));
+      window.location.reload();
+    } catch (error) {
+      window.alert(`Could not delete ${label}. ${String(error)}`);
+    }
+  });
+
   const exportWorkspace = () => {
     const data = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(data);
@@ -825,6 +838,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     <AppContext.Provider
       value={{
         importLegacyBackup,
+        wipeData,
         legacyCalendar: desktop,
         cardReviews,
         exportWorkspace,

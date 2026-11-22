@@ -1,3 +1,4 @@
+import { WIPE_OPTIONS, type WipeSection } from '../../desktop/wipeWorkspace';
 import { GoogleAccount } from '../../desktop/GoogleAccount';
 import React, { useEffect, useState } from 'react';
 import {
@@ -59,6 +60,7 @@ export const SettingsView: React.FC = () => {
     updatePreferences,
     exportWorkspace,
     importLegacyBackup,
+    wipeData,
     legacyCalendar,
     pushToast,
   } = useApp();
@@ -496,6 +498,16 @@ export const SettingsView: React.FC = () => {
                   <Database className="w-3.5 h-3.5" /> Import
                 </button>}
               </div>
+              {wipeData && <div className="space-y-2 border-t border-[var(--border-subtle)] pt-4">
+                <h3 className="text-[13px] font-semibold">Delete workspace data</h3>
+                {Object.entries(WIPE_OPTIONS).map(([key, option]) => (
+                  <div key={key} className="flex flex-wrap items-center justify-between gap-2 py-1">
+                    <p className="text-[12px] text-[var(--text-muted)]">{option.detail}</p>
+                    <button type="button" className="rounded-lg border border-[var(--border-subtle)] px-2.5 py-1.5 text-[12px] text-red-500"
+                      onClick={() => void wipeData(key as WipeSection)}>Delete {option.label}</button>
+                  </div>
+                ))}
+              </div>}
             </div>
           )}
 
