@@ -24,6 +24,20 @@ bun run dev
 
 Open [localhost:3000](http://localhost:3000).
 
+## Windows desktop development
+
+The desktop shell uses Tauri and bundles the existing StudyFlow frontend.
+On Windows, install the stable Rust MSVC toolchain, Microsoft C++ Build Tools, and Edge WebView2 alongside the web development prerequisites.
+
+```sh
+bun install --frozen-lockfile
+bun run tauri dev
+bun run tauri build --target x86_64-pc-windows-msvc -- --locked
+```
+
+The Windows setup executable is written to `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`.
+This first desktop milestone uses the sample workspace. Persistent study data, legacy backup import, and Pip in the packaged app are tracked for later migration milestones. Pip is available through the localhost development server.
+
 ## Pip study assistant
 
 Open the floating pet or the AI Assistant screen. In **Settings → AI Usage**, choose OpenAI, Gemini, or Claude and enter your own provider API key. The suggested models support images. If you enter a different model, check that it accepts image input before attaching a screenshot.
