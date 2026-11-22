@@ -1,3 +1,4 @@
+import { UserRound } from 'lucide-react';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Search,
@@ -57,6 +58,7 @@ export const TopBar: React.FC = () => {
     markAllNotificationsRead,
     markNotificationRead,
     preferences,
+    legacyCalendar,
   } = useApp();
 
   const [openMenu, setOpenMenu] = useState<'create' | 'notifications' | 'theme' | 'profile' | null>(null);
@@ -409,13 +411,13 @@ export const TopBar: React.FC = () => {
             aria-expanded={openMenu === 'profile'}
             className="flex items-center gap-2 rounded-full p-0.5 hover:ring-2 hover:ring-[var(--accent-border)] transition-all"
           >
-            <img
+            {legacyCalendar ? <span aria-hidden="true" className="grid h-7 w-7 place-items-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]"><UserRound className="h-4 w-4" /></span> : <img
               src={USER_AVATAR_URL}
               alt={preferences.name}
               referrerPolicy="no-referrer"
               className="w-7 h-7 rounded-full object-cover"
               style={{ border: '1px solid var(--border-subtle)' }}
-            />
+            />}
           </button>
 
           {openMenu === 'profile' && (

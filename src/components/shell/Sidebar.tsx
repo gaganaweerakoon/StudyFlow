@@ -1,3 +1,4 @@
+import { studyChart } from '../../utils/workspaceMetrics';
 import React from 'react';
 import {
   LayoutDashboard,
@@ -40,8 +41,13 @@ export const Sidebar: React.FC = () => {
     tasks,
     flashcards,
     focusTimer,
+    legacyCalendar,
+    focusHistory,
+    sessions,
+    preferences,
   } = useApp();
 
+  const weeklyHours = legacyCalendar ? studyChart('weekly', sessions, focusHistory).reduce((sum, day) => sum + day.actual, 0) : 28.6;
   const pendingTasksCount = tasks.filter((t) => t.status !== 'done').length;
   const dueCardsCount = flashcards.filter((c) => c.dueToday).length;
 
@@ -234,8 +240,8 @@ export const Sidebar: React.FC = () => {
             style={{ borderTop: '1px solid var(--border-subtle)' }}
           >
             <div className="flex items-center justify-between text-[12px] mb-1.5">
-              <span className="font-medium text-[var(--text-primary)]">Fall Term 2026</span>
-              <span className="font-mono-num text-[var(--text-muted)]">Wk 12/15</span>
+              <span className="font-medium text-[var(--text-primary)]">{legacyCalendar ? 'Weekly study goal' : 'Fall Term 2026'}</span>
+              <span className="font-mono-num text-[var(--text-muted)]">{legacyCalendar ? '' : 'Wk 12/15'}</span>
             </div>
             <div
               className="h-1.5 w-full rounded-full overflow-hidden"
@@ -243,11 +249,11 @@ export const Sidebar: React.FC = () => {
             >
               <div
                 className="h-full rounded-full transition-all duration-300"
-                style={{ width: '80%', backgroundColor: 'var(--accent)' }}
+                style={{ width: legacyCalendar ? `${Math.min(100, weeklyHours / Math.max(1, preferences.weeklyGoalHours) * 100)}%` : '80%', backgroundColor: 'var(--accent)' }}
               />
             </div>
             <div className="mt-1.5 text-[11px] text-[var(--text-muted)]">
-              28.6 / 32.0 hrs this week
+              {weeklyHours.toFixed(1)} / {(legacyCalendar ? preferences.weeklyGoalHours : 32).toFixed(1)} hrs this week
             </div>
           </div>
         )}

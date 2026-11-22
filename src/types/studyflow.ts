@@ -143,6 +143,7 @@ export interface FlashcardItem {
   intervalDays: number;
   easeFactor: number;
   dueToday: boolean;
+  nextReviewDate?: string;
   mastery: 'new' | 'learning' | 'mature';
 }
 

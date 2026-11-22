@@ -86,6 +86,7 @@ interface AppContextValue {
   importLegacyBackup?: () => Promise<void>;
   restorePreviousWorkspace?: () => Promise<void>;
   legacyCalendar: boolean;
+  cardReviews: Record<string, number>;
   exportWorkspace: () => void;
   // Navigation & Shell
   route: NavRoute;
@@ -198,6 +199,7 @@ function hexToRgba(hex: string, alpha: number): string {
 
 export interface WorkspaceSnapshot {
   legacyArchive?: LegacyArchive;
+  cardReviews?: Record<string, number>;
   focusClock?: { at: number; timer: FocusTimerState };
   removedOccurrences?: string[];
   previousWorkspace?: Omit<WorkspaceSnapshot, 'previousWorkspace'>;
@@ -263,7 +265,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [folders] = useState<NoteFolder[]>(initial?.folders ?? (desktop ? [{ id: 'notes', name: 'Notes' }] : INITIAL_FOLDERS));
   const [notes, setNotes] = useState<NoteItem[]>(initial?.notes ?? (desktop ? [] : INITIAL_NOTES));
   const [decks] = useState<FlashcardDeck[]>(initial?.decks ?? (desktop ? [{ id: 'review', title: 'General Review', subjectId: '', description: '', lastReviewed: '', retentionRate: 0 }] : INITIAL_DECKS));
-  const [flashcards, setFlashcards] = useState<FlashcardItem[]>(initial?.flashcards ?? (desktop ? [] : INITIAL_FLASHCARDS));
+  const [storedFlashcards, setFlashcards] = useState<FlashcardItem[]>(initial?.flashcards ?? (desktop ? [] : INITIAL_FLASHCARDS));
   const [exams, setExams] = useState<ExamItem[]>(initial?.exams ?? (desktop ? [] : INITIAL_EXAMS));
   const [quizzes, setQuizzes] = useState<PracticeQuiz[]>(initial?.quizzes ?? (desktop ? [] : INITIAL_QUIZZES));
   const [focusHistory, setFocusHistory] = useState<FocusHistoryItem[]>(initial?.focusHistory ?? (desktop ? [] : INITIAL_FOCUS_HISTORY));
@@ -333,10 +335,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     focusTimer.running ? undefined : focusTimer.secondsLeft,
     focusTimer.running ? undefined : focusTimer.elapsedSeconds,
   ]);
+  const [cardReviews, setCardReviews] = useState(initial?.cardReviews ?? {});
+  const flashcards = useMemo(() => storedFlashcards.map(card => card.nextReviewDate
+    ? { ...card, dueToday: card.nextReviewDate <= calendarDay } : card), [storedFlashcards, calendarDay]);
   const snapshot = useMemo<WorkspaceSnapshot>(() => ({
     focusClock, legacyArchive: archive, previousWorkspace: initial?.previousWorkspace, removedOccurrences,
-    theme, accentColor, density, dashboardWidgets, subjects, tasks, sessions: savedSessions, goals, folders, notes, decks, flashcards, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences,
-  }), [focusClock, archive, initial?.previousWorkspace, removedOccurrences, theme, accentColor, density, dashboardWidgets, subjects, tasks, savedSessions, goals, folders, notes, decks, flashcards, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences]);
+    theme, accentColor, density, dashboardWidgets, subjects, tasks, sessions: savedSessions, goals, folders, notes, decks, flashcards: storedFlashcards, cardReviews, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences,
+  }), [focusClock, archive, initial?.previousWorkspace, removedOccurrences, theme, accentColor, density, dashboardWidgets, subjects, tasks, savedSessions, goals, folders, notes, decks, storedFlashcards, cardReviews, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences]);
   const [saveError, setSaveError] = useState('');
   const savedSnapshot = useRef(initial?.focusClock?.timer.running && !focusTimer.running ? undefined : snapshot);
 
@@ -725,20 +730,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   );
 
   const reviewFlashcard = useCallback((cardId: string, rating: ReviewRating) => {
+    if (desktop) setCardReviews(previous => {
+      const day = localDay();
+      return { ...previous, [day]: (previous[day] ?? 0) + 1 };
+    });
     setFlashcards((prev) =>
       prev.map((c) => {
         if (c.id !== cardId) return c;
         const next = scheduleFlashcardReview(c, rating);
+        const date = new Date();
+        date.setDate(date.getDate() + (rating === 'again' ? 0 : next.intervalDays));
         return {
           ...c,
           intervalDays: next.intervalDays,
           easeFactor: next.easeFactor,
           mastery: next.mastery,
           dueToday: rating === 'again',
+          nextReviewDate: desktop ? localDay(date) : undefined,
         };
       })
     );
-  }, []);
+  }, [desktop]);
 
   // Exams mutations
   const addExam = useCallback(
@@ -826,6 +838,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         importLegacyBackup,
         restorePreviousWorkspace,
         legacyCalendar: desktop,
+        cardReviews,
         exportWorkspace,
         route,
         setRoute,

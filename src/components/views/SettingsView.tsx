@@ -57,6 +57,9 @@ export const SettingsView: React.FC = () => {
     preferences,
     updatePreferences,
     exportWorkspace,
+    importLegacyBackup,
+    restorePreviousWorkspace,
+    legacyCalendar,
     pushToast,
   } = useApp();
 
@@ -157,13 +160,13 @@ export const SettingsView: React.FC = () => {
                 Student Profile
               </h2>
               <div className="flex items-center gap-4">
-                <img
+                {legacyCalendar ? <span aria-hidden="true" className="grid h-14 w-14 place-items-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]"><User className="h-6 w-6" /></span> : <img
                   src={USER_AVATAR_URL}
                   alt={preferences.name}
                   referrerPolicy="no-referrer"
                   className="w-14 h-14 rounded-full object-cover"
                   style={{ border: '1px solid var(--border-subtle)' }}
-                />
+                />}
                 <div>
                   <div className="text-[14px] font-semibold text-[var(--text-primary)]">{preferences.name}</div>
                   <div className="text-[12px] text-[var(--text-muted)]">{preferences.email}</div>
@@ -484,6 +487,18 @@ export const SettingsView: React.FC = () => {
                 >
                   <Download className="w-3.5 h-3.5" /> Export Workspace JSON
                 </button>
+                {importLegacyBackup && <button
+                  type="button"
+                  onClick={() => void importLegacyBackup()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3.5 py-2 text-[12.5px] font-medium"
+                >
+                  <Database className="w-3.5 h-3.5" /> Import Legacy SQLite Backup
+                </button>}
+                {restorePreviousWorkspace && <button
+                  type="button"
+                  onClick={() => void restorePreviousWorkspace()}
+                  className="rounded-lg border border-[var(--border-subtle)] px-3.5 py-2 text-[12.5px] font-medium"
+                >Restore Previous Workspace</button>}
               </div>
             </div>
           )}

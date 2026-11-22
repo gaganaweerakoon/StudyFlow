@@ -18,6 +18,7 @@ import {
   Lightbulb,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { localDay } from '../../assistant/workspaceContext';
 import type { ReviewRating } from '../../utils/studyLogic';
 
 const REVIEW_HISTORY = [
@@ -31,7 +32,7 @@ const REVIEW_HISTORY = [
 ];
 
 export const FlashcardsView: React.FC = () => {
-  const { decks, flashcards, subjects, reviewFlashcard, setActiveModal, pushToast } = useApp();
+  const { decks, flashcards, subjects, legacyCalendar, cardReviews, reviewFlashcard, setActiveModal, pushToast } = useApp();
 
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
   const [cardIndex, setCardIndex] = useState(0);
@@ -269,6 +270,17 @@ export const FlashcardsView: React.FC = () => {
   }
 
   const dueTotal = flashcards.filter((c) => c.dueToday).length;
+  const today = new Date();
+  const dateAt = (days: number) => {
+    const date = new Date(today);
+    date.setDate(date.getDate() + days);
+    return date;
+  };
+  const reviewHistory = legacyCalendar ? REVIEW_HISTORY.map(({ day }, index) => ({
+    day, reviewed: cardReviews[localDay(dateAt(index - (today.getDay() + 6) % 7))] ?? 0,
+  })) : REVIEW_HISTORY;
+  const reviewedThisWeek = reviewHistory.reduce((total, day) => total + day.reviewed, 0);
+
 
   return (
     <div className="space-y-4 pb-6">
@@ -278,7 +290,7 @@ export const FlashcardsView: React.FC = () => {
             Flashcards & Active Recall
           </h1>
           <p className="text-[12.5px] text-[var(--text-muted)]">
-            {dueTotal} cards due today across {decks.length} subject-linked decks · 90% 30-day retention
+            {dueTotal} cards due today across {decks.length} {legacyCalendar ? 'decks' : 'subject-linked decks · 90% 30-day retention'}
           </p>
         </div>
 
@@ -308,7 +320,7 @@ export const FlashcardsView: React.FC = () => {
                     {sub?.code}
                   </span>
                   <span className="font-mono-num text-[var(--text-muted)]">
-                    {deck.retentionRate}% retention
+                    {legacyCalendar ? '—' : `${deck.retentionRate}% retention`}
                   </span>
                 </div>
                 <h2 className="font-display text-[15.5px] font-semibold text-[var(--text-primary)] mt-1">
@@ -349,11 +361,11 @@ export const FlashcardsView: React.FC = () => {
             <h2 className="font-display text-[14.5px] font-semibold text-[var(--text-primary)]">
               Daily Cards Reviewed
             </h2>
-            <p className="text-[12px] text-[var(--text-muted)]">296 active recall reviews completed this week</p>
+            <p className="text-[12px] text-[var(--text-muted)]">{reviewedThisWeek} active recall reviews completed this week</p>
           </div>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={REVIEW_HISTORY} margin={{ top: 6, right: 8, left: -20, bottom: 0 }}>
+              <BarChart data={reviewHistory} margin={{ top: 6, right: 8, left: -20, bottom: 0 }}>
                 <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
@@ -376,12 +388,20 @@ export const FlashcardsView: React.FC = () => {
             Spaced Repetition Forecast
           </h2>
           <div className="divide-y divide-[var(--border-subtle)] text-[12.5px]">
-            {[
+            {(legacyCalendar ? Array.from({ length: 4 }, (_, index) => {
+              const date = dateAt(index);
+              const day = localDay(date);
+              return {
+                label: index === 0 ? 'Today' : index === 1 ? 'Tomorrow' : date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
+                due: index === 0 ? dueTotal : flashcards.filter(card => card.nextReviewDate === day).length,
+                status: index === 0 ? 'Ready now' : 'Scheduled',
+              };
+            }) : [
               { label: 'Today (Nov 22)', due: dueTotal, status: 'Ready now' },
               { label: 'Tomorrow (Nov 23)', due: 18, status: 'Scheduled' },
               { label: 'Tue, Nov 24', due: 24, status: 'Midterm prep peak' },
               { label: 'Wed, Nov 25', due: 14, status: 'Light maintenance' },
-            ].map((row) => (
+            ]).map((row) => (
               <div key={row.label} className="py-2.5 flex items-center justify-between">
                 <div>
                   <div className="font-medium text-[var(--text-primary)]">{row.label}</div>

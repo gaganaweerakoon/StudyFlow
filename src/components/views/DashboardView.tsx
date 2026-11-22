@@ -645,7 +645,7 @@ export const DashboardView: React.FC = () => {
         <div>
           <div className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
             <Calendar className="w-3.5 h-3.5" />
-            <span>Sunday, November 22, 2026 · Week 12 of Fall Term</span>
+            <span>{legacyCalendar ? new Date().toLocaleDateString(undefined, { dateStyle: 'full' }) : 'Sunday, November 22, 2026 · Week 12 of Fall Term'}</span>
           </div>
           <h1 className="font-display text-[22px] font-semibold tracking-tight text-[var(--text-primary)] mt-0.5">
             Good morning, {preferences.name.split(' ')[0]}
