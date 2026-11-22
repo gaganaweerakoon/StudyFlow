@@ -16,6 +16,7 @@ import {
 import { localDay } from '../../assistant/workspaceContext';
 import { useApp } from '../../context/AppContext';
 import type { StudySession } from '../../types/studyflow';
+import { layoutCalendarDay } from '../../utils/calendarLayout';
 import { formatHourLabel } from '../../utils/studyLogic';
 
 type PlannerMode = 'day' | 'week' | 'month' | 'agenda';
@@ -30,7 +31,7 @@ const DEMO_DAYS = [
   { short: 'Sun', num: 22, date: '2026-11-22', isToday: true },
 ];
 
-const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const HOUR_HEIGHT = 60;
 
 export const PlannerView: React.FC = () => {
@@ -63,10 +64,9 @@ export const PlannerView: React.FC = () => {
 
   const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? null;
 
-  const getWorkloadForDay = (dayIdx: number) =>
-    sessions
-      .filter((s) => legacyCalendar ? s.date === DAYS[dayIdx].date : s.dayIndex === dayIdx)
-      .reduce((acc, s) => acc + s.durationHours, 0);
+  const blocksByDate = new Map(DAYS.map(day => [day.date, layoutCalendarDay(sessions, day.date)]));
+  const getWorkloadForDay = (dayIdx: number) => (blocksByDate.get(DAYS[dayIdx].date) ?? [])
+    .reduce((total, block) => total + block.to - block.from, 0);
 
   const handleDropOnCell = (dayIdx: number, hour: number) => {
     if (!dragSessionId) return;
@@ -82,7 +82,7 @@ export const PlannerView: React.FC = () => {
   };
 
   const handleResizeDuration = (ses: StudySession, delta: number) => {
-    const next = Math.max(0.5, Math.min(4, ses.durationHours + delta));
+    const next = Math.max(0.5, Math.min(24, ses.durationHours + delta));
     updateSession(ses.id, { durationHours: next });
   };
 
@@ -100,17 +100,17 @@ export const PlannerView: React.FC = () => {
     pushToast(legacyCalendar ? (missed ? 'Rescheduled missed study block' : 'No missed study blocks') : 'Smart reschedule applied — moved deferred ECON 205 lab');
   };
 
-  const renderSessionBlock = (ses: StudySession) => {
+  const renderSessionBlock = ({ session: ses, from, to, continued, column, columns }: ReturnType<typeof layoutCalendarDay>[number]) => {
     const sub = subjects.find((s) => s.id === ses.subjectId);
     const isSelected = ses.id === selectedSessionId;
-    const topPx = (ses.startHour - 8) * HOUR_HEIGHT;
-    const heightPx = Math.max(32, ses.durationHours * HOUR_HEIGHT - 4);
+    const topPx = from * HOUR_HEIGHT;
+    const heightPx = Math.max(1, (to - from) * HOUR_HEIGHT - 1);
     const color = sub?.color ?? '#4F46E5';
 
     return (
       <div
         key={ses.id}
-        draggable
+        draggable={!continued}
         onDragStart={() => setDragSessionId(ses.id)}
         onDragEnd={() => setDragSessionId(null)}
         onClick={() => setSelectedSessionId(ses.id)}
@@ -122,34 +122,27 @@ export const PlannerView: React.FC = () => {
             setSelectedSessionId(ses.id);
           }
         }}
-        aria-label={`${ses.title}, ${sub?.code}, ${formatHourLabel(ses.startHour)}`}
-        className="absolute left-1 right-1 rounded-lg px-2 py-1 cursor-pointer select-none overflow-hidden transition-shadow group"
+        aria-label={`${ses.title}, ${formatHourLabel(from)} to ${formatHourLabel(to % 24)}${continued ? ', continued' : ''}`}
+        title={`${ses.title} · ${formatHourLabel(from)}–${formatHourLabel(to % 24)}${continued ? ' · Continued' : ''}`}
+        className="absolute rounded-md px-1 py-px cursor-pointer select-none overflow-hidden transition-shadow group"
         style={{
           top: topPx,
+          left: `calc(${column * 100 / columns}% + 1px)`,
+          width: `calc(${100 / columns}% - 2px)`,
           height: heightPx,
           backgroundColor: `${color}18`,
           border: isSelected ? `1.5px solid ${color}` : `1px solid ${color}45`,
           opacity: ses.status === 'missed' ? 0.72 : 1,
         }}
       >
-        <div className="flex items-start justify-between gap-1">
-          <span className="text-[10.5px] font-semibold truncate" style={{ color }}>
-            {sub?.code}
-          </span>
-          <span className="flex items-center gap-1 shrink-0">
-            {ses.recurring && <Repeat className="w-2.5 h-2.5 text-[var(--text-muted)]" />}
-            {ses.status === 'completed' && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
-            {ses.status === 'missed' && <AlertCircle className="w-3 h-3 text-rose-500" />}
-          </span>
-        </div>
-        <div className={`text-[11.5px] font-medium text-[var(--text-primary)] leading-tight mt-0.5 ${heightPx < 66 ? 'truncate' : 'line-clamp-2'}`}>
+        <div className="truncate text-[11px] leading-tight font-medium">
+          {heightPx < 27 && <span className="mr-1 text-[var(--text-muted)]">{formatHourLabel(from)}</span>}
           {ses.title}
         </div>
-        {heightPx >= 72 && (
-          <div className="text-[10.5px] font-mono-num text-[var(--text-muted)] mt-0.5">
-            {formatHourLabel(ses.startHour)} · {ses.durationHours}h
-          </div>
-        )}
+        {heightPx >= 27 && <div className="truncate text-[10px] leading-tight text-[var(--text-muted)]">
+          {formatHourLabel(from)}{continued ? ' · Continued' : ses.recurring ? ' · Repeats' : ''}
+        </div>}
+        {heightPx >= 54 && sub && <div className="truncate text-[10px]" style={{ color }}>{sub.code}</div>}
         {/* Subtle resize handle affordance */}
         <div
           className="absolute bottom-0 inset-x-0 h-2 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -304,7 +297,7 @@ export const PlannerView: React.FC = () => {
                         className="pr-2 text-right text-[10.5px] font-mono-num text-[var(--text-muted)]"
                         style={{ height: HOUR_HEIGHT, paddingTop: 2 }}
                       >
-                        {h === 12 ? '12 PM' : h > 12 ? `${h - 12} PM` : `${h} AM`}
+                        {h % 12 || 12} {h < 12 ? 'AM' : 'PM'}
                       </div>
                     ))}
                   </div>
@@ -312,7 +305,7 @@ export const PlannerView: React.FC = () => {
                   {/* Day Columns */}
                   {(viewMode === 'week' ? DAYS : [DAYS[activeDayIdx]]).map((d, idx) => {
                     const realIdx = viewMode === 'week' ? idx : activeDayIdx;
-                    const daySessions = sessions.filter((s) => legacyCalendar ? s.date === d.date : s.dayIndex === realIdx);
+                    const daySessions = blocksByDate.get(d.date) ?? [];
 
                     return (
                       <div
@@ -340,7 +333,7 @@ export const PlannerView: React.FC = () => {
                         {d.isToday && (
                           <div
                             className="absolute left-0 right-0 z-10 pointer-events-none flex items-center"
-                            style={{ top: (10.25 - 8) * HOUR_HEIGHT }}
+                            style={{ top: (legacyCalendar ? today.getHours() + today.getMinutes() / 60 : 10.25) * HOUR_HEIGHT }}
                           >
                             <span className="w-2 h-2 rounded-full -ml-1" style={{ backgroundColor: '#E11D48' }} />
                             <div className="flex-1 h-[1.5px]" style={{ backgroundColor: '#E11D48' }} />
