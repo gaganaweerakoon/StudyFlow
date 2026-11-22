@@ -1,7 +1,8 @@
+import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 import { CHAT_ENDPOINT, CHAT_LIMITS, SYSTEM_PROMPT, type ChatEvent, type ChatImage, type ChatRequest } from './protocol';
 
 export const isAssistantAvailable = () =>
-  window.location.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+  isTauri() || window.location.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
 
 export function estimatedTokens(request: ChatRequest) {
   const text = [SYSTEM_PROMPT, request.prompt, request.context, ...request.history.map(turn => turn.text)].join('\n');
@@ -10,7 +11,49 @@ export function estimatedTokens(request: ChatRequest) {
   return 80 + textTokens + imageTokens + request.maxOutput;
 }
 
+async function* sendDesktopChat(request: ChatRequest, key: string, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+  signal.throwIfAborted();
+  const id = crypto.randomUUID();
+  const events = new Channel<ChatEvent>();
+  const queue: ChatEvent[] = [];
+  let wake: (() => void) | undefined;
+  let finished = false;
+  let failure: unknown;
+  events.onmessage = event => {
+    queue.push(event);
+    wake?.();
+  };
+  const cancel = () => {
+    void invoke('cancel_assistant_chat', { id }).catch(() => {});
+    wake?.();
+  };
+  signal.addEventListener('abort', cancel, { once: true });
+  const completion = invoke('assistant_chat', { id, request, key, events })
+    .catch(error => { failure = error; })
+    .finally(() => { finished = true; wake?.(); });
+  try {
+    while (queue.length || !finished) {
+      signal.throwIfAborted();
+      const event = queue.shift();
+      if (event) yield event;
+      else await new Promise<void>(resolve => { wake = resolve; });
+    }
+    signal.throwIfAborted();
+    if (failure) throw new Error(String(failure));
+  } finally {
+    signal.removeEventListener('abort', cancel);
+    if (!finished) {
+      cancel();
+      await completion;
+    }
+  }
+}
+
 export async function* sendChat(request: ChatRequest, key: string, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+  if (isTauri()) {
+    yield* sendDesktopChat(request, key, signal);
+    return;
+  }
   const response = await fetch(CHAT_ENDPOINT, {
     method: 'POST',
     signal,

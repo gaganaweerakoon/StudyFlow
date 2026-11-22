@@ -25,6 +25,8 @@ import {
   Calendar,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { localDay } from '../../assistant/workspaceContext';
+import { studyChart } from '../../utils/workspaceMetrics';
 import { DASHBOARD_CHART_DATA } from '../../data/mockData';
 import {
   calculateStudyAdherence,
@@ -38,6 +40,8 @@ type RangeKey = 'daily' | 'weekly' | 'monthly';
 export const DashboardView: React.FC = () => {
   const {
     preferences,
+    legacyCalendar,
+    focusHistory,
     subjects,
     tasks,
     sessions,
@@ -58,16 +62,17 @@ export const DashboardView: React.FC = () => {
   const [chartRange, setChartRange] = useState<RangeKey>('weekly');
   const [customizeOpen, setCustomizeOpen] = useState(false);
 
-  const chartData = DASHBOARD_CHART_DATA[chartRange];
+  const chartData = legacyCalendar ? studyChart(chartRange, sessions, focusHistory) : DASHBOARD_CHART_DATA[chartRange];
   const adherence = calculateStudyAdherence(chartData);
 
   const completedTasks = tasks.filter((t) => t.status === 'done').length;
   const pendingTasks = tasks.length - completedTasks;
   const todaySessions = sessions
-    .filter((s) => s.date === '2026-11-22')
+    .filter((s) => s.date === (legacyCalendar ? localDay() : '2026-11-22'))
     .sort((a, b) => a.startHour - b.startHour);
 
-  const dailyStudyHours = 3.4;
+  const dailyStudyHours = legacyCalendar ? studyChart('daily', sessions, focusHistory)[0].actual : 3.4;
+  const weeklyHours = legacyCalendar ? studyChart('weekly', sessions, focusHistory).reduce((sum, day) => sum + day.actual, 0) : 28.6;
   const dailyGoalPct = Math.min(100, Math.round((dailyStudyHours / preferences.dailyGoalHours) * 100));
 
   const isVisible = (id: string) => dashboardWidgets.find((w) => w.id === id)?.visible ?? true;
@@ -123,14 +128,14 @@ export const DashboardView: React.FC = () => {
               <div className="text-[12px] text-[var(--text-muted)]">Weekly study hours</div>
               <div className="mt-1 flex items-baseline gap-2">
                 <span className="font-mono-num text-[22px] font-semibold text-[var(--text-primary)]">
-                  28.6h
+                  {weeklyHours.toFixed(1)}h
                 </span>
                 <span className="text-[12px] text-emerald-600 dark:text-emerald-400 font-medium">
-                  +2.4h vs last wk
+                  {legacyCalendar ? `of ${preferences.weeklyGoalHours}h goal` : ' +2.4h vs last wk'}
                 </span>
               </div>
               <div className="mt-2 h-1.5 w-full rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-surface-hover)' }}>
-                <div className="h-full rounded-full" style={{ width: '89%', backgroundColor: 'var(--accent)' }} />
+                <div className="h-full rounded-full" style={{ width: legacyCalendar ? `${Math.min(100, 100 * weeklyHours / Math.max(1, preferences.weeklyGoalHours))}%` : '89%', backgroundColor: 'var(--accent)' }} />
               </div>
             </div>
 
@@ -142,9 +147,9 @@ export const DashboardView: React.FC = () => {
               </div>
               <div className="mt-1 flex items-baseline gap-1.5">
                 <span className="font-mono-num text-[22px] font-semibold text-[var(--text-primary)]">
-                  16 days
+                  {legacyCalendar ? '—' : '16 days'}
                 </span>
-                <span className="text-[12px] text-[var(--text-muted)]">Best: 21d</span>
+                <span className="text-[12px] text-[var(--text-muted)]">{legacyCalendar ? '—' : 'Best: 21d'}</span>
               </div>
               <div className="mt-1.5 flex items-center gap-1" aria-label="Last 7 days streak">
                 {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
@@ -309,7 +314,7 @@ export const DashboardView: React.FC = () => {
                   Today&apos;s Study Schedule
                 </h2>
                 <p className="text-[12px] text-[var(--text-muted)]">
-                  Sunday, Nov 22 · {todaySessions.length} blocks scheduled
+                  {legacyCalendar ? new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }) : 'Sunday, Nov 22'} · {todaySessions.length} blocks scheduled
                 </p>
               </div>
               <button
@@ -601,14 +606,14 @@ export const DashboardView: React.FC = () => {
                   <Sparkles className="w-3.5 h-3.5" />
                   StudyFlow Productivity Insight
                 </span>
-                <span className="text-[11px] text-[var(--text-muted)]">Based on 14-day log</span>
+                <span className="text-[11px] text-[var(--text-muted)]">{legacyCalendar ? 'Study history' : 'Based on 14-day log'}</span>
               </div>
               <p className="text-[13px] text-[var(--text-primary)] leading-relaxed">
-                Your morning deep-work blocks between <span className="font-mono-num font-medium">9:00–11:30 AM</span> average{' '}
-                <span className="font-mono-num font-semibold">93%</span> focus quality — 14% higher than late afternoon sessions.
+                {legacyCalendar ? `You have ${focusHistory.length} completed focus sessions in this workspace.` : <>Your morning deep-work blocks between <span className="font-mono-num font-medium">9:00–11:30 AM</span> average{' '}
+                <span className="font-mono-num font-semibold">93%</span> focus quality — 14% higher than late afternoon sessions.</>}
               </p>
               <p className="text-[12.5px] text-[var(--text-secondary)] mt-2">
-                Recommendation: Shift CHEM 210 carbonyl mechanism drills into tomorrow morning&apos;s open 9:30 AM slot before Midterm III prep peaks.
+                {legacyCalendar ? 'Open Analytics to review your study time.' : 'Recommendation: Shift CHEM 210 carbonyl mechanism drills into tomorrow morning’s open 9:30 AM slot before Midterm III prep peaks.'}
               </p>
             </div>
             <div className="mt-3.5 flex items-center justify-between">

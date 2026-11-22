@@ -25,7 +25,7 @@ import { AnalyticsView } from './components/views/AnalyticsView';
 import { AiAssistantView } from './components/views/AiAssistantView';
 import { AchievementsView } from './components/views/AchievementsView';
 import { SettingsView } from './components/views/SettingsView';
-import { AssistantProvider } from './assistant/AssistantContext';
+import { AssistantProvider, type DesktopUsage } from './assistant/AssistantContext';
 import { FloatingAssistant } from './assistant/FloatingAssistant';
 
 const StudyFlowShell: React.FC = () => {
@@ -104,10 +104,10 @@ const StudyFlowShell: React.FC = () => {
   );
 };
 
-export default function App({ workspace }: { workspace?: WorkspacePersistence }) {
+export default function App({ workspace, desktopUsage }: { workspace?: WorkspacePersistence; desktopUsage?: DesktopUsage }) {
   return (
     <AppProvider workspace={workspace}>
-      <AssistantProvider>
+      <AssistantProvider desktopUsage={desktopUsage}>
         <StudyFlowShell />
       </AssistantProvider>
     </AppProvider>

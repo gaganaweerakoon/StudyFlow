@@ -39,15 +39,73 @@ async fn save_snapshot(
     .map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+fn inspect_legacy_backup(
+    request: tauri::ipc::Request<'_>,
+) -> Result<serde_json::Map<String, Value>, String> {
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => studyflow_storage::read_legacy_backup(bytes),
+        _ => Err("Choose a SQLite backup file.".into()),
+    }
+}
+
+#[derive(Default)]
+struct ActiveChat(std::sync::Mutex<Option<(String, Option<tokio::sync::oneshot::Sender<()>>)>>);
+
+#[tauri::command]
+async fn assistant_chat(
+    state: State<'_, ActiveChat>,
+    id: String,
+    request: studyflow_assistant::ChatRequest,
+    key: String,
+    events: tauri::ipc::Channel<Value>,
+) -> Result<(), String> {
+    let (cancel, cancelled) = tokio::sync::oneshot::channel();
+    {
+        let mut active = state.0.lock().map_err(|error| error.to_string())?;
+        if active.is_some() {
+            return Err("A reply is already in progress.".into());
+        }
+        *active = Some((id, Some(cancel)));
+    }
+    let result = tokio::select! {
+        result = studyflow_assistant::stream(request, key, |event| events.send(event).map_err(|error| error.to_string())) => result,
+        _ = cancelled => Err("Reply stopped.".into()),
+    };
+    *state.0.lock().map_err(|error| error.to_string())? = None;
+    result
+}
+
+#[tauri::command]
+fn cancel_assistant_chat(state: State<'_, ActiveChat>, id: String) -> Result<(), String> {
+    let mut active = state.0.lock().map_err(|error| error.to_string())?;
+    if active
+        .as_ref()
+        .is_some_and(|(request_id, _)| request_id == &id)
+    {
+        if let Some(cancel) = active.as_mut().and_then(|(_, cancel)| cancel.take()) {
+            let _ = cancel.send(());
+        }
+    }
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
+        .manage(ActiveChat::default())
         .setup(|app| {
             let directory = app.path().app_local_data_dir()?;
             std::fs::create_dir_all(&directory)?;
             app.manage(WorkspaceDatabase(directory.join("studyflow.sqlite")));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![load_snapshot, save_snapshot])
+        .invoke_handler(tauri::generate_handler![
+            load_snapshot,
+            save_snapshot,
+            inspect_legacy_backup,
+            assistant_chat,
+            cancel_assistant_chat
+        ])
         .run(tauri::generate_context!())
         .expect("failed to start StudyFlow");
 }

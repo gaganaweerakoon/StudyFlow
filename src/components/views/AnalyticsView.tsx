@@ -30,10 +30,12 @@ import {
   PEAK_HOURS_HEATMAP,
 } from '../../data/mockData';
 
+import { studyChart } from '../../utils/workspaceMetrics';
+
 const TIME_SLOTS = ['8a', '10a', '12p', '2p', '4p', '6p', '8p', '10p'];
 
 export const AnalyticsView: React.FC = () => {
-  const { subjects } = useApp();
+  const { subjects, sessions, focusHistory, legacyCalendar } = useApp();
   const [dateRange, setDateRange] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
   const [tableSearch, setTableSearch] = useState('');
@@ -55,25 +57,29 @@ export const AnalyticsView: React.FC = () => {
       subjects.map((s) => ({
         name: s.code,
         fullName: s.name,
-        hours: s.totalHours,
+        hours: legacyCalendar ? focusHistory.filter(item => item.subjectId === s.id).reduce((sum, item) => sum + item.durationMinutes / 60, 0) : s.totalHours,
         color: s.color,
       })),
-    [subjects]
+    [subjects, legacyCalendar, focusHistory]
   );
 
   const totalHoursAll = useMemo(
-    () => Number(subjects.reduce((acc, s) => acc + s.totalHours, 0).toFixed(1)),
-    [subjects]
+    () => Number(subjectDonutData.reduce((acc, s) => acc + s.hours, 0).toFixed(1)),
+    [subjectDonutData]
   );
 
   const filteredSessions = useMemo(() => {
     const q = tableSearch.trim().toLowerCase();
-    return ANALYTICS_SESSIONS_TABLE.filter((row) => {
+    const rows = legacyCalendar ? focusHistory.map(item => ({
+      id: item.id, date: item.completedAt, subjectId: item.subjectId, topic: item.taskTitle,
+      plannedMin: 0, actualMin: item.durationMinutes, focusScore: item.qualityRating * 20, mode: item.mode,
+    })) : ANALYTICS_SESSIONS_TABLE;
+    return rows.filter((row) => {
       if (subjectFilter !== 'all' && row.subjectId !== subjectFilter) return false;
       if (q && !row.topic.toLowerCase().includes(q) && !row.mode.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [subjectFilter, tableSearch]);
+  }, [subjectFilter, tableSearch, focusHistory, legacyCalendar]);
 
   const heatmapColor = (level: number) => {
     if (level === 0) return 'var(--bg-surface-hover)';
@@ -81,7 +87,11 @@ export const AnalyticsView: React.FC = () => {
     return `color-mix(in srgb, var(--accent) ${Math.round((opacities[level - 1] ?? 0.9) * 100)}%, transparent)`;
   };
 
-  const totalStatsByRange = {
+  const liveChart = studyChart(dateRange, sessions.filter(item => subjectFilter === 'all' || item.subjectId === subjectFilter),
+    focusHistory.filter(item => subjectFilter === 'all' || item.subjectId === subjectFilter));
+  const total = liveChart.reduce((sum, row) => sum + row.actual, 0);
+  const planned = liveChart.reduce((sum, row) => sum + row.planned, 0);
+  const totalStatsByRange = legacyCalendar ? { total: `${total.toFixed(1)}h`, delta: '', sub: 'Completed focus sessions' } : {
     daily: { total: '3.4h', delta: '+18%', sub: 'vs 2.9h daily avg' },
     weekly: { total: '28.6h', delta: '+9.2%', sub: 'vs 26.2h prior week' },
     monthly: { total: '117.6h', delta: '+14.5%', sub: 'vs 102.7h October' },
@@ -158,8 +168,8 @@ export const AnalyticsView: React.FC = () => {
         <div className="rounded-xl p-4" style={surfaceStyle}>
           <div className="text-[12px] text-[var(--text-muted)]">Schedule adherence</div>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="font-mono-num text-[22px] font-semibold text-[var(--text-primary)]">94.2%</span>
-            <span className="text-[12px] text-emerald-600 dark:text-emerald-400 font-medium">+4.1%</span>
+            <span className="font-mono-num text-[22px] font-semibold text-[var(--text-primary)]">{legacyCalendar ? (planned ? `${(100 * total / planned).toFixed(1)}%` : '—') : '94.2%'}</span>
+            <span className="text-[12px] text-emerald-600 dark:text-emerald-400 font-medium">{legacyCalendar ? '' : '+4.1%'}</span>
           </div>
           <div className="text-[11.5px] text-[var(--text-muted)] mt-0.5">Actual vs planned sessions</div>
         </div>
@@ -167,10 +177,10 @@ export const AnalyticsView: React.FC = () => {
         <div className="rounded-xl p-4" style={surfaceStyle}>
           <div className="text-[12px] text-[var(--text-muted)]">Avg focus quality</div>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="font-mono-num text-[22px] font-semibold text-[var(--text-primary)]">88.4</span>
+            <span className="font-mono-num text-[22px] font-semibold text-[var(--text-primary)]">{legacyCalendar ? '—' : '88.4'}</span>
             <span className="text-[12px] text-[var(--text-muted)] font-mono-num">/ 100</span>
           </div>
-          <div className="text-[11.5px] text-[var(--text-muted)] mt-0.5">Peak window: 9:30–11:30 AM</div>
+          <div className="text-[11.5px] text-[var(--text-muted)] mt-0.5">{legacyCalendar ? 'Focus quality history' : 'Peak window: 9:30–11:30 AM'}</div>
         </div>
 
         <div className="rounded-xl p-4" style={{ ...surfaceStyle, borderColor: 'var(--accent-border)' }}>
@@ -178,7 +188,7 @@ export const AnalyticsView: React.FC = () => {
             <Sparkles className="w-3.5 h-3.5" /> Key Pattern
           </div>
           <p className="text-[12.5px] text-[var(--text-primary)] mt-1 leading-snug">
-            45-minute Pomodoro blocks yield <strong>11% higher retention</strong> than marathon 90m sessions.
+            {legacyCalendar ? 'Study patterns appear as you log more sessions.' : <>45-minute Pomodoro blocks yield <strong>11% higher retention</strong> than marathon 90m sessions.</>}
           </p>
         </div>
       </div>
@@ -204,7 +214,7 @@ export const AnalyticsView: React.FC = () => {
           </div>
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={DASHBOARD_CHART_DATA[dateRange]} margin={{ top: 6, right: 10, left: -18, bottom: 0 }}>
+              <LineChart data={legacyCalendar ? liveChart : DASHBOARD_CHART_DATA[dateRange]} margin={{ top: 6, right: 10, left: -18, bottom: 0 }}>
                 <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} unit="h" />
@@ -266,7 +276,7 @@ export const AnalyticsView: React.FC = () => {
           <p className="text-[12px] text-[var(--text-muted)] mb-3">Composite focus quality index over the past 14 days</p>
           <div className="h-52 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={ANALYTICS_PRODUCTIVITY_TREND} margin={{ top: 6, right: 10, left: -18, bottom: 0 }}>
+              <AreaChart data={legacyCalendar ? [] : ANALYTICS_PRODUCTIVITY_TREND} margin={{ top: 6, right: 10, left: -18, bottom: 0 }}>
                 <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
                 <YAxis domain={[60, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
@@ -284,7 +294,7 @@ export const AnalyticsView: React.FC = () => {
           <p className="text-[12px] text-[var(--text-muted)] mb-3">Completed study blocks by session length</p>
           <div className="h-52 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={ANALYTICS_FOCUS_DURATION} margin={{ top: 6, right: 8, left: -20, bottom: 0 }}>
+              <BarChart data={legacyCalendar ? [] : ANALYTICS_FOCUS_DURATION} margin={{ top: 6, right: 8, left: -20, bottom: 0 }}>
                 <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="bucket" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
@@ -315,7 +325,7 @@ export const AnalyticsView: React.FC = () => {
             </div>
           </div>
           <div className="grid grid-cols-14 gap-1.5 pt-1">
-            {CONSISTENCY_HEATMAP.map((week, wIdx) => (
+            {(legacyCalendar ? CONSISTENCY_HEATMAP.map(week => week.map(() => 0)) : CONSISTENCY_HEATMAP).map((week, wIdx) => (
               <div key={wIdx} className="flex flex-col gap-1.5">
                 {week.map((lvl, dIdx) => (
                   <div
@@ -342,7 +352,7 @@ export const AnalyticsView: React.FC = () => {
                 <div key={s} className="text-center">{s}</div>
               ))}
             </div>
-            {PEAK_HOURS_HEATMAP.map((row) => (
+            {(legacyCalendar ? [] : PEAK_HOURS_HEATMAP).map((row) => (
               <div key={row.day} className="grid grid-cols-9 gap-1.5 items-center">
                 <div className="text-[11px] text-[var(--text-secondary)]">{row.day}</div>
                 {row.slots.map((val, idx) => (
@@ -368,7 +378,7 @@ export const AnalyticsView: React.FC = () => {
           <p className="text-[12px] text-[var(--text-muted)] mb-3">Weekly subject hour targets vs actual hours logged</p>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={ANALYTICS_GOAL_COMPARISON} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+              <BarChart data={legacyCalendar ? [] : ANALYTICS_GOAL_COMPARISON} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                 <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="subject" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} unit="h" />
@@ -387,7 +397,7 @@ export const AnalyticsView: React.FC = () => {
           <p className="text-[12px] text-[var(--text-muted)] mb-3">Completed vs pending assignments per week</p>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={ANALYTICS_TASK_TRENDS} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+              <BarChart data={legacyCalendar ? [] : ANALYTICS_TASK_TRENDS} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                 <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="week" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
@@ -409,7 +419,7 @@ export const AnalyticsView: React.FC = () => {
           <p className="text-[12px] text-[var(--text-muted)] mb-3">Your active recall retention vs standard forgetting curve</p>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={ANALYTICS_RETENTION_CURVE} margin={{ top: 4, right: 10, left: -18, bottom: 0 }}>
+              <LineChart data={legacyCalendar ? [] : ANALYTICS_RETENTION_CURVE} margin={{ top: 4, right: 10, left: -18, bottom: 0 }}>
                 <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
                 <YAxis domain={[40, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} unit="%" />
@@ -428,7 +438,7 @@ export const AnalyticsView: React.FC = () => {
           <p className="text-[12px] text-[var(--text-muted)] mb-3">Assessment trajectory across core courses</p>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={ANALYTICS_EXAM_PROGRESSION} margin={{ top: 4, right: 10, left: -18, bottom: 0 }}>
+              <LineChart data={legacyCalendar ? [] : ANALYTICS_EXAM_PROGRESSION} margin={{ top: 4, right: 10, left: -18, bottom: 0 }}>
                 <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="exam" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
                 <YAxis domain={[70, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} unit="%" />

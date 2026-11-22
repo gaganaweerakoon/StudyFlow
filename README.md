@@ -36,13 +36,13 @@ bun run tauri build --target x86_64-pc-windows-msvc -- --locked
 ```
 
 The Windows setup executable is written to `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`.
-This first desktop milestone uses the sample workspace. Persistent study data, legacy backup import, and Pip in the packaged app are tracked for later migration milestones. Pip is available through the localhost development server.
+The desktop app saves study records, focus timer state, and AI usage in its local SQLite database. Open the command palette with **Ctrl+K** and search for **Import Legacy SQLite Backup** to inspect and migrate a schema 17 backup. The importer retains the source records in the workspace archive. To switch back to your pre-import data, search for **Restore Previous Workspace**. **Settings → Data & Backup → Export Workspace JSON** writes a copy of the current workspace.
 
 ## Pip study assistant
 
 Open the floating pet or the AI Assistant screen. In **Settings → AI Usage**, choose OpenAI, Gemini, or Claude and enter your own provider API key. The suggested models support images. If you enter a different model, check that it accepts image input before attaching a screenshot.
 
-- The assistant runs through the local server started by `bun run dev` or `bun run preview`. Open the displayed localhost address. Static hosting of `dist/` serves the study workspace without the chat backend.
+- The packaged desktop app sends provider requests through Rust. In the browser, the assistant runs through the local server started by `bun run dev` or `bun run preview`. Open the displayed localhost address. Static hosting of `dist/` serves the study workspace without the chat backend.
 - Keys and chat sessions stay in memory and reset when you reload. Provider preferences and reported token totals stay in this browser. Messages, any enabled workspace excerpt, and images you send are passed to your chosen provider.
 - Preview or turn off workspace context before sending. Paste or attach a PNG, JPEG, or WebP. Choose **Fine text** before attaching a screenshot with small print. Use **Reuse image** if a follow-up needs the image again.
 - The daily budget uses a pre-send estimate. **AI Usage** shows reported counts when available. Stopped or failed requests may still count on your provider account even if StudyFlow receives no final usage report.

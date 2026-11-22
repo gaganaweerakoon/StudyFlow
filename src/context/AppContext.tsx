@@ -39,6 +39,8 @@ import {
   THEME_OPTIONS,
 } from '../data/mockData';
 import type { snapshotWriter } from '../desktop/storage';
+import { chooseLegacyBackup, legacyOccurrences, mapLegacyWorkspace, type LegacyArchive } from '../desktop/legacy';
+import { localDay } from '../assistant/workspaceContext';
 import { scheduleFlashcardReview, type ReviewRating } from '../utils/studyLogic';
 
 export interface ToastMessage {
@@ -81,6 +83,10 @@ export interface UserPreferences {
 }
 
 interface AppContextValue {
+  importLegacyBackup?: () => Promise<void>;
+  restorePreviousWorkspace?: () => Promise<void>;
+  legacyCalendar: boolean;
+  exportWorkspace: () => void;
   // Navigation & Shell
   route: NavRoute;
   setRoute: (r: NavRoute) => void;
@@ -191,6 +197,10 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 export interface WorkspaceSnapshot {
+  legacyArchive?: LegacyArchive;
+  focusClock?: { at: number; timer: FocusTimerState };
+  removedOccurrences?: string[];
+  previousWorkspace?: Omit<WorkspaceSnapshot, 'previousWorkspace'>;
   theme: ThemeId;
   accentColor: string;
   density: DensityMode;
@@ -217,6 +227,19 @@ export interface WorkspacePersistence {
   writer: ReturnType<typeof snapshotWriter<WorkspaceSnapshot>>;
 }
 
+function advanceFocusTimer(timer: FocusTimerState, seconds: number): FocusTimerState {
+  if (!timer.running || seconds <= 0) return timer;
+  if (timer.mode === 'Stopwatch') return { ...timer, elapsedSeconds: timer.elapsedSeconds + seconds };
+  if (seconds >= timer.secondsLeft) {
+    return {
+      ...timer, secondsLeft: 0, elapsedSeconds: timer.elapsedSeconds + timer.secondsLeft,
+      running: false, completionModalOpen: true,
+      lastCompletedMinutes: Math.max(1, Math.round(timer.totalSeconds / 60)),
+    };
+  }
+  return { ...timer, secondsLeft: timer.secondsLeft - seconds, elapsedSeconds: timer.elapsedSeconds + seconds };
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: WorkspacePersistence }> = ({ children, workspace }) => {
   const initial = workspace?.initial;
   const [route, setRoute] = useState<NavRoute>('dashboard');
@@ -234,7 +257,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetConfig[]>(initial?.dashboardWidgets ?? INITIAL_DASHBOARD_WIDGETS);
   const [subjects, setSubjects] = useState<Subject[]>(initial?.subjects ?? INITIAL_SUBJECTS);
   const [tasks, setTasks] = useState<TaskItem[]>(initial?.tasks ?? INITIAL_TASKS);
-  const [sessions, setSessions] = useState<StudySession[]>(initial?.sessions ?? INITIAL_SESSIONS);
+  const [savedSessions, setSessions] = useState<StudySession[]>(initial?.sessions ?? INITIAL_SESSIONS);
   const [goals, setGoals] = useState<GoalItem[]>(initial?.goals ?? INITIAL_GOALS);
   const [folders] = useState<NoteFolder[]>(initial?.folders ?? INITIAL_FOLDERS);
   const [notes, setNotes] = useState<NoteItem[]>(initial?.notes ?? INITIAL_NOTES);
@@ -268,26 +291,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     localBackupAuto: true,
   });
 
-  const [focusTimer, setFocusTimer] = useState<FocusTimerState>({
+  const [focusTimer, setFocusTimer] = useState<FocusTimerState>(() => initial?.focusClock
+    ? advanceFocusTimer(initial.focusClock.timer, Math.floor((Date.now() - initial.focusClock.at) / 1000))
+    : ({
     mode: 'Pomodoro',
     phase: 'focus',
     secondsLeft: 25 * 60,
     totalSeconds: 25 * 60,
     elapsedSeconds: 0,
     running: false,
-    subjectId: 'cs340',
-    taskTitle: 'Complete Problem Set 8: NP-Completeness Reductions',
+    subjectId: initial ? initial.subjects[0]?.id ?? '' : 'cs340',
+    taskTitle: initial ? '' : 'Complete Problem Set 8: NP-Completeness Reductions',
     cycleCount: 2,
     miniVisible: false,
     completionModalOpen: false,
     lastCompletedMinutes: 25,
-  });
+  }));
 
+  const [removedOccurrences, setRemovedOccurrences] = useState(initial?.removedOccurrences ?? []);
+  const archive = initial?.legacyArchive;
+  const calendarDay = localDay();
+  const sessions = useMemo(() => {
+    if (!archive) return savedSessions;
+    const today = new Date(calendarDay + 'T12:00:00');
+    const first = new Date(today.getFullYear(), today.getMonth(), -6, 12);
+    const dates = Array.from({ length: 45 }, (_, offset) => {
+      const date = new Date(first);
+      date.setDate(first.getDate() + offset);
+      return localDay(date);
+    });
+    const overridden = new Set([...savedSessions.map(item => item.id), ...removedOccurrences]);
+    return [...savedSessions, ...legacyOccurrences(archive, dates).filter(item => !overridden.has(item.id))];
+  }, [archive, calendarDay, removedOccurrences, savedSessions]);
+
+  // Record timer commands and phase changes. The clock itself advances from the timestamp.
+  const focusClock = useMemo(() => ({ at: Date.now(), timer: focusTimer }), [
+    focusTimer.running, focusTimer.mode, focusTimer.phase, focusTimer.totalSeconds,
+    focusTimer.subjectId, focusTimer.taskTitle, focusTimer.cycleCount, focusTimer.miniVisible,
+    focusTimer.completionModalOpen, focusTimer.lastCompletedMinutes,
+    focusTimer.running ? undefined : focusTimer.secondsLeft,
+    focusTimer.running ? undefined : focusTimer.elapsedSeconds,
+  ]);
   const snapshot = useMemo<WorkspaceSnapshot>(() => ({
-    theme, accentColor, density, dashboardWidgets, subjects, tasks, sessions, goals, folders, notes, decks, flashcards, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences,
-  }), [theme, accentColor, density, dashboardWidgets, subjects, tasks, sessions, goals, folders, notes, decks, flashcards, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences]);
+    focusClock, legacyArchive: archive, previousWorkspace: initial?.previousWorkspace, removedOccurrences,
+    theme, accentColor, density, dashboardWidgets, subjects, tasks, sessions: savedSessions, goals, folders, notes, decks, flashcards, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences,
+  }), [focusClock, archive, initial?.previousWorkspace, removedOccurrences, theme, accentColor, density, dashboardWidgets, subjects, tasks, savedSessions, goals, folders, notes, decks, flashcards, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences]);
   const [saveError, setSaveError] = useState('');
-  const savedSnapshot = useRef(snapshot);
+  const savedSnapshot = useRef(initial?.focusClock?.timer.running && !focusTimer.running ? undefined : snapshot);
 
   const saveWorkspace = useCallback(() => {
     if (!workspace || savedSnapshot.current === snapshot) return;
@@ -348,29 +398,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   // Live focus timer ticker
   useEffect(() => {
     if (!focusTimer.running) return;
+    let lastTick = Date.now();
     const interval = window.setInterval(() => {
-      setFocusTimer((prev) => {
-        if (!prev.running) return prev;
-        if (prev.mode === 'Stopwatch') {
-          return { ...prev, elapsedSeconds: prev.elapsedSeconds + 1 };
-        }
-        if (prev.secondsLeft <= 1) {
-          const completedMin = Math.max(1, Math.round(prev.totalSeconds / 60));
-          return {
-            ...prev,
-            secondsLeft: 0,
-            running: false,
-            completionModalOpen: true,
-            lastCompletedMinutes: completedMin,
-          };
-        }
-        return {
-          ...prev,
-          secondsLeft: prev.secondsLeft - 1,
-          elapsedSeconds: prev.elapsedSeconds + 1,
-        };
-      });
-    }, 1000);
+      const seconds = Math.floor((Date.now() - lastTick) / 1000);
+      if (seconds <= 0) return;
+      lastTick += seconds * 1000;
+      setFocusTimer(current => advanceFocusTimer(current, seconds));
+    }, 250);
     return () => window.clearInterval(interval);
   }, [focusTimer.running]);
 
@@ -439,7 +473,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
           taskTitle: focusTimer.taskTitle,
           mode: focusTimer.mode,
           durationMinutes: focusTimer.lastCompletedMinutes,
-          completedAt: 'Just now',
+          completedAt: workspace ? localDay() : 'Just now',
           qualityRating: rating,
         },
         ...prev,
@@ -455,7 +489,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       }));
       pushToast(`Focus session logged (+60 XP)`);
     },
-    [focusTimer.lastCompletedMinutes, focusTimer.mode, focusTimer.subjectId, focusTimer.taskTitle, pushToast]
+    [focusTimer.lastCompletedMinutes, focusTimer.mode, focusTimer.subjectId, focusTimer.taskTitle, pushToast, workspace]
   );
 
   const dismissFocusCompletion = useCallback(() => {
@@ -612,12 +646,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   );
 
   const updateSession = useCallback((id: string, patch: Partial<StudySession>) => {
-    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  }, []);
+    const projected = sessions.find(item => item.id === id);
+    setSessions(prev => {
+      if (prev.some(item => item.id === id)) return prev.map(item => item.id === id ? { ...item, ...patch } : item);
+      return projected ? [...prev, { ...projected, ...patch }] : prev;
+    });
+  }, [sessions]);
 
   const deleteSession = useCallback(
     (id: string) => {
       setSessions((prev) => prev.filter((s) => s.id !== id));
+      if (id.startsWith('legacy-series-')) setRemovedOccurrences(previous => [...new Set([...previous, id])]);
       pushToast('Study session removed');
     },
     [pushToast]
@@ -740,9 +779,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     setPreferences((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  const importLegacyBackup = workspace && (async () => {
+    try {
+      const legacy = await chooseLegacyBackup();
+      if (!legacy) return;
+      if (JSON.stringify(legacy) === JSON.stringify(archive)) {
+        pushToast('This backup is already imported.');
+        return;
+      }
+      const summary = `${legacy.subjects.length} subjects, ${legacy.tasks.length} tasks, and ${legacy.recurring_events.length} recurring events`;
+      if (!window.confirm(`Import ${summary}? Your previous workspace will be included in the exported workspace archive.`)) return;
+      const { previousWorkspace: _previous, ...rollback } = snapshot;
+      await workspace.writer.save({ ...mapLegacyWorkspace(legacy, snapshot), previousWorkspace: rollback, removedOccurrences: [], focusClock: undefined });
+      window.location.reload();
+    } catch (error) {
+      window.alert(`Could not import backup. ${String(error)}`);
+    }
+  });
+
+  const restorePreviousWorkspace = workspace && initial?.previousWorkspace && (async () => {
+    if (!window.confirm('Restore the workspace from before your last import?')) return;
+    try {
+      const { previousWorkspace: _previous, ...rollback } = snapshot;
+      await workspace.writer.save({ ...initial.previousWorkspace!, previousWorkspace: rollback });
+      window.location.reload();
+    } catch (error) {
+      window.alert(`Could not restore workspace. ${String(error)}`);
+    }
+  });
+
+  const exportWorkspace = () => {
+    const data = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `studyflow-workspace-${localDay()}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    pushToast('Exported StudyFlow workspace archive (.json)');
+  };
+
   return (
     <AppContext.Provider
       value={{
+        importLegacyBackup,
+        restorePreviousWorkspace,
+        legacyCalendar: !!archive,
+        exportWorkspace,
         route,
         setRoute,
         selectedSubjectId,

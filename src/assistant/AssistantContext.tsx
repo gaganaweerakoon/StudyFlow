@@ -3,7 +3,12 @@ import { useApp } from '../context/AppContext';
 import { estimatedTokens, isAssistantAvailable, sendChat, type Attachment } from './chatClient';
 import { CHAT_LIMITS, PROVIDERS, type ChatRequest, type ChatTurn, type Provider, type TokenUsage } from './protocol';
 import { localDay, workspaceContext, type WorkspacePage } from './workspaceContext';
-import { mergeUsage, readSettings, readUsage, todayTokens, usageKey, writeSettings, writeUsage, type AssistantSettings } from './usage';
+import { mergeUsage, readSettings, readUsage, todayTokens, usageKey, writeSettings, writeUsage, type AssistantSettings, type UsageEntry } from './usage';
+
+export interface DesktopUsage {
+  records: UsageEntry[];
+  save: (records: UsageEntry[]) => Promise<void>;
+}
 
 interface ChatMessage extends ChatTurn {
   id: string;
@@ -22,10 +27,10 @@ const imagePrompt = 'Explain what is shown in this image.';
 const initial: Conversation = { id: 'first', title: 'New chat', messages: [] };
 const createId = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-function useAssistantController() {
+function useAssistantController(desktopUsage?: DesktopUsage) {
   const app = useApp();
   const [settings, setSettings] = useState(readSettings);
-  const [usage, setUsage] = useState(() => mergeUsage(readUsage()));
+  const [usage, setUsage] = useState(() => mergeUsage(desktopUsage?.records ?? readUsage()));
   const [configured, setConfigured] = useState<Provider[]>([]);
   const [conversations, setConversations] = useState([initial]);
   const [activeId, setActiveId] = useState(initial.id);
@@ -48,14 +53,14 @@ function useAssistantController() {
   }, [app.route]);
   useEffect(() => {
     const syncUsage = (event: StorageEvent) => {
-      if (event.key === usageKey) setUsage(records => mergeUsage(records, readUsage()));
+      if (!desktopUsage && event.key === usageKey) setUsage(records => mergeUsage(records, readUsage()));
     };
     window.addEventListener('storage', syncUsage);
     return () => {
       window.removeEventListener('storage', syncUsage);
       activeRequest.current?.abort();
     };
-  }, []);
+  }, [desktopUsage]);
 
   const active = conversations.find(chat => chat.id === activeId) ?? conversations[0];
   const model = settings.models[settings.provider] ?? PROVIDERS[settings.provider].model;
@@ -117,7 +122,7 @@ function useAssistantController() {
         .slice(-CHAT_LIMITS.history)
         .map(({ role, text }) => ({ role, text: text.slice(0, CHAT_LIMITS.historyMessage) })),
     };
-    const records = mergeUsage(usage, readUsage());
+    const records = mergeUsage(usage, desktopUsage ? [] : readUsage());
     if (dailyLimit > 0 && todayTokens(records) + estimatedTokens(request) > dailyLimit) {
       setNotice('This request could exceed your daily token budget. Try a shorter reply limit, remove the image or context, or adjust the budget in Settings.');
       return;
@@ -168,9 +173,15 @@ function useAssistantController() {
       }
     } finally {
       updateMessage(message => ({ ...message, tokens, state: status }));
-      setUsage(writeUsage([...records, {
+      const updated = mergeUsage([...records, {
         id: assistantId, at: started.getTime(), day: localDay(started), provider, model, tokens, status,
-      }]));
+      }]);
+      if (desktopUsage) {
+        setUsage(updated);
+        void desktopUsage.save(updated).catch(error => setNotice(`Could not save AI usage. ${String(error)}`));
+      } else {
+        setUsage(writeUsage(updated));
+      }
       activeRequest.current = null;
       setBusy(false);
     }
@@ -189,8 +200,8 @@ function useAssistantController() {
 type UsageEntryStatus = 'complete' | 'stopped' | 'error';
 const AssistantContext = createContext<ReturnType<typeof useAssistantController> | null>(null);
 
-export function AssistantProvider({ children }: { children: ReactNode }) {
-  const assistant = useAssistantController();
+export function AssistantProvider({ children, desktopUsage }: { children: ReactNode; desktopUsage?: DesktopUsage }) {
+  const assistant = useAssistantController(desktopUsage);
   return <AssistantContext.Provider value={assistant}>{children}</AssistantContext.Provider>;
 }
 

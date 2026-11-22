@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import App from './App.tsx';
+import type { UsageEntry } from './assistant/usage';
 import type { WorkspaceSnapshot } from './context/AppContext';
 import { isTauri, loadSnapshot, snapshotWriter } from './desktop/storage';
 import './index.css';
@@ -15,18 +16,25 @@ async function start() {
 
   root.render(<p role="status" className="p-5">Opening your StudyFlow workspace…</p>);
   try {
-    const saved = await loadSnapshot<WorkspaceSnapshot>('workspace');
+    const [saved, usage] = await Promise.all([
+      loadSnapshot<WorkspaceSnapshot>('workspace'),
+      loadSnapshot<{ records: UsageEntry[] }>('assistant_usage'),
+    ]);
+    const usageWriter = snapshotWriter<{ records: UsageEntry[] }>('assistant_usage', usage?.revision ?? 0);
     const writer = snapshotWriter<WorkspaceSnapshot>('workspace', saved?.revision ?? 0);
     await getCurrentWindow().onCloseRequested(async event => {
       try {
-        await writer.flush();
+        await Promise.all([writer.flush(), usageWriter.flush()]);
       } catch (error) {
         if (!window.confirm(`Workspace changes could not be saved. Close anyway?\n\n${String(error)}`)) {
           event.preventDefault();
         }
       }
     });
-    root.render(<App workspace={{ initial: saved?.data, writer }} />);
+    root.render(<App
+      workspace={{ initial: saved?.data, writer }}
+      desktopUsage={{ records: usage?.data.records ?? [], save: records => usageWriter.save({ records }) }}
+    />);
   } catch (error) {
     root.render(
       <div className="space-y-3 p-5" role="alert">

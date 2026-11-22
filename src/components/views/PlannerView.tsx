@@ -13,13 +13,14 @@ import {
   ArrowRight,
   GripVertical,
 } from 'lucide-react';
+import { localDay } from '../../assistant/workspaceContext';
 import { useApp } from '../../context/AppContext';
 import type { StudySession } from '../../types/studyflow';
 import { formatHourLabel } from '../../utils/studyLogic';
 
 type PlannerMode = 'day' | 'week' | 'month' | 'agenda';
 
-const DAYS = [
+const DEMO_DAYS = [
   { short: 'Mon', num: 16, date: '2026-11-16' },
   { short: 'Tue', num: 17, date: '2026-11-17' },
   { short: 'Wed', num: 18, date: '2026-11-18' },
@@ -35,6 +36,7 @@ const HOUR_HEIGHT = 60;
 export const PlannerView: React.FC = () => {
   const {
     sessions,
+    legacyCalendar,
     subjects,
     updateSession,
     deleteSession,
@@ -42,8 +44,19 @@ export const PlannerView: React.FC = () => {
     pushToast,
   } = useApp();
 
+  const today = new Date();
+  const weekday = (today.getDay() + 6) % 7;
+  const weekStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - weekday, 12);
+  const DAYS = legacyCalendar ? DEMO_DAYS.map(({ short }, index) => {
+    const date = new Date(weekStart);
+    date.setDate(date.getDate() + index);
+    return { short, num: date.getDate(), date: localDay(date), isToday: index === weekday };
+  }) : DEMO_DAYS;
+
+  const monthOffset = legacyCalendar ? (new Date(today.getFullYear(), today.getMonth(), 1).getDay() + 6) % 7 : 0;
+  const monthDays = legacyCalendar ? new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate() : 28;
   const [viewMode, setViewMode] = useState<PlannerMode>('week');
-  const [activeDayIdx, setActiveDayIdx] = useState<number>(6);
+  const [activeDayIdx, setActiveDayIdx] = useState<number>(legacyCalendar ? weekday : 6);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(sessions[1]?.id ?? null);
   const [dragSessionId, setDragSessionId] = useState<string | null>(null);
   const [showRescheduleApplied, setShowRescheduleApplied] = useState(false);
@@ -52,7 +65,7 @@ export const PlannerView: React.FC = () => {
 
   const getWorkloadForDay = (dayIdx: number) =>
     sessions
-      .filter((s) => s.dayIndex === dayIdx)
+      .filter((s) => legacyCalendar ? s.date === DAYS[dayIdx].date : s.dayIndex === dayIdx)
       .reduce((acc, s) => acc + s.durationHours, 0);
 
   const handleDropOnCell = (dayIdx: number, hour: number) => {
@@ -77,14 +90,14 @@ export const PlannerView: React.FC = () => {
     const missed = sessions.find((s) => s.status === 'missed');
     if (missed) {
       updateSession(missed.id, {
-        dayIndex: 6,
-        date: '2026-11-22',
+        dayIndex: legacyCalendar ? weekday : 6,
+        date: legacyCalendar ? localDay(today) : '2026-11-22',
         startHour: 18,
         status: 'upcoming',
       });
     }
     setShowRescheduleApplied(true);
-    pushToast('Smart reschedule applied — moved deferred ECON 205 lab');
+    pushToast(legacyCalendar ? (missed ? 'Rescheduled missed study block' : 'No missed study blocks') : 'Smart reschedule applied — moved deferred ECON 205 lab');
   };
 
   const renderSessionBlock = (ses: StudySession) => {
@@ -161,7 +174,7 @@ export const PlannerView: React.FC = () => {
             Study Planner
           </h1>
           <p className="text-[12.5px] text-[var(--text-muted)]">
-            Nov 16 – Nov 22, 2026 · Drag any study block to reschedule across time slots
+            {legacyCalendar ? `${DAYS[0].date} – ${DAYS[6].date}` : 'Nov 16 – Nov 22, 2026'} · Drag any study block to reschedule across time slots
           </p>
         </div>
 
@@ -299,7 +312,7 @@ export const PlannerView: React.FC = () => {
                   {/* Day Columns */}
                   {(viewMode === 'week' ? DAYS : [DAYS[activeDayIdx]]).map((d, idx) => {
                     const realIdx = viewMode === 'week' ? idx : activeDayIdx;
-                    const daySessions = sessions.filter((s) => s.dayIndex === realIdx);
+                    const daySessions = sessions.filter((s) => legacyCalendar ? s.date === d.date : s.dayIndex === realIdx);
 
                     return (
                       <div
@@ -352,11 +365,14 @@ export const PlannerView: React.FC = () => {
                 ))}
               </div>
               <div className="grid grid-cols-7 gap-1.5">
-                {Array.from({ length: 28 }, (_, i) => {
-                  const dayNum = i + 2; // Nov 2..29
-                  const dateIso = `2026-11-${String(dayNum).padStart(2, '0')}`;
+                {Array.from({ length: monthDays + monthOffset }, (_, i) => {
+                  if (i < monthOffset) return <div aria-hidden="true" key={`blank-${i}`} />;
+                  const dayNum = legacyCalendar ? i - monthOffset + 1 : i + 2;
+                  const dateIso = legacyCalendar
+                    ? localDay(new Date(today.getFullYear(), today.getMonth(), dayNum, 12))
+                    : `2026-11-${String(dayNum).padStart(2, '0')}`;
                   const dayEvents = sessions.filter((s) => s.date === dateIso);
-                  const isToday = dayNum === 22;
+                  const isToday = legacyCalendar ? dateIso === localDay(today) : dayNum === 22;
 
                   return (
                     <div

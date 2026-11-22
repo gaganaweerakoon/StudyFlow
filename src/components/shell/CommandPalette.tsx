@@ -49,6 +49,8 @@ function highlightMatch(text: string, query: string): React.ReactNode {
 
 export const CommandPalette: React.FC = () => {
   const {
+    importLegacyBackup,
+    restorePreviousWorkspace,
     commandPaletteOpen,
     setCommandPaletteOpen,
     subjects,
@@ -139,6 +141,18 @@ export const CommandPalette: React.FC = () => {
       },
     ];
 
+    if (q && importLegacyBackup) quickActions.push({
+      id: 'act-import-backup', section: 'Quick Actions', title: 'Import Legacy SQLite Backup',
+      subtitle: 'Restore a schema 17 StudyFlow backup', icon: FileText,
+      onSelect: () => { close(); void importLegacyBackup(); },
+    });
+
+    if (q && restorePreviousWorkspace) quickActions.push({
+      id: 'act-restore-workspace', section: 'Quick Actions', title: 'Restore Previous Workspace',
+      subtitle: 'Open the workspace saved before the last import', icon: FileText,
+      onSelect: () => { close(); void restorePreviousWorkspace(); },
+    });
+
     const themeActions: CommandItem[] = THEME_OPTIONS.map((t) => ({
       id: `thm-${t.id}`,
       section: 'Switch Theme',
@@ -185,6 +199,8 @@ export const CommandPalette: React.FC = () => {
     return [...searchHits, ...matchedQuick, ...matchedThemes];
   }, [
     query,
+    importLegacyBackup,
+    restorePreviousWorkspace,
     subjects,
     tasks,
     notes,

@@ -1,3 +1,6 @@
+mod legacy;
+pub use legacy::read_legacy_backup;
+
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
