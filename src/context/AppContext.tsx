@@ -242,9 +242,10 @@ function advanceFocusTimer(timer: FocusTimerState, seconds: number): FocusTimerS
 
 export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: WorkspacePersistence }> = ({ children, workspace }) => {
   const initial = workspace?.initial;
+  const desktop = !!workspace;
   const [route, setRoute] = useState<NavRoute>('dashboard');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
-  const [selectedNoteId, setSelectedNoteId] = useState<string>(() => (initial?.notes ?? INITIAL_NOTES)[0]?.id ?? '');
+  const [selectedNoteId, setSelectedNoteId] = useState<string>(() => (initial?.notes ?? (desktop ? [] : INITIAL_NOTES))[0]?.id ?? '');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -255,27 +256,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [density, setDensity] = useState<DensityMode>(initial?.density ?? 'compact');
 
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetConfig[]>(initial?.dashboardWidgets ?? INITIAL_DASHBOARD_WIDGETS);
-  const [subjects, setSubjects] = useState<Subject[]>(initial?.subjects ?? INITIAL_SUBJECTS);
-  const [tasks, setTasks] = useState<TaskItem[]>(initial?.tasks ?? INITIAL_TASKS);
-  const [savedSessions, setSessions] = useState<StudySession[]>(initial?.sessions ?? INITIAL_SESSIONS);
-  const [goals, setGoals] = useState<GoalItem[]>(initial?.goals ?? INITIAL_GOALS);
-  const [folders] = useState<NoteFolder[]>(initial?.folders ?? INITIAL_FOLDERS);
-  const [notes, setNotes] = useState<NoteItem[]>(initial?.notes ?? INITIAL_NOTES);
-  const [decks] = useState<FlashcardDeck[]>(initial?.decks ?? INITIAL_DECKS);
-  const [flashcards, setFlashcards] = useState<FlashcardItem[]>(initial?.flashcards ?? INITIAL_FLASHCARDS);
-  const [exams, setExams] = useState<ExamItem[]>(initial?.exams ?? INITIAL_EXAMS);
-  const [quizzes, setQuizzes] = useState<PracticeQuiz[]>(initial?.quizzes ?? INITIAL_QUIZZES);
-  const [focusHistory, setFocusHistory] = useState<FocusHistoryItem[]>(initial?.focusHistory ?? INITIAL_FOCUS_HISTORY);
-  const [achievements] = useState<AchievementBadge[]>(INITIAL_ACHIEVEMENTS);
-  const [challenges, setChallenges] = useState<ChallengeItem[]>(initial?.challenges ?? INITIAL_CHALLENGES);
-  const [xpPoints, setXpPoints] = useState<number>(initial?.xpPoints ?? 4280);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(initial?.notifications ?? INITIAL_NOTIFICATIONS);
+  const [subjects, setSubjects] = useState<Subject[]>(initial?.subjects ?? (desktop ? [] : INITIAL_SUBJECTS));
+  const [tasks, setTasks] = useState<TaskItem[]>(initial?.tasks ?? (desktop ? [] : INITIAL_TASKS));
+  const [savedSessions, setSessions] = useState<StudySession[]>(initial?.sessions ?? (desktop ? [] : INITIAL_SESSIONS));
+  const [goals, setGoals] = useState<GoalItem[]>(initial?.goals ?? (desktop ? [] : INITIAL_GOALS));
+  const [folders] = useState<NoteFolder[]>(initial?.folders ?? (desktop ? [{ id: 'notes', name: 'Notes' }] : INITIAL_FOLDERS));
+  const [notes, setNotes] = useState<NoteItem[]>(initial?.notes ?? (desktop ? [] : INITIAL_NOTES));
+  const [decks] = useState<FlashcardDeck[]>(initial?.decks ?? (desktop ? [{ id: 'review', title: 'General Review', subjectId: '', description: '', lastReviewed: '', retentionRate: 0 }] : INITIAL_DECKS));
+  const [flashcards, setFlashcards] = useState<FlashcardItem[]>(initial?.flashcards ?? (desktop ? [] : INITIAL_FLASHCARDS));
+  const [exams, setExams] = useState<ExamItem[]>(initial?.exams ?? (desktop ? [] : INITIAL_EXAMS));
+  const [quizzes, setQuizzes] = useState<PracticeQuiz[]>(initial?.quizzes ?? (desktop ? [] : INITIAL_QUIZZES));
+  const [focusHistory, setFocusHistory] = useState<FocusHistoryItem[]>(initial?.focusHistory ?? (desktop ? [] : INITIAL_FOCUS_HISTORY));
+  const [achievements] = useState<AchievementBadge[]>(desktop ? [] : INITIAL_ACHIEVEMENTS);
+  const [challenges, setChallenges] = useState<ChallengeItem[]>(initial?.challenges ?? (desktop ? [] : INITIAL_CHALLENGES));
+  const [xpPoints, setXpPoints] = useState<number>(initial?.xpPoints ?? (desktop ? 0 : 4280));
+  const [notifications, setNotifications] = useState<NotificationItem[]>(initial?.notifications ?? (desktop ? [] : INITIAL_NOTIFICATIONS));
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const [preferences, setPreferences] = useState<UserPreferences>(initial?.preferences ?? {
-    name: 'Maya Lin',
-    email: 'maya.lin@university.edu',
-    major: 'Computer Science & Quantitative Biology',
+    name: desktop ? 'Student' : 'Maya Lin',
+    email: desktop ? '' : 'maya.lin@university.edu',
+    major: desktop ? '' : 'Computer Science & Quantitative Biology',
     dailyGoalHours: 4.5,
     weeklyGoalHours: 32,
     pomodoroFocusMin: 25,
@@ -300,9 +301,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     totalSeconds: 25 * 60,
     elapsedSeconds: 0,
     running: false,
-    subjectId: initial ? initial.subjects[0]?.id ?? '' : 'cs340',
-    taskTitle: initial ? '' : 'Complete Problem Set 8: NP-Completeness Reductions',
-    cycleCount: 2,
+    subjectId: desktop ? subjects[0]?.id ?? '' : 'cs340',
+    taskTitle: desktop ? '' : 'Complete Problem Set 8: NP-Completeness Reductions',
+    cycleCount: desktop ? 0 : 2,
     miniVisible: false,
     completionModalOpen: false,
     lastCompletedMinutes: 25,
@@ -824,7 +825,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       value={{
         importLegacyBackup,
         restorePreviousWorkspace,
-        legacyCalendar: !!archive,
+        legacyCalendar: desktop,
         exportWorkspace,
         route,
         setRoute,

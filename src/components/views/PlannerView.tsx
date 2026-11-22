@@ -239,7 +239,7 @@ export const PlannerView: React.FC = () => {
                   }}
                 >
                   <div className="p-2 text-[10.5px] text-[var(--text-muted)] text-center self-center">
-                    PST
+                    {legacyCalendar ? Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(today).find(part => part.type === 'timeZoneName')?.value : 'PST'}
                   </div>
                   {(viewMode === 'week' ? DAYS : [DAYS[activeDayIdx]]).map((d, idx) => {
                     const realIdx = viewMode === 'week' ? idx : activeDayIdx;

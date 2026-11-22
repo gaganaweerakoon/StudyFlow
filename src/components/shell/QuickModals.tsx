@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Star, CheckCircle2 } from 'lucide-react';
+import { localDay } from '../../assistant/workspaceContext';
 import { useApp } from '../../context/AppContext';
 import type { Priority, GoalItem } from '../../types/studyflow';
 
@@ -9,6 +10,7 @@ export const QuickModals: React.FC = () => {
   const {
     activeModal,
     setActiveModal,
+    legacyCalendar,
     subjects,
     decks,
     addTask,
@@ -25,9 +27,9 @@ export const QuickModals: React.FC = () => {
 
   // Task form
   const [taskTitle, setTaskTitle] = useState('');
-  const [taskSubject, setTaskSubject] = useState(subjects[0]?.id ?? 'cs340');
+  const [taskSubject, setTaskSubject] = useState(subjects[0]?.id ?? '');
   const [taskPriority, setTaskPriority] = useState<Priority>('medium');
-  const [taskDue, setTaskDue] = useState('2026-11-24');
+  const [taskDue, setTaskDue] = useState(legacyCalendar ? localDay() : '2026-11-24');
   const [taskMinutes, setTaskMinutes] = useState(45);
   const [taskDesc, setTaskDesc] = useState('');
 
@@ -40,7 +42,7 @@ export const QuickModals: React.FC = () => {
 
   // Session form
   const [sesTitle, setSesTitle] = useState('');
-  const [sesSubject, setSesSubject] = useState(subjects[0]?.id ?? 'cs340');
+  const [sesSubject, setSesSubject] = useState(subjects[0]?.id ?? '');
   const [sesDay, setSesDay] = useState(6);
   const [sesHour, setSesHour] = useState(15);
   const [sesDuration, setSesDuration] = useState(1.5);
@@ -60,7 +62,7 @@ export const QuickModals: React.FC = () => {
 
   // Exam form
   const [exTitle, setExTitle] = useState('');
-  const [exSubject, setExSubject] = useState(subjects[0]?.id ?? 'cs340');
+  const [exSubject, setExSubject] = useState(subjects[0]?.id ?? '');
   const [exDate, setExDate] = useState('2026-12-10');
   const [exRoom, setExRoom] = useState('Science Hall 201');
   const [exTarget, setExTarget] = useState('A (92%+)');
@@ -88,7 +90,7 @@ export const QuickModals: React.FC = () => {
     }
     addTask({
       title: taskTitle.trim(),
-      subjectId: taskSubject,
+      subjectId: subjects.find(item => item.id === taskSubject)?.id ?? subjects[0]?.id ?? '',
       dueDate: taskDue,
       dueLabel: taskDue === '2026-11-22' ? 'Today' : taskDue,
       priority: taskPriority,
@@ -134,12 +136,14 @@ export const QuickModals: React.FC = () => {
       setFormError('Please enter a study session title.');
       return;
     }
-    const dayDates = ['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20', '2026-11-21', '2026-11-22'];
+    const today = new Date();
+    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (today.getDay() + 6) % 7 + sesDay, 12);
+    const sessionDate = legacyCalendar ? localDay(date) : `2026-11-${16 + sesDay}`;
     addSession({
       title: sesTitle.trim(),
-      subjectId: sesSubject,
+      subjectId: subjects.find(item => item.id === sesSubject)?.id ?? subjects[0]?.id ?? '',
       dayIndex: sesDay,
-      date: dayDates[sesDay] ?? '2026-11-22',
+      date: sessionDate,
       startHour: sesHour,
       durationHours: sesDuration,
       status: 'upcoming',
@@ -197,7 +201,7 @@ export const QuickModals: React.FC = () => {
     }
     addExam({
       title: exTitle.trim(),
-      subjectId: exSubject,
+      subjectId: subjects.find(item => item.id === exSubject)?.id ?? subjects[0]?.id ?? '',
       date: exDate,
       time: '10:00 AM – 12:00 PM',
       room: exRoom.trim() || 'Main Hall',

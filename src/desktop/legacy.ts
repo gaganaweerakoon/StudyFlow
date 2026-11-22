@@ -108,7 +108,7 @@ export function mapLegacyWorkspace(archive: LegacyArchive, current: WorkspaceSna
           Math.max(0, number(row, 'ended_at') - number(row, 'started_at'))) / 60000),
         completedAt: localDay(new Date(number(row, 'ended_at'))), qualityRating: 0,
       })),
-    decks: [], flashcards: [], exams: [], quizzes: [], challenges: [], xpPoints: 0, notifications: [],
+    decks: [{ id: 'review', title: 'General Review', subjectId: '', description: '', lastReviewed: '', retentionRate: 0 }], flashcards: [], exams: [], quizzes: [], challenges: [], xpPoints: 0, notifications: [],
     preferences: { ...current.preferences, name: 'Student', email: '', major: '' },
   };
 }

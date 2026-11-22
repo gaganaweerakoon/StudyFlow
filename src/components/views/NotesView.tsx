@@ -116,7 +116,7 @@ export const NotesView: React.FC = () => {
             </h1>
             <button
               type="button"
-              onClick={() => createNote(activeSubject?.id ?? 'cs340', activeFolderId)}
+              onClick={() => createNote(activeSubject?.id ?? subjects[0]?.id ?? '', activeFolderId)}
               aria-label="Create new note"
               className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11.5px] font-medium"
               style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
