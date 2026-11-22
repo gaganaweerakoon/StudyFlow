@@ -64,6 +64,7 @@ export interface FocusTimerState {
 }
 
 export interface UserPreferences {
+  googleAccount?: import('../desktop/GoogleAccount').GoogleProfile;
   name: string;
   email: string;
   major: string;

@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod google;
+
 use serde_json::Value;
 use std::path::PathBuf;
 use studyflow_storage::{Document, Snapshot, Storage};
@@ -104,7 +106,8 @@ fn main() {
             save_snapshot,
             inspect_legacy_backup,
             assistant_chat,
-            cancel_assistant_chat
+            cancel_assistant_chat,
+            google::google_sign_in
         ])
         .run(tauri::generate_context!())
         .expect("failed to start StudyFlow");

@@ -1,3 +1,4 @@
+import { GoogleAccount } from '../../desktop/GoogleAccount';
 import React, { useEffect, useState } from 'react';
 import {
   User,
@@ -204,6 +205,7 @@ export const SettingsView: React.FC = () => {
                   />
                 </div>
               </div>
+              {legacyCalendar && <GoogleAccount />}
             </div>
           )}
 
