@@ -34,7 +34,7 @@ function isRequest(value: unknown): value is ChatRequest {
   return bytes.length <= CHAT_LIMITS.imageBytes && bytes.subarray(0, signature.length / 2).toString('hex') === signature;
 }
 
-const MAX_REQUEST_BYTES = Math.ceil(CHAT_LIMITS.imageBytes / 3) * 4 + 70_000;
+const MAX_REQUEST_BYTES = Math.ceil(CHAT_LIMITS.imageBytes / 3) * 4 + 1_500_000;
 
 async function readJson(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];

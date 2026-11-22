@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { BarChart3, KeyRound } from 'lucide-react';
 import { useAssistant } from './AssistantContext';
-import { CHAT_LIMITS, PROVIDERS, isModelId, isProvider, type Provider } from './protocol';
-import { todayTokens, type UsageEntry } from './usage';
+import { PROVIDERS, isModelId, isProvider, type Provider } from './protocol';
+import { type UsageEntry } from './usage';
 import './assistant.css';
 
 const MODEL_CHOICES: Record<Provider, string[]> = {
@@ -157,7 +157,6 @@ function UsageViewer({ usage }: { usage: UsageEntry[] }) {
 export function AssistantSettings() {
   const assistant = useAssistant();
   const { settings } = assistant;
-  const [limit, setLimit] = useState(String(settings.dailyLimit));
   return (
     <section className="pip-settings">
       <div className="pip-settings-heading"><h2><KeyRound size={18} /> AI Connection</h2></div>
@@ -173,34 +172,6 @@ export function AssistantSettings() {
         </select>
       </label>
       <ProviderSettings key={settings.provider} />
-      <form className="pip-settings-form pip-settings-budget" onSubmit={event => {
-        event.preventDefault();
-        const dailyLimit = Number(limit);
-        if (Number.isInteger(dailyLimit) && dailyLimit >= 0 && dailyLimit <= 1_000_000) {
-          assistant.updateSettings({ ...settings, dailyLimit });
-        }
-      }}>
-        <label>
-          Maximum reply tokens
-          <select value={settings.maxOutput} onChange={event => {
-            const maxOutput = CHAT_LIMITS.response.find(value => value === Number(event.target.value));
-            if (maxOutput) assistant.updateSettings({ ...settings, maxOutput });
-          }}>
-            <option value={300}>300 · Short</option>
-            <option value={650}>650 · Balanced</option>
-            <option value={1200}>1,200 · Detailed</option>
-          </select>
-        </label>
-        <label>
-          Daily token budget
-          <input type="number" min={0} max={1000000} required value={limit} onChange={event => setLimit(event.target.value)} />
-        </label>
-        <div className="pip-settings-actions">
-          <button type="submit" className="pip-settings-primary">Save budget</button>
-          <span>{todayTokens(assistant.usage).toLocaleString()} used today · {settings.dailyLimit ? `${settings.dailyLimit.toLocaleString()} budget` : 'Budget off'}</span>
-        </div>
-      </form>
-      <p>StudyFlow uses a pre-send estimate with this budget. Actual usage can vary. Set the budget to 0 to turn it off.</p>
       <UsageViewer usage={assistant.usage} />
     </section>
   );

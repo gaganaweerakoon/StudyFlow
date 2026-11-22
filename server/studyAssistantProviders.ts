@@ -77,7 +77,6 @@ function providerRequest(request: ChatRequest, key: string) {
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
         generationConfig: {
           maxOutputTokens: maxOutput,
-          ...(model === PROVIDERS.gemini.model ? { thinkingConfig: { thinkingLevel: 'minimal' } } : {}),
         },
         contents: [
           ...history.map(({ role, text }) => ({ role: role === 'assistant' ? 'model' : 'user', parts: [{ text }] })),

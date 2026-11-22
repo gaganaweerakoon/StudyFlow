@@ -105,7 +105,7 @@ test('the localhost assistant streams images, context, and normalized usage thro
 
   assert.equal((await call('openai', {}, 'https://unrelated.example')).status, 403);
   assert.equal((await call('openai', {}, origin, '')).status, 401);
-  assert.equal((await call('openai', { context: 'x'.repeat(2001) })).status, 400);
+  assert.equal((await call('openai', { context: 'x'.repeat(120001) })).status, 400);
   assert.equal((await call('openai', { image: { ...base.image, mime: 'image/jpeg' } })).status, 400);
   assert.equal((await call('gemini', { model: '../wrong-host' })).status, 400);
   assert.equal(calls.length, 3);

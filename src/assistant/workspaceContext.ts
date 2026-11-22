@@ -21,62 +21,41 @@ function clip(text: string, length = 110) {
 }
 
 export function workspaceContext(app: Workspace, page: WorkspacePage, prompt: string) {
-  const { subjects, selectedSubjectId, selectedNoteId, tasks, sessions, exams, focusTimer, notes, decks, goals, focusHistory } = app;
-  const today = localDay();
-  const subjectName = (id: string) => subjects.find(subject => subject.id === id)?.name;
-  const question = prompt.toLowerCase();
-  const requested = subjects.find(subject => [subject.name, subject.code].some(term =>
-    term.trim().length > 1 && question.includes(term.trim().toLowerCase())));
+  const { subjects, selectedNoteId, tasks, sessions, exams, focusTimer, notes, decks, goals, focusHistory, flashcards, quizzes } = app;
   const note = page === 'notes' ? notes.find(item => item.id === selectedNoteId) : undefined;
-  const subject = requested ?? subjects.find(item => item.id === (note?.subjectId ??
-    (page === 'subjects' ? selectedSubjectId : page === 'focus' ? focusTimer.subjectId : null)));
-  const matches = (id: string) => !subject || subject.id === id;
-  const lines = [`Screen: ${labels[page]}. Local date: ${today}.`];
-  if (subject) lines.push(`Subject: ${clip(subject.name)}.`);
-  if (note) lines.push(`Selected note: ${clip(note.title)}\n${note.content.trim().slice(0, 1050)}`);
-  if (page === 'analytics') {
-    for (const entry of [...focusHistory].reverse().slice(0, 4)) {
-      lines.push(`Focus log: ${clip(entry.taskTitle)} · ${entry.durationMinutes} min · ${clip(entry.completedAt, 40)}`);
+  const terms = prompt.toLocaleLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [];
+  const relevance = (row: unknown) => {
+    const json = JSON.stringify(row).toLocaleLowerCase();
+    return terms.reduce((sum, term) => sum + Number(json.includes(term)), 0);
+  };
+  const groups = { subjects, tasks, calendar: sessions, goals, notes: notes.filter(item => item.id !== note?.id), decks, flashcards, exams, quizzes, focusHistory };
+  const sections = Object.entries(groups).map(([name, rows]) => ({
+    name,
+    rows: [...rows].sort((a, b) => relevance(b) - relevance(a)),
+    included: [] as string[],
+  }));
+  const header = [
+    `Screen: ${labels[page]}. Local date: ${localDay()}.`,
+    `Section totals: ${sections.map(({ name, rows }) => `${name}: ${rows.length}`).join(', ')}.`,
+    note ? `Selected note: ${JSON.stringify(note).slice(0, 6000)}` : '',
+    focusTimer.running ? `Active focus: ${JSON.stringify(focusTimer)}` : '',
+  ].filter(Boolean).join('\n');
+  let remaining = CHAT_LIMITS.context - header.length - 1024;
+  // Give each section a pass before filling the remaining space with more rows.
+  for (let offset = 0; remaining > 0 && sections.some(section => offset < section.rows.length); offset++) {
+    for (const section of sections) {
+      const row = section.rows[offset];
+      if (!row) continue;
+      const text = JSON.stringify(row);
+      const entry = text.length > 4500 ? JSON.stringify({ id: row.id, excerpt: text.slice(0, 3900) }) : text;
+      if (entry.length + 1 > remaining) continue;
+      section.included.push(entry);
+      remaining -= entry.length + 1;
     }
   }
-  if (page === 'focus' && focusTimer.running) {
-    lines.push(`Active timer: ${focusTimer.mode} (${focusTimer.phase}) · ${clip(focusTimer.taskTitle || 'No task selected')}`);
-  }
-  if (page === 'goals') {
-    for (const goal of goals.filter(item => !item.subjectId || matches(item.subjectId)).slice(0, 4)) {
-      lines.push(`Goal: ${clip(goal.title)} · ${goal.current}/${goal.target} ${clip(goal.unit, 20)} · ${clip(goal.deadline, 35)}`);
-    }
-  }
-  if (page === 'flashcards') {
-    for (const deck of decks.filter(item => matches(item.subjectId)).slice(0, 4)) {
-      lines.push(`Deck: ${clip(deck.title)} · ${app.flashcards.filter(card => card.deckId === deck.id && card.dueToday).length} due`);
-    }
-  }
-
-  const planningPage = ['planner', 'dashboard', 'tasks', 'focus', 'subjects'].includes(page);
-  const planning = (!prompt && planningPage) ||
-    /\b(plan|planner|planning|study (next|today|now)|due|deadlines?|schedule|exams?|tasks?|sessions?|prioriti[sz]e|focus|what.s next)\b/i.test(prompt);
-  if (planning) {
-    const open = tasks.filter(task => task.status !== 'done' && matches(task.subjectId))
-      .sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999')).slice(0, 4);
-    if (!open.length) lines.push('No matching open tasks.');
-    for (const task of open) {
-      lines.push(`Open task: ${clip(task.title)} · ${task.dueDate || 'no due date'} · ${task.priority} priority`);
-    }
-    const upcoming = sessions.filter(item => item.status === 'upcoming' && item.date >= today && matches(item.subjectId))
-      .sort((a, b) => a.date.localeCompare(b.date) || a.startHour - b.startHour).slice(0, 3);
-    if (!upcoming.length) lines.push('No matching upcoming sessions from today.');
-    for (const session of upcoming) {
-      const minutes = Math.round(session.startHour * 60);
-      const time = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-      lines.push(`Planned session: ${clip(session.title)} · ${session.date} ${time} · ${Math.round(session.durationHours * 60)} min`);
-    }
-  }
-  if (planning || ['exams', 'practice'].includes(page)) {
-    for (const exam of exams.filter(item => item.date >= today && matches(item.subjectId))
-      .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 2)) {
-      lines.push(`Upcoming exam: ${clip(exam.title)} · ${exam.date}`);
-    }
-  }
-  return { label: note ? `Notes · ${clip(note.title, 40)}` : labels[page], text: lines.join('\n').slice(0, CHAT_LIMITS.context) };
+  return {
+    label: note ? `Workspace · ${clip(note.title, 40)}` : 'Workspace',
+    text: [header, ...sections.map(section =>
+      `${section.name} (${section.included.length}/${section.rows.length} included):\n${section.included.join('\n')}`)].join('\n'),
+  };
 }

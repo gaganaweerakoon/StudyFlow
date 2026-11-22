@@ -106,7 +106,7 @@ function useAssistantController(desktopUsage?: DesktopUsage) {
   async function send() {
     const typed = draft.trim();
     if ((!typed && !attachment) || activeRequest.current || !available) return;
-    const { provider, dailyLimit, maxOutput } = settings;
+    const { provider } = settings;
     const key = keys.current[provider];
     if (!key) {
       setNotice(`Add a ${PROVIDERS[provider].label} API key in AI Settings to send a message.`);
@@ -114,7 +114,7 @@ function useAssistantController(desktopUsage?: DesktopUsage) {
     }
     const prompt = typed || imagePrompt;
     const request: ChatRequest = {
-      prompt, provider, model, maxOutput,
+      prompt, provider, model, maxOutput: 16384,
       context: includeContext ? context.text : '',
       image: attachment?.image,
       history: active.messages
@@ -123,11 +123,6 @@ function useAssistantController(desktopUsage?: DesktopUsage) {
         .map(({ role, text }) => ({ role, text: text.slice(0, CHAT_LIMITS.historyMessage) })),
     };
     const records = mergeUsage(usage, desktopUsage ? [] : readUsage());
-    if (dailyLimit > 0 && todayTokens(records) + estimatedTokens(request) > dailyLimit) {
-      setNotice('This request could exceed your daily token budget. Try a shorter reply limit, remove the image or context, or adjust the budget in Settings.');
-      return;
-    }
-
     const control = new AbortController();
     activeRequest.current = control;
     const assistantId = createId();
@@ -159,7 +154,7 @@ function useAssistantController(desktopUsage?: DesktopUsage) {
         if (event.type === 'error') throw new Error(event.message);
         if (event.type === 'done') {
           status = 'complete';
-          if (event.truncated) setNotice('The reply reached its token limit. You can ask for the next step or increase the reply limit.');
+          if (event.truncated) setNotice('The reply reached its token limit. Ask Pip to continue from where it stopped.');
         }
       }
       if (status !== 'complete') setNotice('The connection ended before the assistant finished.');
