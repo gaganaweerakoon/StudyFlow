@@ -1,20 +1,34 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# StudyFlow V1
 
-# Run and deploy your AI Studio app
+StudyFlow is a study workspace for planning sessions, tracking academic goals, and reviewing material. V1 is a browser app built with React, TypeScript, Vite, and Tailwind CSS.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/3b1bdf27-19eb-42a3-a8c9-5f4c4df66774
+- Schedule study sessions, manage tasks and goals, and track progress by subject.
+- Run focus sessions with a floating timer.
+- Organize notes, review flashcards with spaced repetition, and take practice quizzes.
+- Track exams and review study activity through dashboards and analytics.
+- Customize the workspace with themes, accent colors, and display density.
 
-## Run Locally
+V1 opens with sample data, and edits reset when the page reloads. The study assistant uses built-in example responses. You can run the app without an account or API key.
 
-**Prerequisites:**  Node.js
+## Run locally
 
+Install Bun and Node.js 22.12 or newer.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```sh
+bun install --frozen-lockfile
+bun run dev
+```
+
+Open [localhost:3000](http://localhost:3000).
+
+## Build and test
+
+```sh
+bun run build
+bun run lint
+node --import tsx --test src/utils/studyLogic.test.ts
+```
+
+The production build goes to `dist/`. Run `bun run preview` to try it locally.

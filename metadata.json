@@ -1,8 +1,0 @@
-{
-  "name": "StudyFlow",
-  "description": "A refined, desktop-grade study management workspace featuring customizable themes, calendar planning, focus sessions, tasks, notes, flashcards, exams, analytics, and study tools.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
