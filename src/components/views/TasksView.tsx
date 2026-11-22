@@ -282,7 +282,7 @@ export const TasksView: React.FC = () => {
 
       {/* LIST VIEW */}
       {layout === 'list' && (
-        <div className="rounded-xl overflow-hidden" style={surfaceStyle}>
+        <div className="rounded-xl max-h-[max(12rem,calc(100dvh-16rem))] overflow-y-auto overscroll-contain" style={surfaceStyle}>
           {visibleTasks.length === 0 ? (
             <div className="py-12 text-center space-y-2">
               <CheckSquare className="w-7 h-7 mx-auto text-[var(--text-muted)] opacity-50" />
@@ -397,7 +397,7 @@ export const TasksView: React.FC = () => {
                     setDraggedTaskId(null);
                   }
                 }}
-                className="rounded-xl p-3 space-y-2.5 min-h-[340px]"
+                className="rounded-xl p-3 flex flex-col gap-2.5 h-[clamp(15rem,calc(100dvh-16rem),48rem)]"
                 style={{
                   backgroundColor: 'var(--bg-surface-subtle)',
                   border: '1px solid var(--border-subtle)',
@@ -412,7 +412,7 @@ export const TasksView: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="space-y-2">
+                <div tabIndex={0} role="region" aria-label={col.label + " tasks"} className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain pr-1">
                   {colTasks.map((task) => {
                     const sub = subjects.find((s) => s.id === task.subjectId);
                     const doneSub = task.subtasks.filter((st) => st.done).length;
@@ -470,7 +470,7 @@ export const TasksView: React.FC = () => {
               return (
                 <div
                   key={dayIso}
-                  className="rounded-lg p-3 min-h-[200px] space-y-2"
+                  className="rounded-lg p-3 flex flex-col gap-2 h-[clamp(12rem,calc(100dvh-17rem),46rem)]"
                   style={{
                     backgroundColor: isToday ? 'var(--accent-soft)' : 'var(--bg-surface-subtle)',
                     border: isToday ? '1px solid var(--accent-border)' : '1px solid var(--border-subtle)',
@@ -484,6 +484,7 @@ export const TasksView: React.FC = () => {
                       {dayTasks.length}
                     </span>
                   </div>
+                  <div tabIndex={0} role="region" aria-label={`Tasks due ${dayIso}`} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain space-y-2">
                   {dayTasks.length === 0 ? (
                     <div className="text-[11.5px] text-[var(--text-muted)] pt-4">No tasks due</div>
                   ) : (
@@ -507,6 +508,7 @@ export const TasksView: React.FC = () => {
                       );
                     })
                   )}
+                  </div>
                 </div>
               );
             })}
