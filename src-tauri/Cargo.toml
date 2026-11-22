@@ -10,3 +10,9 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+serde_json = "1"
+studyflow-storage = { path = "storage" }
+
+[workspace]
+members = ["storage"]
+resolver = "2"

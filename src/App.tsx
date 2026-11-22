@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AppProvider, useApp } from './context/AppContext';
+import { AppProvider, useApp, type WorkspacePersistence } from './context/AppContext';
 import { Sidebar } from './components/shell/Sidebar';
 import { TopBar } from './components/shell/TopBar';
 import { CommandPalette } from './components/shell/CommandPalette';
@@ -104,9 +104,9 @@ const StudyFlowShell: React.FC = () => {
   );
 };
 
-export default function App() {
+export default function App({ workspace }: { workspace?: WorkspacePersistence }) {
   return (
-    <AppProvider>
+    <AppProvider workspace={workspace}>
       <AssistantProvider>
         <StudyFlowShell />
       </AssistantProvider>

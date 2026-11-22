@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type {
   AchievementBadge,
   ActiveModalType,
@@ -38,6 +38,7 @@ import {
   INITIAL_TASKS,
   THEME_OPTIONS,
 } from '../data/mockData';
+import type { snapshotWriter } from '../desktop/storage';
 import { scheduleFlashcardReview, type ReviewRating } from '../utils/studyLogic';
 
 export interface ToastMessage {
@@ -189,38 +190,66 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export interface WorkspaceSnapshot {
+  theme: ThemeId;
+  accentColor: string;
+  density: DensityMode;
+  dashboardWidgets: DashboardWidgetConfig[];
+  subjects: Subject[];
+  tasks: TaskItem[];
+  sessions: StudySession[];
+  goals: GoalItem[];
+  folders: NoteFolder[];
+  notes: NoteItem[];
+  decks: FlashcardDeck[];
+  flashcards: FlashcardItem[];
+  exams: ExamItem[];
+  quizzes: PracticeQuiz[];
+  focusHistory: FocusHistoryItem[];
+  challenges: ChallengeItem[];
+  xpPoints: number;
+  notifications: NotificationItem[];
+  preferences: UserPreferences;
+}
+
+export interface WorkspacePersistence {
+  initial: WorkspaceSnapshot | undefined;
+  writer: ReturnType<typeof snapshotWriter<WorkspaceSnapshot>>;
+}
+
+export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: WorkspacePersistence }> = ({ children, workspace }) => {
+  const initial = workspace?.initial;
   const [route, setRoute] = useState<NavRoute>('dashboard');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
-  const [selectedNoteId, setSelectedNoteId] = useState<string>(INITIAL_NOTES[0].id);
+  const [selectedNoteId, setSelectedNoteId] = useState<string>(() => (initial?.notes ?? INITIAL_NOTES)[0]?.id ?? '');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<ActiveModalType>(null);
 
-  const [theme, setTheme] = useState<ThemeId>('light');
-  const [accentColor, setAccentColor] = useState<string>('#4F46E5');
-  const [density, setDensity] = useState<DensityMode>('compact');
+  const [theme, setTheme] = useState<ThemeId>(initial?.theme ?? 'light');
+  const [accentColor, setAccentColor] = useState<string>(initial?.accentColor ?? '#4F46E5');
+  const [density, setDensity] = useState<DensityMode>(initial?.density ?? 'compact');
 
-  const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetConfig[]>(INITIAL_DASHBOARD_WIDGETS);
-  const [subjects, setSubjects] = useState<Subject[]>(INITIAL_SUBJECTS);
-  const [tasks, setTasks] = useState<TaskItem[]>(INITIAL_TASKS);
-  const [sessions, setSessions] = useState<StudySession[]>(INITIAL_SESSIONS);
-  const [goals, setGoals] = useState<GoalItem[]>(INITIAL_GOALS);
-  const [folders] = useState<NoteFolder[]>(INITIAL_FOLDERS);
-  const [notes, setNotes] = useState<NoteItem[]>(INITIAL_NOTES);
-  const [decks] = useState<FlashcardDeck[]>(INITIAL_DECKS);
-  const [flashcards, setFlashcards] = useState<FlashcardItem[]>(INITIAL_FLASHCARDS);
-  const [exams, setExams] = useState<ExamItem[]>(INITIAL_EXAMS);
-  const [quizzes, setQuizzes] = useState<PracticeQuiz[]>(INITIAL_QUIZZES);
-  const [focusHistory, setFocusHistory] = useState<FocusHistoryItem[]>(INITIAL_FOCUS_HISTORY);
+  const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetConfig[]>(initial?.dashboardWidgets ?? INITIAL_DASHBOARD_WIDGETS);
+  const [subjects, setSubjects] = useState<Subject[]>(initial?.subjects ?? INITIAL_SUBJECTS);
+  const [tasks, setTasks] = useState<TaskItem[]>(initial?.tasks ?? INITIAL_TASKS);
+  const [sessions, setSessions] = useState<StudySession[]>(initial?.sessions ?? INITIAL_SESSIONS);
+  const [goals, setGoals] = useState<GoalItem[]>(initial?.goals ?? INITIAL_GOALS);
+  const [folders] = useState<NoteFolder[]>(initial?.folders ?? INITIAL_FOLDERS);
+  const [notes, setNotes] = useState<NoteItem[]>(initial?.notes ?? INITIAL_NOTES);
+  const [decks] = useState<FlashcardDeck[]>(initial?.decks ?? INITIAL_DECKS);
+  const [flashcards, setFlashcards] = useState<FlashcardItem[]>(initial?.flashcards ?? INITIAL_FLASHCARDS);
+  const [exams, setExams] = useState<ExamItem[]>(initial?.exams ?? INITIAL_EXAMS);
+  const [quizzes, setQuizzes] = useState<PracticeQuiz[]>(initial?.quizzes ?? INITIAL_QUIZZES);
+  const [focusHistory, setFocusHistory] = useState<FocusHistoryItem[]>(initial?.focusHistory ?? INITIAL_FOCUS_HISTORY);
   const [achievements] = useState<AchievementBadge[]>(INITIAL_ACHIEVEMENTS);
-  const [challenges, setChallenges] = useState<ChallengeItem[]>(INITIAL_CHALLENGES);
-  const [xpPoints, setXpPoints] = useState<number>(4280);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [challenges, setChallenges] = useState<ChallengeItem[]>(initial?.challenges ?? INITIAL_CHALLENGES);
+  const [xpPoints, setXpPoints] = useState<number>(initial?.xpPoints ?? 4280);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(initial?.notifications ?? INITIAL_NOTIFICATIONS);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  const [preferences, setPreferences] = useState<UserPreferences>({
+  const [preferences, setPreferences] = useState<UserPreferences>(initial?.preferences ?? {
     name: 'Maya Lin',
     email: 'maya.lin@university.edu',
     major: 'Computer Science & Quantitative Biology',
@@ -253,6 +282,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     completionModalOpen: false,
     lastCompletedMinutes: 25,
   });
+
+  const snapshot = useMemo<WorkspaceSnapshot>(() => ({
+    theme, accentColor, density, dashboardWidgets, subjects, tasks, sessions, goals, folders, notes, decks, flashcards, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences,
+  }), [theme, accentColor, density, dashboardWidgets, subjects, tasks, sessions, goals, folders, notes, decks, flashcards, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences]);
+  const [saveError, setSaveError] = useState('');
+  const savedSnapshot = useRef(snapshot);
+
+  const saveWorkspace = useCallback(() => {
+    if (!workspace || savedSnapshot.current === snapshot) return;
+    void workspace.writer.save(snapshot).then(() => {
+      savedSnapshot.current = snapshot;
+      setSaveError('');
+    }, error => setSaveError(String(error)));
+  }, [workspace, snapshot]);
+
+  useEffect(saveWorkspace, [saveWorkspace]);
 
   const toastTimerRef = useRef<number[]>([]);
 
@@ -774,6 +819,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pushToast,
       }}
     >
+      {saveError && (
+        <div role="alert" className="fixed inset-x-4 top-2 z-50 rounded-lg border border-red-600 bg-[var(--bg-surface)] p-3 text-sm">
+          StudyFlow could not save workspace changes. {saveError}{' '}
+          <button type="button" className="underline" onClick={saveWorkspace}>Retry save</button>
+        </div>
+      )}
       {children}
     </AppContext.Provider>
   );
