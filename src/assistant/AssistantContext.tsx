@@ -1,3 +1,4 @@
+import { parseWorkspaceEdit, type WorkspaceEdit } from './workspaceEdit';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '../context/AppContext';
 import { estimatedTokens, isAssistantAvailable, sendChat, type Attachment } from './chatClient';
@@ -11,6 +12,7 @@ export interface DesktopUsage {
 }
 
 interface ChatMessage extends ChatTurn {
+  edit?: WorkspaceEdit;
   id: string;
   attachment?: string;
   tokens?: TokenUsage;
@@ -29,6 +31,8 @@ const createId = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().t
 
 function useAssistantController(desktopUsage?: DesktopUsage) {
   const app = useApp();
+  const currentApp = useRef(app);
+  currentApp.current = app;
   const [settings, setSettings] = useState(readSettings);
   const [usage, setUsage] = useState(() => mergeUsage(desktopUsage?.records ?? readUsage()));
   const [configured, setConfigured] = useState<Provider[]>([]);
@@ -145,15 +149,25 @@ function useAssistantController(desktopUsage?: DesktopUsage) {
       messages: [...chat.messages, turn, { id: assistantId, role: 'assistant', text: '', state: 'streaming' }],
     }));
 
+    let responseText = '';
+    let proposedEdit: WorkspaceEdit | undefined;
     let tokens: TokenUsage | undefined;
     let status: UsageEntryStatus = 'error';
     try {
       for await (const event of sendChat(request, key, control.signal)) {
-        if (event.type === 'text') updateMessage(message => ({ ...message, text: message.text + event.text }));
+        if (event.type === 'text') {
+          responseText += event.text;
+          updateMessage(message => ({ ...message, text: responseText.split('\x60\x60\x60pip-edit')[0] }));
+        }
         if (event.type === 'usage') tokens = event.usage;
         if (event.type === 'error') throw new Error(event.message);
         if (event.type === 'done') {
           status = 'complete';
+          const proposal = responseText.match(/\x60\x60\x60pip-edit\s*([\s\S]*?)\x60\x60\x60\s*$/);
+          if (proposal && includeContext) {
+            proposedEdit = parseWorkspaceEdit(proposal[1], currentApp.current);
+            if (!proposedEdit) setNotice('Pip could not prepare a valid edit. Check the target and try again.');
+          }
           if (event.truncated) setNotice('The reply reached its token limit. Ask Pip to continue from where it stopped.');
         }
       }
@@ -167,7 +181,7 @@ function useAssistantController(desktopUsage?: DesktopUsage) {
           ? error.message : 'Could not reach the local assistant. Check that StudyFlow is running locally.');
       }
     } finally {
-      updateMessage(message => ({ ...message, tokens, state: status }));
+      updateMessage(message => ({ ...message, tokens, state: status, edit: proposedEdit }));
       const updated = mergeUsage([...records, {
         id: assistantId, at: started.getTime(), day: localDay(started), provider, model, tokens, status,
       }]);
@@ -183,6 +197,14 @@ function useAssistantController(desktopUsage?: DesktopUsage) {
   }
 
   return {
+    applyEdit(message: ChatMessage) {
+      if (!message.edit) return;
+      const applied = message.edit.apply(currentApp.current);
+      setNotice(applied ? 'Change applied to the workspace.' : 'The record changed. Ask Pip to prepare the edit again.');
+      setConversations(items => items.map(chat => ({
+        ...chat, messages: chat.messages.map(item => item.id === message.id ? { ...item, edit: undefined } : item),
+      })));
+    },
     available, settings, updateSettings, usage, configured, setKey, model,
     active, activeId, conversations, switchChat, newChat,
     petOpen, setPetOpen, settingsRequested, setSettingsRequested,
