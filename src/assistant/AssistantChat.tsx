@@ -1,18 +1,15 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowUp, Check, ChevronDown, Clipboard, Maximize2, Paperclip, Plus, Settings2, Square, X } from 'lucide-react';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
+import { useApp } from '../context/AppContext';
 import { useAssistant } from './AssistantContext';
 import { prepareImage } from './chatClient';
 import { CHAT_LIMITS, PROVIDERS } from './protocol';
 import './assistant.css';
 
 export function PetFace({ mood = 'ready' }: { mood?: 'ready' | 'working' | 'focus' | 'break' }) {
+  const { preferences } = useApp();
   return (
-    <span className="pip-pet" data-mood={mood} aria-hidden="true">
+    <span className="pip-pet" data-mood={mood} data-motion={preferences.reducedMotion ? 'off' : undefined} aria-hidden="true">
       <span className="pip-ear pip-ear-left" />
       <span className="pip-ear pip-ear-right" />
       <span className="pip-face">
@@ -29,7 +26,10 @@ const starters = [
   'Quiz me on the note I have open.',
 ];
 
-export function AssistantChat({ floating = false }: { floating?: boolean }) {
+const AssistantMarkdown = lazy(() => import('./AssistantMarkdown'));
+
+export function AssistantChat({ onClose }: { onClose?: () => void }) {
+  const floating = !!onClose;
   const assistant = useAssistant();
   const [processing, setProcessing] = useState(false);
   const [copied, setCopied] = useState('');
@@ -49,6 +49,7 @@ export function AssistantChat({ floating = false }: { floating?: boolean }) {
     if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
     imageRequest.current++;
     setProcessing(false);
+    return () => { imageRequest.current++; };
   }, [assistant.activeId]);
 
   async function attach(file?: File) {
@@ -90,7 +91,7 @@ export function AssistantChat({ floating = false }: { floating?: boolean }) {
               assistant.openFullChat();
               assistant.setPetOpen(false);
             }} aria-label="Open full assistant" title="Open full assistant"><Maximize2 size={15} /></button>
-            <button type="button" className="pip-icon" onClick={() => assistant.setPetOpen(false)} aria-label="Close chat" title="Close chat"><X size={18} /></button>
+            <button type="button" className="pip-icon" onClick={onClose} aria-label="Close chat" title="Close chat"><X size={18} /></button>
           </>}
         </div>
       </header>
@@ -130,15 +131,9 @@ export function AssistantChat({ floating = false }: { floating?: boolean }) {
             {message.attachment && <div className="pip-message-file"><Paperclip size={13} /> {message.attachment}</div>}
             {message.role === 'user' ? <p className="pip-user-text">{message.text}</p> : (
               message.text ? <div className="pip-markdown">
-                <Markdown
-                  skipHtml
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[[rehypeKatex, { trust: false }]]}
-                  components={{
-                    img: ({ alt }) => <span>{alt ?? '[Image]'}</span>,
-                    a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
-                  }}
-                >{message.text}</Markdown>
+                <Suspense fallback={<p>{message.text}</p>}>
+                  <AssistantMarkdown text={message.text} />
+                </Suspense>
               </div> : <p className="pip-muted">{message.state === 'streaming' ? 'Thinking…' : message.state === 'stopped' ? 'Reply stopped.' : 'Reply unavailable.'}</p>
             )}
             {message.role === 'assistant' && message.state !== 'streaming' && (

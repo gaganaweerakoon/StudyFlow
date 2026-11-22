@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
-import { CHAT_ENDPOINT, CHAT_LIMITS, isModelId, isProvider, type ChatEvent, type ChatRequest } from '../src/assistant/protocol';
-import { streamProvider } from './studyAssistantProviders';
+import { CHAT_ENDPOINT, CHAT_LIMITS, isModelId, isProvider, type ChatEvent, type ChatRequest } from '../src/assistant/protocol.ts';
+import { streamProvider } from './studyAssistantProviders.ts';
 
 function isLocalRequest(req: IncomingMessage) {
   const localAddresses = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];

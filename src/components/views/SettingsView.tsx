@@ -59,15 +59,15 @@ export const SettingsView: React.FC = () => {
     pushToast,
   } = useApp();
 
-  const { settingsRequested, clearSettingsRequest } = useAssistant();
+  const { settingsRequested, setSettingsRequested } = useAssistant();
   const [section, setSection] = useState<SettingsSection>(settingsRequested ? 'assistant' : 'themes');
 
   useEffect(() => {
     if (settingsRequested) {
       setSection('assistant');
-      clearSettingsRequest();
+      setSettingsRequested(false);
     }
-  }, [settingsRequested, clearSettingsRequest]);
+  }, [settingsRequested, setSettingsRequested]);
 
   const surfaceStyle: React.CSSProperties = {
     backgroundColor: 'var(--bg-surface)',

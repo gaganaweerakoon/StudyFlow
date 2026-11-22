@@ -53,8 +53,9 @@ export function workspaceContext(app: Workspace, page: WorkspacePage, prompt: st
     }
   }
 
-  const planning = ['planner', 'dashboard', 'tasks', 'focus', 'subjects', 'assistant'].includes(page) ||
-    /\b(plan|study next|due|deadline|schedule|exam|task)\b/i.test(prompt);
+  const planningPage = ['planner', 'dashboard', 'tasks', 'focus', 'subjects'].includes(page);
+  const planning = (!prompt && planningPage) ||
+    /\b(plan|planner|planning|study (next|today|now)|due|deadlines?|schedule|exams?|tasks?|sessions?|prioriti[sz]e|focus|what.s next)\b/i.test(prompt);
   if (planning) {
     const open = tasks.filter(task => task.status !== 'done' && matches(task.subjectId))
       .sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999')).slice(0, 4);

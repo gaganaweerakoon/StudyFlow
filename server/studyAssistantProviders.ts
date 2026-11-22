@@ -1,4 +1,4 @@
-import { PROVIDERS, SYSTEM_PROMPT, type ChatEvent, type ChatRequest, type TokenUsage } from '../src/assistant/protocol';
+import { PROVIDERS, SYSTEM_PROMPT, type ChatEvent, type ChatRequest, type TokenUsage } from '../src/assistant/protocol.ts';
 
 async function* readEvents(body: ReadableStream<Uint8Array>) {
   const reader = body.getReader();

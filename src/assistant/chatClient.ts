@@ -15,6 +15,7 @@ export async function* sendChat(request: ChatRequest, key: string, signal: Abort
     method: 'POST',
     signal,
     credentials: 'same-origin',
+    redirect: 'error',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
     body: JSON.stringify(request),
   });

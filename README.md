@@ -38,7 +38,7 @@ Open the floating pet or the AI Assistant screen. In **Settings → AI Usage**, 
 ```sh
 bun run build
 bun run lint
-node --import tsx --test src/utils/studyLogic.test.ts
+node --import tsx --test src/utils/studyLogic.test.ts server/studyAssistant.test.ts
 ```
 
 The production build goes to `dist/`. Run `bun run preview` to try it locally.

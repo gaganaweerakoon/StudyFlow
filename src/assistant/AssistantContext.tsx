@@ -18,6 +18,7 @@ interface Conversation {
   messages: ChatMessage[];
 }
 
+const imagePrompt = 'Explain what is shown in this image.';
 const initial: Conversation = { id: 'first', title: 'New chat', messages: [] };
 const createId = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -59,7 +60,7 @@ function useAssistantController() {
   const active = conversations.find(chat => chat.id === activeId) ?? conversations[0];
   const model = settings.models[settings.provider] ?? PROVIDERS[settings.provider].model;
   const currentPage = app.route === 'assistant' || app.route === 'settings' ? lastPage : app.route;
-  const context = workspaceContext(app, currentPage, draft);
+  const context = workspaceContext(app, currentPage, draft.trim() || (attachment ? imagePrompt : ''));
   const available = isAssistantAvailable();
 
   function updateSettings(next: AssistantSettings) {
@@ -106,7 +107,7 @@ function useAssistantController() {
       setNotice(`Add a ${PROVIDERS[provider].label} API key in AI Settings to send a message.`);
       return;
     }
-    const prompt = typed || 'Explain what is shown in this image.';
+    const prompt = typed || imagePrompt;
     const request: ChatRequest = {
       prompt, provider, model, maxOutput,
       context: includeContext ? context.text : '',
@@ -178,7 +179,7 @@ function useAssistantController() {
   return {
     available, settings, updateSettings, usage, configured, setKey, model,
     active, activeId, conversations, switchChat, newChat,
-    petOpen, setPetOpen, settingsRequested, clearSettingsRequest: () => setSettingsRequested(false),
+    petOpen, setPetOpen, settingsRequested, setSettingsRequested,
     openSettings, openFullChat: () => app.setRoute('assistant'), context, includeContext, setIncludeContext, draft, setDraft, attachment,
     setAttachment, previousAttachment, detail, setDetail, busy, notice, setNotice, send,
     stop: () => activeRequest.current?.abort(),
