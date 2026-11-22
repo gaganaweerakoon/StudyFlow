@@ -88,6 +88,7 @@ export interface StudySession {
 }
 
 export interface GoalItem {
+  completedAt?: string;
   id: string;
   title: string;
   category: 'daily' | 'weekly' | 'subject' | 'tasks' | 'syllabus' | 'revision';

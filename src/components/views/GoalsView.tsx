@@ -10,10 +10,10 @@ import {
 } from 'recharts';
 import { Plus, CheckCircle2, Circle, TrendingUp } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { ANALYTICS_GOAL_COMPARISON } from '../../data/mockData';
+import { localDay } from '../../assistant/workspaceContext';
 
 export const GoalsView: React.FC = () => {
-  const { goals, updateGoal, setActiveModal, subjects, pushToast } = useApp();
+  const { goals, updateGoal, setActiveModal, subjects, focusHistory, pushToast } = useApp();
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
   const filteredGoals =
@@ -31,11 +31,25 @@ export const GoalsView: React.FC = () => {
     pushToast(`Logged +${step} ${unit} toward goal`);
   };
 
-  const achievedHistory = [
-    { id: 'ah-1', title: 'Complete Midterm II Vector Calculus Prep', date: 'Nov 14, 2026', metric: '100% · 14/14 topics' },
-    { id: 'ah-2', title: 'Hit 30 Focused Hours in Week 10', date: 'Nov 08, 2026', metric: '31.2 / 30.0 hrs' },
-    { id: 'ah-3', title: 'Master Aromaticity Flashcard Deck', date: 'Nov 03, 2026', metric: '94% retention' },
-  ];
+  const today = new Date();
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (today.getDay() + 6) % 7);
+  const weekStart = localDay(monday);
+  const weekEnd = localDay(today);
+  const weeklyMinutes = new Map<string, number>();
+  for (const session of focusHistory) {
+    const date = session.completedAt.slice(0, 10);
+    if (date >= weekStart && date <= weekEnd) {
+      weeklyMinutes.set(session.subjectId, (weeklyMinutes.get(session.subjectId) ?? 0) + session.durationMinutes);
+    }
+  }
+  const chartData = subjects.map(subject => ({
+    subject: subject.code || subject.name,
+    target: subject.weeklyTargetHours,
+    actual: Number(((weeklyMinutes.get(subject.id) ?? 0) / 60).toFixed(2)),
+  }));
+  const achievedHistory = goals.filter(goal => goal.target > 0 && goal.current >= goal.target)
+    .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
+
 
   return (
     <div className="space-y-4 pb-6">
@@ -171,9 +185,9 @@ export const GoalsView: React.FC = () => {
               </span>
             </div>
           </div>
-          <div className="h-56 w-full">
+          {chartData.length === 0 ? <p className="py-8 text-[12px] text-[var(--text-muted)]">Add a subject to track its weekly study target.</p> : <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={ANALYTICS_GOAL_COMPARISON} margin={{ top: 6, right: 8, left: -18, bottom: 0 }}>
+              <BarChart data={chartData} margin={{ top: 6, right: 8, left: -18, bottom: 0 }}>
                 <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="subject" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} unit="h" />
@@ -189,7 +203,7 @@ export const GoalsView: React.FC = () => {
                 <Bar dataKey="actual" name="Actual (h)" fill="var(--accent)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </div>}
         </div>
 
         <div className="lg:col-span-5 rounded-xl p-4" style={surfaceStyle}>
@@ -200,14 +214,15 @@ export const GoalsView: React.FC = () => {
             </h2>
           </div>
           <div className="divide-y divide-[var(--border-subtle)]">
+            {achievedHistory.length === 0 && <p className="py-4 text-[12px] text-[var(--text-muted)]">No completed goals yet.</p>}
             {achievedHistory.map((item) => (
               <div key={item.id} className="py-3 flex items-start justify-between gap-3">
                 <div>
                   <div className="text-[13px] font-medium text-[var(--text-primary)]">{item.title}</div>
-                  <div className="text-[11.5px] text-[var(--text-muted)] mt-0.5">{item.date}</div>
+                  <div className="text-[11.5px] text-[var(--text-muted)] mt-0.5">{item.completedAt ? new Date(item.completedAt).toLocaleDateString() : ''}</div>
                 </div>
                 <span className="font-mono-num text-[11.5px] font-medium text-emerald-600 dark:text-emerald-400 shrink-0">
-                  {item.metric}
+                  {item.current} / {item.target} {item.unit}
                 </span>
               </div>
             ))}

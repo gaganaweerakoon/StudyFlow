@@ -680,7 +680,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   );
 
   const updateGoal = useCallback((id: string, patch: Partial<GoalItem>) => {
-    setGoals((prev) => prev.map((g) => (g.id === id ? { ...g, ...patch } : g)));
+    setGoals(previous => previous.map(goal => {
+      if (goal.id !== id) return goal;
+      const next = { ...goal, ...patch };
+      if (next.target > 0 && next.current >= next.target) {
+        next.completedAt = goal.completedAt ?? new Date().toISOString();
+      } else {
+        delete next.completedAt;
+      }
+      return next;
+    }));
   }, []);
 
   // Notes mutations
