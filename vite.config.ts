@@ -3,12 +3,14 @@ import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import path from 'path';
 import {defineConfig} from 'vite';
+import { studyAssistant } from './server/studyAssistant';
 
 export default defineConfig(() => {
   return {
     plugins: [
       react(),
       tailwindcss(),
+      studyAssistant(),
       // Preserve root-relative image URLs used by the study workspace.
       {
         name: 'copy-unbundled-src-assets',
