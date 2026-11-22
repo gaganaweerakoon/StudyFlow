@@ -262,14 +262,15 @@ pub async fn stream(
         })?;
     let status = response.status();
     if !status.is_success() {
-        return Err(match status.as_u16() {
-            401 | 403 => {
-                "The provider rejected this key or model access. Check AI Settings.".into()
-            }
-            400 | 404 | 422 => {
-                "The provider rejected this request. Check the model ID and image support.".into()
-            }
-            402 | 429 => "The provider reported a billing, quota, or rate limit error.".into(),
+        let payload: Value = response.json().await.unwrap_or(Value::Null);
+        let code = payload["error"]["code"].as_str().unwrap_or("");
+        return Err(match (status.as_u16(), code) {
+            (_, "insufficient_quota") => "OpenAI API credits are unavailable. Check your API account's billing and project budget.".into(),
+            (401, _) => "The provider rejected the API key. Check AI Settings and use a key from the selected provider.".into(),
+            (403 | 404, _) | (_, "model_not_found") => format!("Access to model {} was denied or the model was not found. Choose an available model in AI Settings.", request.model),
+            (400 | 422, _) => "The provider rejected the request. Check model and attachment compatibility in AI Settings.".into(),
+            (402, _) => "Check API billing for this provider.".into(),
+            (429, _) => "The provider rate-limited the request. Check your API limits or retry shortly.".into(),
             _ => format!("The provider returned HTTP {status}."),
         });
     }

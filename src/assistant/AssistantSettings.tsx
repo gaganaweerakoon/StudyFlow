@@ -5,11 +5,19 @@ import { CHAT_LIMITS, PROVIDERS, isModelId, isProvider, type Provider } from './
 import { todayTokens, type UsageEntry } from './usage';
 import './assistant.css';
 
+const MODEL_CHOICES: Record<Provider, string[]> = {
+  openai: ['gpt-4.1-mini', 'gpt-4.1', 'gpt-5-mini', 'gpt-5.4-mini'],
+  gemini: ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro'],
+  claude: ['claude-haiku-5-5', 'claude-haiku-4-5'],
+};
+
 function ProviderSettings() {
   const assistant = useAssistant();
   const { provider, models } = assistant.settings;
   const [key, setKey] = useState('');
   const [model, setModel] = useState(assistant.model);
+  const choices = MODEL_CHOICES[provider];
+  const [custom, setCustom] = useState(!choices.includes(assistant.model));
   const [message, setMessage] = useState('');
   const connected = assistant.configured.includes(provider);
 
@@ -35,9 +43,19 @@ function ProviderSettings() {
   return (
     <form onSubmit={submit} className="pip-settings-form">
       <label>
-        Model ID
-        <input value={model} maxLength={100} onChange={event => setModel(event.target.value)} placeholder={PROVIDERS[provider].model} />
+        Model
+        <select value={custom ? 'custom' : model} onChange={event => {
+          const value = event.target.value;
+          setCustom(value === 'custom');
+          if (value !== 'custom') setModel(value);
+        }}>
+          {choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}
+          <option value="custom">Custom model</option>
+        </select>
       </label>
+      {custom && <label>Custom model ID
+        <input value={model} maxLength={100} onChange={event => setModel(event.target.value)} />
+      </label>}
       <label>
         API key
         <input
