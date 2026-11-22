@@ -12,7 +12,7 @@ import { useApp } from '../../context/AppContext';
 import { COMPANION_DESK_URL } from '../../data/mockData';
 
 export const AchievementsView: React.FC = () => {
-  const { achievements, challenges, claimChallenge, xpPoints } = useApp();
+  const { achievements, challenges, claimChallenge, xpPoints, legacyCalendar } = useApp();
   const [badgeFilter, setBadgeFilter] = useState<'all' | 'unlocked' | 'locked'>('all');
   const [celebratingId, setCelebratingId] = useState<string | null>(null);
   const [companionImgFailed, setCompanionImgFailed] = useState(false);
@@ -20,6 +20,9 @@ export const AchievementsView: React.FC = () => {
   const level = Math.floor(xpPoints / 500) + 1;
   const levelProgress = Math.round(((xpPoints % 500) / 500) * 100);
   const xpToNext = 500 - (xpPoints % 500);
+
+  const recentBadges = achievements.filter(badge => badge.unlocked && badge.unlockedDate)
+    .sort((a, b) => (b.unlockedDate ?? '').localeCompare(a.unlockedDate ?? '')).slice(0, 3);
 
   const visibleBadges = achievements.filter((a) => {
     if (badgeFilter === 'unlocked') return a.unlocked;
@@ -72,7 +75,7 @@ export const AchievementsView: React.FC = () => {
               <div className="text-right">
                 <div className="text-[11px] text-[var(--text-muted)]">Active Streak</div>
                 <div className="font-mono-num text-[17px] font-semibold text-[var(--text-primary)] inline-flex items-center gap-1">
-                  <Flame className="w-4 h-4 text-amber-500" /> 16 days
+                  <Flame className="w-4 h-4 text-amber-500" /> {legacyCalendar ? "—" : "16 days"}
                 </div>
               </div>
               <div className="text-right">
@@ -98,7 +101,7 @@ export const AchievementsView: React.FC = () => {
           </div>
 
           {/* Personal Records */}
-          <div
+          {!legacyCalendar && <div
             className="pt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-[12px]"
             style={{ borderTop: '1px solid var(--border-subtle)' }}
           >
@@ -115,7 +118,7 @@ export const AchievementsView: React.FC = () => {
                 </div>
               </div>
             ))}
-          </div>
+          </div>}
         </div>
 
         {/* Virtual Study Companion Desk Preview */}
@@ -237,6 +240,12 @@ export const AchievementsView: React.FC = () => {
         </div>
       </div>
 
+      {legacyCalendar && <section className="rounded-xl p-4" style={surfaceStyle}>
+        <h2 className="font-semibold">Recent unlocks</h2>
+        {recentBadges.length ? <ul className="mt-2 space-y-1 text-sm">
+          {recentBadges.map(badge => <li key={badge.id}>{badge.title} · {badge.unlockedDate}</li>)}
+        </ul> : <p className="mt-2 text-[12px] text-[var(--text-muted)]">Complete a task, focus session, review, or goal to start earning XP.</p>}
+      </section>}
       {/* Achievement Badges Library */}
       <div className="rounded-xl p-4 space-y-3.5" style={surfaceStyle}>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -269,6 +278,7 @@ export const AchievementsView: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {visibleBadges.length === 0 && <p className="text-[12px] text-[var(--text-muted)]">No badges in this view yet.</p>}
           {visibleBadges.map((b) => {
             const pct = Math.min(100, Math.round((b.progress / b.target) * 100));
             return (

@@ -51,6 +51,7 @@ function wipeSection(workspace: Omit<WorkspaceSnapshot, 'previousWorkspace'>, se
     next.quizzes = [];
     next.challenges = [];
     next.xpPoints = 0;
+    next.rewardLedger = {};
     next.notifications = [];
     next.subjects = next.subjects.map(subject => ({
       ...subject, totalHours: 0, lastStudied: '', currentGrade: '', nextExamDate: '', nextExamTitle: '',

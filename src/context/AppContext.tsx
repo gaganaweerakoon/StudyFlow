@@ -1,3 +1,4 @@
+import { collectRewards, rewardSummary, type RewardLedger } from '../utils/rewards';
 import { wipeWorkspace, WIPE_OPTIONS, type WipeSection } from '../desktop/wipeWorkspace';
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type {
@@ -201,6 +202,7 @@ function hexToRgba(hex: string, alpha: number): string {
 
 export interface WorkspaceSnapshot {
   legacyArchive?: LegacyArchive;
+  rewardLedger?: RewardLedger;
   cardReviews?: Record<string, number>;
   focusClock?: { at: number; timer: FocusTimerState };
   removedOccurrences?: string[];
@@ -271,7 +273,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [exams, setExams] = useState<ExamItem[]>(initial?.exams ?? (desktop ? [] : INITIAL_EXAMS));
   const [quizzes, setQuizzes] = useState<PracticeQuiz[]>(initial?.quizzes ?? (desktop ? [] : INITIAL_QUIZZES));
   const [focusHistory, setFocusHistory] = useState<FocusHistoryItem[]>(initial?.focusHistory ?? (desktop ? [] : INITIAL_FOCUS_HISTORY));
-  const [achievements] = useState<AchievementBadge[]>(desktop ? [] : INITIAL_ACHIEVEMENTS);
+  const [rewardLedger, setRewardLedger] = useState<RewardLedger>(initial?.rewardLedger ?? {});
   const [challenges, setChallenges] = useState<ChallengeItem[]>(initial?.challenges ?? (desktop ? [] : INITIAL_CHALLENGES));
   const [xpPoints, setXpPoints] = useState<number>(initial?.xpPoints ?? (desktop ? 0 : 4280));
   const [notifications, setNotifications] = useState<NotificationItem[]>(initial?.notifications ?? (desktop ? [] : INITIAL_NOTIFICATIONS));
@@ -340,10 +342,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [cardReviews, setCardReviews] = useState(initial?.cardReviews ?? {});
   const flashcards = useMemo(() => storedFlashcards.map(card => card.nextReviewDate
     ? { ...card, dueToday: card.nextReviewDate <= calendarDay } : card), [storedFlashcards, calendarDay]);
+  const summary = useMemo(() => rewardSummary(rewardLedger), [rewardLedger]);
+  const achievements = desktop ? summary.badges : INITIAL_ACHIEVEMENTS;
+  useEffect(() => {
+    if (desktop) setRewardLedger(previous => collectRewards(previous, tasks, focusHistory, goals, cardReviews, new Date().toISOString()));
+  }, [desktop, tasks, focusHistory, goals, cardReviews]);
   const snapshot = useMemo<WorkspaceSnapshot>(() => ({
     focusClock, legacyArchive: archive, previousWorkspace: initial?.previousWorkspace, removedOccurrences,
-    theme, accentColor, density, dashboardWidgets, subjects, tasks, sessions: savedSessions, goals, folders, notes, decks, flashcards: storedFlashcards, cardReviews, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences,
-  }), [focusClock, archive, initial?.previousWorkspace, removedOccurrences, theme, accentColor, density, dashboardWidgets, subjects, tasks, savedSessions, goals, folders, notes, decks, storedFlashcards, cardReviews, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences]);
+    theme, accentColor, density, dashboardWidgets, subjects, tasks, sessions: savedSessions, goals, folders, notes, decks, flashcards: storedFlashcards, cardReviews, rewardLedger, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences,
+  }), [focusClock, archive, initial?.previousWorkspace, removedOccurrences, theme, accentColor, density, dashboardWidgets, subjects, tasks, savedSessions, goals, folders, notes, decks, storedFlashcards, cardReviews, rewardLedger, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences]);
   const [saveError, setSaveError] = useState('');
   const savedSnapshot = useRef(initial?.focusClock?.timer.running && !focusTimer.running ? undefined : snapshot);
 
@@ -917,7 +924,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         achievements,
         challenges,
         claimChallenge,
-        xpPoints,
+        xpPoints: xpPoints + (desktop ? summary.xp : 0),
         notifications,
         markAllNotificationsRead,
         markNotificationRead,
