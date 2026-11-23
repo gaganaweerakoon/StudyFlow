@@ -55,6 +55,8 @@ struct Server {
     path: PathBuf,
     invitation: Option<([u8; 32], Instant)>,
     calendar: Option<Value>,
+    focus: Option<Value>,
+    focus_commands: Vec<Value>,
     last_sync: Option<u64>,
 }
 
@@ -146,6 +148,8 @@ impl Companion {
                 path,
                 invitation: None,
                 calendar: None,
+                focus: None,
+                focus_commands: Vec::new(),
                 last_sync: None,
             })),
             address: None,
@@ -204,6 +208,28 @@ impl Companion {
             self.start(PORT)?;
         }
         Ok(())
+    }
+
+    pub fn publish_focus(&mut self, focus: Value) -> Result<(), String> {
+        if !focus.is_object() || focus.to_string().len() > 4096
+            || !focus["at"].is_number() || !focus["timer"].is_object() {
+            return Err("Invalid StudyFlow focus snapshot.".into());
+        }
+        let paired = {
+            let mut state = self.state.lock().map_err(|error| error.to_string())?;
+            state.focus = Some(focus);
+            state.identity.phone.is_some()
+        };
+        if paired {
+            self.start(PORT)?;
+        }
+        Ok(())
+    }
+
+    /// Commands are accepted only after TLS pinning and saved-phone token authentication.
+    pub fn drain_focus_commands(&self) -> Result<Value, String> {
+        let mut state = self.state.lock().map_err(|error| error.to_string())?;
+        Ok(Value::Array(std::mem::take(&mut state.focus_commands)))
     }
 
     pub fn invite(&mut self) -> Result<Value, String> {
@@ -269,6 +295,7 @@ impl Companion {
         }
         state.invitation = None;
         state.last_sync = None;
+        state.focus_commands.clear();
         Ok(())
     }
 }
@@ -315,6 +342,8 @@ impl Server {
         };
         let now = unix_seconds();
         let calendar = json!({ "revision": now, "events": events, "paired": true });
+        let focus = self.focus.clone().unwrap_or(Value::Null);
+        let server_now_ms = now.saturating_mul(1000);
         let proposed = request["token"].as_str().filter(|token| {
             token.len() == 64 && token.bytes().all(|byte| byte.is_ascii_hexdigit())
         });
@@ -328,7 +357,7 @@ impl Server {
                     now < pending.expires_at && hash(key) == pending.code_hash
                 })
             {
-                return json!({ "token": token, "calendar": calendar });
+                return json!({ "token": token, "calendar": calendar, "focus": focus, "serverNowMs": server_now_ms });
             }
         }
         match request["action"].as_str() {
@@ -362,9 +391,9 @@ impl Server {
                 if proposed.is_none() {
                     self.last_sync = Some(now);
                 }
-                json!({ "token": token, "calendar": calendar })
+                json!({ "token": token, "calendar": calendar, "focus": focus, "serverNowMs": server_now_ms })
             }
-            Some("sync")
+            Some("sync" | "focus_control")
                 if self
                     .identity
                     .phone
@@ -382,9 +411,24 @@ impl Server {
                     }
                 }
                 self.last_sync = Some(now);
-                json!({ "calendar": calendar })
+                if request["action"] == "focus_control" {
+                    let Some(command) = request["command"].as_str().filter(|command| {
+                        matches!(*command, "start" | "pause" | "resume" | "reset" | "complete")
+                    }) else {
+                        return json!({ "error": "Unknown focus command." });
+                    };
+                    if self.focus_commands.len() >= 20 {
+                        return json!({ "error": "PC is still processing earlier focus commands." });
+                    }
+                    let session_id = request["sessionId"].as_str()
+                        .filter(|id| id.len() <= 128)
+                        .unwrap_or("");
+                    self.focus_commands.push(json!({ "action": command, "sessionId": session_id }));
+                    return json!({ "accepted": true, "focus": focus, "serverNowMs": server_now_ms });
+                }
+                json!({ "calendar": calendar, "focus": focus, "serverNowMs": server_now_ms })
             }
-            Some("sync") => {
+            Some("sync" | "focus_control") => {
                 json!({ "error": "This phone is no longer paired. Scan a new code to reconnect." })
             }
             _ => {
