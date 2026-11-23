@@ -37,9 +37,12 @@ export const FocusView: React.FC = () => {
   const subjectMap = new Map(subjects.map((s) => [s.id, s]));
   const activeSubject = subjectMap.get(focus.subjectId);
 
+  const pcStopwatch = liveMode && focus.origin === 'pc' && focus.pcMode === 'Stopwatch';
   const progressRatio =
     focus.totalSeconds > 0
-      ? Math.min(1, Math.max(0, (focus.totalSeconds - focus.secondsLeft) / focus.totalSeconds))
+      ? Math.min(1, Math.max(0, pcStopwatch
+        ? focus.elapsedActiveSeconds / focus.totalSeconds
+        : (focus.totalSeconds - focus.secondsLeft) / focus.totalSeconds))
       : 0;
 
   // Exact StudyFlow PC FocusTimerView circular SVG ring geometry & colors
@@ -192,12 +195,12 @@ export const FocusView: React.FC = () => {
             className="font-mono-num text-[44px] font-semibold tracking-tight leading-none my-2"
             style={{ color: 'var(--text-primary)' }}
           >
-            {formatCountdownMMSS(focus.secondsLeft)}
+            {formatCountdownMMSS(pcStopwatch ? focus.elapsedActiveSeconds : focus.secondsLeft)}
           </div>
           <div className="text-[calc(11.5px*var(--sf-font-scale,1))] font-mono-num text-[var(--text-muted)]">
             {focus.phase === 'break' || focus.phase === 'break_paused'
               ? `${focus.breakMinutes} min break`
-              : `${focus.intervalMinutes} min interval`}
+              : pcStopwatch ? 'PC stopwatch · elapsed time' : `${focus.intervalMinutes} min interval`}
           </div>
         </div>
       </div>
