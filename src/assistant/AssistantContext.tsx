@@ -1,4 +1,4 @@
-import { parseWorkspaceEdit, type WorkspaceEdit } from './workspaceEdit';
+import { parseWorkspaceEdit, splitWorkspaceResponse, type WorkspaceEdit } from './workspaceEdit';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '../context/AppContext';
 import { estimatedTokens, isAssistantAvailable, sendChat, type Attachment } from './chatClient';
@@ -196,16 +196,27 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       for await (const event of sendChat(request, key, control.signal)) {
         if (event.type === 'text') {
           responseText += event.text;
-          updateMessage(message => ({ ...message, text: responseText.split('\x60\x60\x60pip-edit')[0] }));
+          updateMessage(message => ({ ...message, text: splitWorkspaceResponse(responseText).text }));
         }
         if (event.type === 'usage') tokens = event.usage;
         if (event.type === 'error') throw new Error(event.message);
         if (event.type === 'done') {
           status = 'complete';
-          const proposal = responseText.match(/\x60\x60\x60pip-edit\s*([\s\S]*?)\x60\x60\x60\s*$/);
-          if (proposal && includeContext) {
-            proposedEdit = parseWorkspaceEdit(proposal[1], currentApp.current);
-            if (!proposedEdit) setNotice('Pip could not prepare a valid edit. Check the target and try again.');
+          const { text, command } = splitWorkspaceResponse(responseText, true);
+          if (command === undefined) {
+            updateMessage(message => ({ ...message, text }));
+          } else if (!event.truncated) {
+            const edit = includeContext ? parseWorkspaceEdit(command, currentApp.current) : undefined;
+            if (!edit) {
+              updateMessage(message => ({ ...message, text: 'I couldn’t apply that change. Check the target and try again.' }));
+            } else if (edit.confirmation) {
+              proposedEdit = edit;
+              updateMessage(message => ({ ...message, text: 'Review this change before applying it.' }));
+            } else {
+              const applied = edit.apply(currentApp.current);
+              const result = applied ? edit.success ?? `Done. ${edit.title}.` : 'The record changed before I could update it. Try the request again.';
+              updateMessage(message => ({ ...message, text: result }));
+            }
           }
           if (event.truncated) setNotice('The reply reached its token limit. Ask Pip to continue from where it stopped.');
         }

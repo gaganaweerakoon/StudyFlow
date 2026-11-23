@@ -5,6 +5,8 @@ type Workspace = ReturnType<typeof useApp>;
 
 export interface WorkspaceEdit {
   title: string;
+  success?: string;
+  confirmation?: boolean;
   apply: (app: Workspace) => boolean;
 }
 
@@ -20,6 +22,28 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
     if (!edit || typeof edit !== 'object' || Array.isArray(edit)) return;
     const title = typeof edit.title === 'string' && edit.title.trim() && edit.title.length <= 200 ? edit.title.trim() : undefined;
     const id = typeof edit.id === 'string' ? edit.id : undefined;
+    if (edit.action === 'create_note' || edit.action === 'update_note') {
+      const existing = id && app.notes.find(item => item.id === id);
+      const updating = edit.action === 'update_note';
+      const name = title || (existing && existing.title);
+      const content = typeof edit.content === 'string' ? edit.content.trim() : '';
+      if (!name || !content || content.length > 60000 || (updating && !existing)) return;
+      const subjectId = typeof edit.subjectId === 'string' ? edit.subjectId : '';
+      if (subjectId && !app.subjects.some(subject => subject.id === subjectId)) return;
+      return {
+        title: `${updating ? 'Update' : 'Create'} note “${name}”`,
+        success: `${updating ? 'Updated' : 'Created'} “${name}” in Notes.`,
+        apply: current => {
+          if (updating && existing) {
+            if (current.notes.find(note => note.id === existing.id) !== existing) return false;
+            current.updateNote(existing.id, { title: name, content, updatedAt: 'Just now' });
+          } else if (!current.notes.some(note => note.title === name && note.content === content && note.subjectId === subjectId)) {
+            current.createNote(subjectId, 'fld-all', { title: name, content });
+          }
+          return true;
+        },
+      };
+    }
     if (edit.action === 'delete_tasks' || edit.action === 'complete_tasks') {
       const ids: unknown = edit.ids;
       if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100 ||
@@ -28,6 +52,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       if (targets.some(task => !task)) return;
       const deleting = edit.action === 'delete_tasks';
       return {
+        confirmation: true,
         title: `${deleting ? 'Delete' : 'Complete'} ${ids.length} ${ids.length === 1 ? 'task' : 'tasks'} · ${targets.map(task => task?.title).join(', ')}`,
         apply: current => {
           if (targets.some(task => current.tasks.find(item => item.id === task?.id) !== task)) return false;
@@ -41,6 +66,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       const event = app.sessions.find(item => item.id === id);
       if (!event || event.recurring && edit.scope !== 'occurrence') return;
       return {
+        confirmation: true,
         title: `Delete “${event.title}” on ${event.date}${event.recurring ? ' · this occurrence only' : ''}`,
         apply: current => {
           if (JSON.stringify(current.sessions.find(item => item.id === id)) !== JSON.stringify(event)) return false;
@@ -138,4 +164,25 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
   } catch {
     return;
   }
+}
+
+export function splitWorkspaceResponse(response: string, complete = false): { text: string; command?: string } {
+  const fence = /(?:^|\n)[ \t]*```(pip-edit|json)?[ \t]*(?:\n|$)/gi;
+  for (const match of response.matchAll(fence)) {
+    const start = match.index + match[0].length;
+    const rest = response.slice(start);
+    const end = rest.search(/\n[ \t]*```[ \t]*(?:\n|$)/);
+    const body = (end < 0 ? rest : rest.slice(0, end)).trim();
+    const isCommand = match[1]?.toLowerCase() === 'pip-edit' || /"action"\s*:/.test(body);
+    if (isCommand) return {
+      text: response.slice(0, match.index).trimEnd(),
+      command: end < 0 ? '' : body,
+    };
+    if (!complete && end < 0) return { text: response.slice(0, match.index).trimEnd() };
+  }
+
+  const raw = response.trim();
+  if (raw.startsWith('{') && /"action"\s*:/.test(raw)) return { text: '', command: raw };
+  if (!complete && raw.startsWith('{')) return { text: '' };
+  return { text: response };
 }

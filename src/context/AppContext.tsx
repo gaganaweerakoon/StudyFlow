@@ -157,7 +157,7 @@ interface AppContextValue {
   notes: NoteItem[];
   deleteNote: (id: string) => void;
   updateNote: (id: string, patch: Partial<NoteItem>) => void;
-  createNote: (subjectId: string, folderId: string) => string;
+  createNote: (subjectId: string, folderId: string, draft?: Pick<NoteItem, 'title' | 'content'>) => string;
 
   decks: FlashcardDeck[];
   flashcards: FlashcardItem[];
@@ -732,17 +732,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   }, []);
 
   const createNote = useCallback(
-    (subjectId: string, folderId: string) => {
-      const id = `note-${Date.now()}`;
+    (subjectId: string, folderId: string, draft?: Pick<NoteItem, 'title' | 'content'>) => {
+      const id = `note-${crypto.randomUUID()}`;
       const newNote: NoteItem = {
         id,
         folderId: folderId === 'fld-all' ? folders[0]?.id ?? 'notes' : folderId,
         subjectId,
-        title: 'Untitled Study Note',
+        title: draft?.title ?? 'Untitled Study Note',
         updatedAt: 'Just now',
         pinned: false,
         tags: ['Draft'],
-        content: '',
+        content: draft?.content ?? '',
         linkedResources: [],
         attachments: [],
         pdfHighlights: [],
