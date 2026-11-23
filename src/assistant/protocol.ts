@@ -41,6 +41,7 @@ export interface ChatRequest {
   context: string;
   history: ChatTurn[];
   image?: ChatImage;
+  generateImage?: boolean;
   maxOutput: ReplyLimit;
 }
 
@@ -53,6 +54,7 @@ export interface TokenUsage {
 
 export type ChatEvent =
   | { type: 'text'; text: string }
+  | { type: 'image'; mime: 'image/png' | 'image/jpeg' | 'image/webp'; base64: string }
   | { type: 'usage'; usage: TokenUsage }
   | { type: 'done'; truncated?: boolean }
   | { type: 'error'; message: string };

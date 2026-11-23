@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowUp, Check, ChevronDown, Clipboard, Maximize2, PanelLeft, Paperclip, Pencil, Plus, Settings2, Square, Trash2, X } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, Clipboard, ImagePlus, Maximize2, PanelLeft, Paperclip, Pencil, Plus, Settings2, Square, Trash2, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAssistant } from './AssistantContext';
 import { prepareImage } from './chatClient';
@@ -161,6 +161,12 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                 </Suspense>
               </div> : <p className="pip-muted">{message.state === 'streaming' ? 'Thinking…' : message.state === 'stopped' ? 'Reply stopped.' : 'Reply unavailable.'}</p>
             )}
+            {message.generatedImage && (
+              <a className="block" href={`data:${message.generatedImage.mime};base64,${message.generatedImage.base64}`} download={`studyflow-image.${message.generatedImage.mime.split('/')[1]}`}>
+                <img className="mt-2 max-h-96 max-w-full rounded-lg object-contain" alt="AI-generated image. Click to download."
+                  src={`data:${message.generatedImage.mime};base64,${message.generatedImage.base64}`} />
+              </a>
+            )}
             {message.edit && <div className="pip-message-meta">
               <span>{message.edit.title}</span>
               <button type="button" className="pip-primary-text" disabled={assistant.busy} onClick={() => assistant.applyEdit(message)}>Apply</button>
@@ -229,6 +235,10 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                 event.target.value = '';
               }} />
               <button type="button" className="pip-icon" title="Attach a screenshot or image" aria-label="Attach image" disabled={!configured || assistant.busy || processing || !assistant.available} onClick={() => picker.current?.click()}><Paperclip size={17} /></button>
+              <button type="button" className="pip-icon" aria-label="Generate image from message"
+                title={assistant.settings.provider === 'claude' ? 'Choose OpenAI or Gemini to generate images' : 'Generate an image from your message'}
+                disabled={!configured || assistant.busy || processing || !assistant.available || !assistant.draft.trim() || !!assistant.attachment || assistant.settings.provider === 'claude'}
+                onClick={() => { follow.current = true; void assistant.send(true); }}><ImagePlus size={17} /></button>
               <select aria-label="Image detail" value={assistant.detail} onChange={event => assistant.setDetail(event.target.value === 'high' ? 'high' : 'standard')} disabled={assistant.busy || processing || !!assistant.attachment}>
                 <option value="standard">Image detail</option>
                 <option value="high">Fine text</option>

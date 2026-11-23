@@ -116,10 +116,45 @@ function providerError(status: number, label: string) {
   return `${label} is temporarily unavailable.`;
 }
 
+async function* generateProviderImage(request: ChatRequest, key: string, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+  if (request.provider === 'claude') {
+    yield { type: 'error', message: 'Select OpenAI or Gemini for image generation.' };
+    return;
+  }
+  const openai = request.provider === 'openai';
+  const url = openai ? 'https://api.openai.com/v1/images/generations'
+    : 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent';
+  const response = await fetch(url, {
+    method: 'POST', signal, redirect: 'error',
+    headers: { 'Content-Type': 'application/json', ...(openai ? { Authorization: `Bearer ${key}` } : { 'x-goog-api-key': key }) },
+    body: JSON.stringify(openai ? { model: 'gpt-image-2.6-flare', prompt: request.prompt, n: 1 }
+      : { contents: [{ parts: [{ text: request.prompt }] }], generationConfig: { responseModalities: ['IMAGE'] } }),
+  });
+  if (!response.ok) {
+    yield { type: 'error', message: `Image request rejected (${response.status}). Check API key, model access, and billing.` };
+    return;
+  }
+  const data = await response.json();
+  const inline = data.candidates?.[0]?.content?.parts?.find((part: { thought?: boolean; inlineData?: unknown }) => !part.thought && part.inlineData)?.inlineData;
+  const base64 = openai ? data.data?.[0]?.b64_json : inline?.data;
+  const mime = openai ? 'image/png' : inline?.mimeType;
+  if (typeof base64 !== 'string' || base64.length > 8_000_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64) ||
+      (mime !== 'image/png' && mime !== 'image/jpeg' && mime !== 'image/webp')) {
+    yield { type: 'error', message: 'The provider returned no usable image. Try another prompt.' };
+    return;
+  }
+  yield { type: 'image', mime, base64 };
+  yield { type: 'done' };
+}
+
 export async function* streamProvider(
   request: ChatRequest, key: string, signal: AbortSignal,
 ): AsyncGenerator<ChatEvent> {
   const { provider } = request;
+  if (request.generateImage) {
+    yield* generateProviderImage(request, key, signal);
+    return;
+  }
   const label = PROVIDERS[provider].label;
   const { url, headers, body } = providerRequest(request, key);
   const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal, redirect: 'error' });

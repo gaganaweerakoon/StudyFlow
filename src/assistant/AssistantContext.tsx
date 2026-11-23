@@ -15,6 +15,7 @@ interface ChatMessage extends ChatTurn {
   edit?: WorkspaceEdit;
   id: string;
   attachment?: string;
+  generatedImage?: { mime: string; base64: string };
   tokens?: TokenUsage;
   state?: 'streaming' | 'complete' | 'stopped' | 'error';
 }
@@ -90,7 +91,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const saved = conversations.filter(chat => chat.messages.length).slice(0, historyLimit).map(chat => ({
       ...chat,
       // Workspace edit callbacks and images only belong to the current session.
-      messages: chat.messages.map(({ edit: _edit, ...message }) => ({
+      messages: chat.messages.map(({ edit: _edit, generatedImage: _image, ...message }) => ({
         ...message, state: message.state === 'streaming' ? 'stopped' as const : message.state,
       })),
     }));
@@ -160,7 +161,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     if (activeId === id) switchChat(next[0].id);
   }
 
-  async function send() {
+  async function send(generateImage = false) {
     const typed = draft.trim();
     if ((!typed && !attachment) || activeRequest.current || !available) return;
     const { provider } = settings;
@@ -169,12 +170,14 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       setNotice(`Add a ${PROVIDERS[provider].label} API key in AI Settings to send a message.`);
       return;
     }
+    if (generateImage && (!typed || attachment || provider === 'claude')) return;
     const prompt = typed || imagePrompt;
     const request: ChatRequest = {
       prompt, provider, model, maxOutput: 16384,
-      context: includeContext ? context.text : '',
+      generateImage,
+      context: includeContext && !generateImage ? context.text : '',
       image: attachment?.image,
-      history: active.messages
+      history: generateImage ? [] : active.messages
         .filter(message => message.text && (message.role === 'user' || message.state === 'complete'))
         .slice(-CHAT_LIMITS.history)
         .map(({ role, text }) => ({ role, text: text.slice(0, CHAT_LIMITS.historyMessage) })),
@@ -211,6 +214,10 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         if (event.type === 'text') {
           responseText += event.text;
           updateMessage(message => ({ ...message, text: splitWorkspaceResponse(responseText).text }));
+        }
+        if (event.type === 'image' && generateImage) {
+          responseText = 'Generated image. Download it to keep a copy.';
+          updateMessage(message => ({ ...message, text: responseText, generatedImage: { mime: event.mime, base64: event.base64 } }));
         }
         if (event.type === 'usage') tokens = event.usage;
         if (event.type === 'error') throw new Error(event.message);

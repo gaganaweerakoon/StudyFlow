@@ -39,6 +39,8 @@ pub struct ChatRequest {
     history: Vec<Turn>,
     image: Option<Image>,
     max_output: u32,
+    #[serde(default)]
+    generate_image: bool,
 }
 
 fn validate(request: &ChatRequest, key: &str) -> Result<(), String> {
@@ -238,6 +240,67 @@ impl Reply {
     }
 }
 
+async fn generate_image(
+    client: &Client,
+    request: &ChatRequest,
+    key: &str,
+    emit: impl Fn(Value) -> Result<(), String>,
+) -> Result<(), String> {
+    let call = match request.provider {
+        Provider::Openai => client
+            .post("https://api.openai.com/v1/images/generations")
+            .bearer_auth(key)
+            .json(&json!({"model":"gpt-image-2.6-flare","prompt":request.prompt,"n":1})),
+        Provider::Gemini => client
+            .post("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent")
+            .header("x-goog-api-key", key)
+            .json(&json!({
+                "contents":[{"parts":[{"text":request.prompt}]}],
+                "generationConfig":{"responseModalities":["IMAGE"]}
+            })),
+        Provider::Claude => return Err("Select OpenAI or Gemini for image generation.".into()),
+    };
+    let response = call
+        .send()
+        .await
+        .map_err(|_| "Could not connect to your image provider.")?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Image request rejected ({}). Check API key, model access, and billing.",
+            response.status().as_u16()
+        ));
+    }
+    let data: Value = response
+        .json()
+        .await
+        .map_err(|_| "The provider returned an unreadable image response.")?;
+    let (mime, base64) = if matches!(request.provider, Provider::Openai) {
+        (Some("image/png"), data["data"][0]["b64_json"].as_str())
+    } else {
+        let image = data["candidates"][0]["content"]["parts"]
+            .as_array()
+            .and_then(|parts| {
+                parts
+                    .iter()
+                    .find(|part| part["thought"] != true && part["inlineData"].is_object())
+            });
+        (
+            image.and_then(|part| part["inlineData"]["mimeType"].as_str()),
+            image.and_then(|part| part["inlineData"]["data"].as_str()),
+        )
+    };
+    let Some(mime @ ("image/png" | "image/jpeg" | "image/webp")) = mime else {
+        return Err("The provider returned no usable image. Try another prompt.".into());
+    };
+    let Some(base64) = base64.filter(|encoded| {
+        encoded.len() <= 8_000_000 && !encoded.is_empty() && STANDARD.decode(encoded).is_ok()
+    }) else {
+        return Err("The provider returned no usable image. Try another prompt.".into());
+    };
+    emit(json!({"type":"image","mime":mime,"base64":base64}))?;
+    emit(json!({"type":"done"}))
+}
+
 pub async fn stream(
     request: ChatRequest,
     key: String,
@@ -250,6 +313,9 @@ pub async fn stream(
         .timeout(Duration::from_secs(90))
         .build()
         .map_err(|_| "Could not start the provider connection.".to_string())?;
+    if request.generate_image {
+        return generate_image(&client, &request, &key, emit).await;
+    }
     let response = make_request(&client, &request, &key)
         .header("Accept", "text/event-stream")
         .send()
