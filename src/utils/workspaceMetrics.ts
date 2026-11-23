@@ -46,7 +46,7 @@ export function studyChart(range: StudyRange, sessions: StudySession[], history:
     const cursor = new Date(from + 'T12:00:00');
     while (localDay(cursor) < until) {
       for (const block of layoutCalendarDay(sessions, localDay(cursor))) {
-        if (block.session.countsTowardStudy === false) continue;
+        if (block.session.countsTowardStudy === false || block.session.blockType === 'sleep' || block.session.blockType === 'free') continue;
         const hours = block.to - block.from;
         planned += hours;
         if (logged && block.session.status === 'completed') {

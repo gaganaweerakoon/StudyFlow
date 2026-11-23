@@ -1,3 +1,4 @@
+import { currentStudySession } from '../../utils/calendarLayout';
 import { focusScenes, focusTracks } from '../../utils/focusScenes';
 import React, { useState } from 'react';
 import {
@@ -28,6 +29,7 @@ export const FocusTimerView: React.FC = () => {
     triggerCompleteFocusSession,
     focusHistory,
     subjects,
+    sessions,
     tasks,
     preferences,
     updatePreferences,
@@ -51,7 +53,17 @@ export const FocusTimerView: React.FC = () => {
     else audio.current.pause();
   },[focusTimer.running,track,preferences.musicVolume,preferences.musicMuted,fullScreenMode]);
   const music=<audio ref={audio} loop src={track ? '/focus/'+track+'.ogg':undefined}/>;
-  const activeSubject = subjects.find((s) => s.id === focusTimer.subjectId);
+  const [now, setNow] = useState(() => new Date());
+  React.useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 15000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const automatic = !focusTimer.running && !focusTimer.elapsedSeconds && focusTimer.phase === 'focus' &&
+    (focusTimer.mode === 'Stopwatch' || focusTimer.secondsLeft === focusTimer.totalSeconds) && focusTimer.calendarSessionId !== null;
+  const current = automatic ? currentStudySession(sessions, now) : undefined;
+  const focusSubject = automatic ? current?.subjectId ?? '' : focusTimer.subjectId;
+  const focusTitle = automatic ? current?.title ?? '' : focusTimer.taskTitle;
+  const activeSubject = subjects.find(subject => subject.id === focusSubject);
   const displayTime =
     focusTimer.mode === 'Stopwatch'
       ? formatTimerSeconds(focusTimer.elapsedSeconds)
@@ -174,7 +186,7 @@ export const FocusTimerView: React.FC = () => {
             {displayTime}
           </div>
           <div className="text-[12px] text-[var(--text-secondary)] truncate max-w-[190px]">
-            {focusTimer.taskTitle}
+            {focusTitle || 'No current study session'}
           </div>
         </div>
       </div>
@@ -320,8 +332,8 @@ export const FocusTimerView: React.FC = () => {
               </label>
               <select
                 id="focus-subject"
-                value={focusTimer.subjectId}
-                onChange={(e) => setFocusContext(e.target.value, focusTimer.taskTitle)}
+                value={focusSubject}
+                onChange={(e) => setFocusContext(e.target.value, focusTitle)}
                 className="w-full px-2.5 py-2 rounded-lg text-[13px]"
                 style={{
                   backgroundColor: 'var(--bg-surface-subtle)',
@@ -343,8 +355,8 @@ export const FocusTimerView: React.FC = () => {
               </label>
               <select
                 id="focus-task"
-                value={focusTimer.taskTitle}
-                onChange={(e) => setFocusContext(focusTimer.subjectId, e.target.value)}
+                value={focusTitle}
+                onChange={(e) => setFocusContext(focusSubject, e.target.value)}
                 className="w-full px-2.5 py-2 rounded-lg text-[13px]"
                 style={{
                   backgroundColor: 'var(--bg-surface-subtle)',

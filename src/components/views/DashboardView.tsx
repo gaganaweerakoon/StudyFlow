@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { localDay } from '../../assistant/workspaceContext';
-import { layoutCalendarDay } from '../../utils/calendarLayout';
+import { currentStudySession, layoutCalendarDay } from '../../utils/calendarLayout';
 import { studyChart } from '../../utils/workspaceMetrics';
 import { DASHBOARD_CHART_DATA } from '../../data/mockData';
 import {
@@ -49,7 +49,7 @@ export const DashboardView: React.FC = () => {
     exams,
     notes,
     focusTimer,
-    toggleFocusRunning, setFocusContext,
+    toggleFocusRunning,
     setRoute,
     setSelectedSubjectId,
     setSelectedNoteId,
@@ -77,7 +77,8 @@ export const DashboardView: React.FC = () => {
   const todaySessions = layoutCalendarDay(sessions, localDay(now))
     .filter(block => block.to > hour && block.session.status === 'upcoming' && block.session.countsTowardStudy !== false);
   const dailyStudyHours = legacyCalendar ? studyChart('daily', sessions, focusHistory)[0].actual : 3.4;
-  const weeklyHours = legacyCalendar ? studyChart('weekly', sessions, focusHistory).reduce((sum, day) => sum + day.actual, 0) : 28.6;
+  const weekly = calculateStudyAdherence(studyChart('weekly', sessions, focusHistory, { date: now, creditCompletedBlocks: true }));
+  const weeklyProgress = weekly.totalPlanned > 0 ? Math.min(100, weekly.totalActual / weekly.totalPlanned * 100) : 0;
   const dailyGoalPct = Math.min(100, Math.round((dailyStudyHours / preferences.dailyGoalHours) * 100));
 
   const isVisible = (id: string) => dashboardWidgets.find((w) => w.id === id)?.visible ?? true;
@@ -133,14 +134,14 @@ export const DashboardView: React.FC = () => {
               <div className="text-[12px] text-[var(--text-muted)]">Weekly study hours</div>
               <div className="mt-1 flex items-baseline gap-2">
                 <span className="font-mono-num text-[22px] font-semibold text-[var(--text-primary)]">
-                  {weeklyHours.toFixed(1)}h
+                  {weekly.totalActual.toFixed(1)}h
                 </span>
                 <span className="text-[12px] text-emerald-600 dark:text-emerald-400 font-medium">
-                  {legacyCalendar ? `of ${preferences.weeklyGoalHours}h goal` : ' +2.4h vs last wk'}
+                  {weekly.totalPlanned > 0 ? `of ${weekly.totalPlanned.toFixed(1)}h planned` : 'No study time planned'}
                 </span>
               </div>
               <div className="mt-2 h-1.5 w-full rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-surface-hover)' }}>
-                <div className="h-full rounded-full" style={{ width: legacyCalendar ? `${Math.min(100, 100 * weeklyHours / Math.max(1, preferences.weeklyGoalHours))}%` : '89%', backgroundColor: 'var(--accent)' }} />
+                <div className="h-full rounded-full" style={{ width: `${weeklyProgress}%`, backgroundColor: 'var(--accent)' }} />
               </div>
             </div>
 
@@ -372,8 +373,8 @@ export const DashboardView: React.FC = () => {
         );
 
       case 'quick_focus': {
-        const idle = !focusTimer.running && !focusTimer.elapsedSeconds && focusTimer.phase === 'focus' && focusTimer.secondsLeft === focusTimer.totalSeconds;
-        const current = idle ? todaySessions.find(block => block.from <= hour)?.session : undefined;
+        const idle = !focusTimer.running && !focusTimer.elapsedSeconds && focusTimer.phase === 'focus' && (focusTimer.mode === 'Stopwatch' || focusTimer.secondsLeft === focusTimer.totalSeconds);
+        const current = idle && focusTimer.calendarSessionId !== null ? currentStudySession(sessions, now) : undefined;
         const next = idle && !current ? todaySessions.find(block => block.from > hour) : undefined;
         const sub = subjects.find(s => s.id === (current?.subjectId ?? focusTimer.subjectId));
         const timeStr =
@@ -408,15 +409,12 @@ export const DashboardView: React.FC = () => {
                   {timeStr}
                 </div>
                 <div className="text-[12px] text-[var(--text-secondary)] mt-2 break-words">
-                  {current?.title || (!idle && focusTimer.taskTitle) || 'Manual focus'}
+                  {current?.title || ((!idle || focusTimer.calendarSessionId === null) && focusTimer.taskTitle) || 'No current study session'}
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  if (idle) setFocusContext(current?.subjectId ?? focusTimer.subjectId, current?.title ?? '', current?.id);
-                  toggleFocusRunning();
-                }}
+                onClick={toggleFocusRunning}
                 aria-label={focusTimer.running ? 'Pause quick focus timer' : 'Start quick focus timer'}
                 className="h-10 px-4 rounded-xl inline-flex items-center gap-2 text-[13px] font-medium shrink-0 transition-opacity hover:opacity-90"
                 style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}

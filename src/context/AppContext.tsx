@@ -1,3 +1,4 @@
+import { currentStudySession } from '../utils/calendarLayout';
 import { collectRewards, rewardSummary, type RewardLedger } from '../utils/rewards';
 import { wipeWorkspace, WIPE_OPTIONS, type WipeSection } from '../desktop/wipeWorkspace';
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
@@ -474,8 +475,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   }, []);
 
   const toggleFocusRunning = useCallback(() => {
-    setFocusTimer((prev) => ({ ...prev, running: !prev.running }));
-  }, []);
+    const current = currentStudySession(sessions);
+    setFocusTimer(prev => {
+      const useDefault = !prev.running && prev.phase === 'focus' && prev.elapsedSeconds === 0 &&
+        (prev.mode === 'Stopwatch' || prev.secondsLeft === prev.totalSeconds) && prev.calendarSessionId !== null;
+      if (!useDefault) return { ...prev, running: !prev.running };
+      return { ...prev, running: true, calendarSessionId: current?.id,
+        subjectId: current?.subjectId ?? '', taskTitle: current?.title ?? '' };
+    });
+  }, [sessions]);
 
   const resetFocusTimer = useCallback(() => {
     setFocusTimer((prev) => ({

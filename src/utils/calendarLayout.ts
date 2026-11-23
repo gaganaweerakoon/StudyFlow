@@ -1,3 +1,4 @@
+import { localDay } from '../assistant/workspaceContext';
 import type { StudySession } from '../types/studyflow';
 
 export function layoutCalendarDay(sessions: StudySession[], date: string) {
@@ -29,4 +30,12 @@ export function layoutCalendarDay(sessions: StudySession[], date: string) {
   }
   finish();
   return entries;
+}
+
+export function currentStudySession(sessions: StudySession[], now = new Date()) {
+  const hour = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
+  return layoutCalendarDay(sessions, localDay(now)).filter(({ session, from, to }) =>
+    from <= hour && hour < to && session.status === 'upcoming' &&
+    session.countsTowardStudy !== false && session.blockType !== 'sleep' && session.blockType !== 'free',
+  ).sort((a, b) => b.session.date.localeCompare(a.session.date) || b.session.startHour - a.session.startHour || a.session.id.localeCompare(b.session.id))[0]?.session;
 }
