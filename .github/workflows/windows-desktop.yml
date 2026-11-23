@@ -2,6 +2,10 @@ name: Windows desktop build
 
 on:
   workflow_dispatch:
+  push:
+    branches: [mobile-companion-integration]
+    paths:
+      - .github/workflows/windows-desktop.yml
 
 permissions:
   contents: read
