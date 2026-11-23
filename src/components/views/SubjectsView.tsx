@@ -1,3 +1,4 @@
+import { studyChart } from '../../utils/workspaceMetrics';
 import React, { useState } from 'react';
 import {
   LayoutGrid,
@@ -40,7 +41,7 @@ const SUBJECT_ICONS: Record<Subject['icon'], React.ComponentType<{ className?: s
 
 export const SubjectsView: React.FC = () => {
   const {
-    subjects,
+    subjects, sessions, focusHistory,
     selectedSubjectId,
     setSelectedSubjectId,
     toggleTopicCompletion,
@@ -70,6 +71,16 @@ export const SubjectsView: React.FC = () => {
     setExpandedChapters((prev) => ({ ...prev, [id]: prev[id] === false }));
   };
 
+  function weeklyProgress(id: string) {
+    const blocks = sessions.filter(s => s.subjectId === id && s.countsTowardStudy !== false);
+    const history = focusHistory.filter(h => h.subjectId === id);
+    const weekly = studyChart('weekly', blocks, history);
+    const finished = studyChart('weekly', blocks.filter(s => s.status === 'completed'), []);
+    const total = weekly.reduce((sum, day) => sum + day.planned, 0);
+    const completed = weekly.reduce((sum, day, i) => sum + Math.max(day.actual, finished[i].planned), 0);
+    return { total: +total.toFixed(2), completed: +completed.toFixed(2), percent: total ? Math.min(100, Math.round(100 * completed / total)) : 0 };
+  }
+
   if (activeSubject) {
     const Icon = SUBJECT_ICONS[activeSubject.icon] ?? Code2;
     const prog = calculateSubjectProgress(activeSubject.chapters);
@@ -79,7 +90,7 @@ export const SubjectsView: React.FC = () => {
     const subCards = flashcards.filter((c) => subDecks.some((d) => d.id === c.deckId));
     const daysToExam = Math.max(
       1,
-      Math.round((new Date(activeSubject.nextExamDate).getTime() - new Date('2026-11-22').getTime()) / 86400000)
+      Math.round((new Date(activeSubject.nextExamDate).getTime() - Date.now()) / 86400000)
     );
 
     const perfSeries = [
@@ -130,7 +141,7 @@ export const SubjectsView: React.FC = () => {
             <div className="text-right">
               <div className="text-[11px] text-[var(--text-muted)]">Next Exam</div>
               <div className="font-mono-num font-semibold text-amber-600 dark:text-amber-400">
-                in {daysToExam} days
+                {Number.isFinite(daysToExam) ? `in ${daysToExam} days` : 'No exam scheduled'}
               </div>
             </div>
           </div>
@@ -531,11 +542,11 @@ export const SubjectsView: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {subjects.map((sub) => {
             const Icon = SUBJECT_ICONS[sub.icon] ?? Code2;
-            const prog = calculateSubjectProgress(sub.chapters);
+            const prog = weeklyProgress(sub.id);
             const openTasks = tasks.filter((t) => t.subjectId === sub.id && t.status !== 'done').length;
             const daysToExam = Math.max(
               1,
-              Math.round((new Date(sub.nextExamDate).getTime() - new Date('2026-11-22').getTime()) / 86400000)
+              Math.round((new Date(sub.nextExamDate).getTime() - Date.now()) / 86400000)
             );
 
             return (
@@ -573,9 +584,9 @@ export const SubjectsView: React.FC = () => {
 
                 <div>
                   <div className="flex items-center justify-between text-[12px] mb-1">
-                    <span className="text-[var(--text-secondary)]">Syllabus mastery</span>
+                    <span className="text-[var(--text-secondary)]">Completed / scheduled this week</span>
                     <span className="font-mono-num font-medium text-[var(--text-primary)]">
-                      {prog.percent}% ({prog.completed}/{prog.total})
+                      {prog.completed}h / {prog.total}h
                     </span>
                   </div>
                   <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-surface-hover)' }}>
@@ -592,7 +603,7 @@ export const SubjectsView: React.FC = () => {
                   </span>
                   <span>{openTasks} open tasks</span>
                   <span className="inline-flex items-center gap-1 font-mono-num text-amber-600 dark:text-amber-400">
-                    <Calendar className="w-3 h-3" /> Exam {daysToExam}d
+                    <Calendar className="w-3 h-3" /> {Number.isFinite(daysToExam) ? `Exam in ${daysToExam}d` : 'No exam scheduled'}
                   </span>
                 </div>
               </button>
@@ -602,7 +613,7 @@ export const SubjectsView: React.FC = () => {
       ) : (
         <div className="rounded-xl divide-y divide-[var(--border-subtle)]" style={surfaceStyle}>
           {subjects.map((sub) => {
-            const prog = calculateSubjectProgress(sub.chapters);
+            const prog = weeklyProgress(sub.id);
             return (
               <button
                 key={sub.id}
