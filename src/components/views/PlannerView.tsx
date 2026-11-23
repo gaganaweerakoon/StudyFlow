@@ -76,7 +76,7 @@ export const PlannerView: React.FC = () => {
       dayIndex: dayIdx,
       date: targetDay.date,
       startHour: hour,
-      status: dayIdx === 6 && hour >= 11 ? 'upcoming' : 'upcoming',
+      status: 'upcoming',
     });
     pushToast(`Rescheduled block to ${targetDay.short} ${formatHourLabel(hour)}`);
     setDragSessionId(null);
@@ -532,7 +532,7 @@ export const PlannerView: React.FC = () => {
                       </p>
                     )}
 
-                    <form key={selectedSession.id} className="grid gap-2 text-xs" onSubmit={e => {
+                    <form key={selectedSession.id} className="grid gap-2 text-xs [&_input:not([type=checkbox])]:block [&_input:not([type=checkbox])]:w-full [&_input:not([type=checkbox])]:rounded [&_input:not([type=checkbox])]:border [&_input:not([type=checkbox])]:border-[var(--border-subtle)] [&_input:not([type=checkbox])]:p-1" onSubmit={e => {
                       e.preventDefault();
                       const data = new FormData(e.currentTarget);
                       const title = String(data.get('title')).trim();
@@ -543,13 +543,21 @@ export const PlannerView: React.FC = () => {
                       const countsTowardStudy = data.has('counted');
                       const series = /^legacy-series-(\d+)-/.exec(selectedSession.id);
                       if (series && data.get('scope') === 'series' && updateRecurringSeries) {
-                        updateRecurringSeries(Number(series[1]), title, startHour, durationHours, countsTowardStudy);
+                        if (data.get('date') !== selectedSession.date) {
+                          pushToast('Choose This occurrence to move it to a different date.');
+                          return;
+                        }
+                        updateRecurringSeries(Number(series[1]), title, startHour, durationHours, countsTowardStudy, String(data.get('subject')));
                       } else {
-                        updateSession(selectedSession.id, { title, startHour, durationHours, countsTowardStudy });
+                        const date = String(data.get('date'));
+                        const dayIndex = (new Date(date + 'T12:00:00').getDay() + 6) % 7;
+                        updateSession(selectedSession.id, { title, date, dayIndex, startHour, durationHours, countsTowardStudy, subjectId: String(data.get('subject')) });
                       }
                       pushToast('Calendar changes saved');
                     }}>
                       <label>Title <input name="title" required defaultValue={selectedSession.title} /></label>
+                      <label>Date <input name="date" type="date" required defaultValue={selectedSession.date} /></label>
+                      <label>Subject <select name="subject" defaultValue={selectedSession.subjectId}><option value="">Unassigned</option>{subjects.map(subject=><option key={subject.id} value={subject.id}>{subject.name}</option>)}</select></label>
                       <label>Starts <input name="start" type="time" required defaultValue={new Date(Math.round(selectedSession.startHour * 60) * 60000).toISOString().slice(11,16)} /></label>
                       <label>Duration in minutes <input name="duration" type="number" min="1" max="1440" required defaultValue={Math.round(selectedSession.durationHours * 60)} /></label>
                       <label><input type="checkbox" name="counted" defaultChecked={selectedSession.countsTowardStudy !== false} /> Counts toward study time</label>

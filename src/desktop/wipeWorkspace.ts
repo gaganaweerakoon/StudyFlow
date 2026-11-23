@@ -35,7 +35,7 @@ function wipeSection(workspace: Omit<WorkspaceSnapshot, 'previousWorkspace'>, se
     if (archive) {
       archive.subjects = [];
       for (const [table, rows] of Object.entries(archive)) {
-        archive[table] = rows.map(row => 'subject_id' in row ? { ...row, subject_id: null } : row);
+        archive[table] = rows.map(row => 'subject_id' in row ? { ...row, subject_id: null, studyflowSubjectId: undefined } : row);
       }
     }
   } else {

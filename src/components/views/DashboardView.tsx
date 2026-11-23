@@ -374,6 +374,7 @@ export const DashboardView: React.FC = () => {
       case 'quick_focus': {
         const idle = !focusTimer.running && !focusTimer.elapsedSeconds && focusTimer.phase === 'focus' && focusTimer.secondsLeft === focusTimer.totalSeconds;
         const current = idle ? todaySessions.find(block => block.from <= hour)?.session : undefined;
+        const next = idle && !current ? todaySessions.find(block => block.from > hour) : undefined;
         const sub = subjects.find(s => s.id === (current?.subjectId ?? focusTimer.subjectId));
         const timeStr =
           focusTimer.mode === 'Stopwatch'
@@ -407,13 +408,13 @@ export const DashboardView: React.FC = () => {
                   {timeStr}
                 </div>
                 <div className="text-[12px] text-[var(--text-secondary)] mt-1.5 truncate max-w-[230px]">
-                  {current?.title || focusTimer.taskTitle || 'Manual focus'}
+                  {current?.title || (!idle && focusTimer.taskTitle) || 'Manual focus'}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => {
-                  if (current) setFocusContext(current.subjectId, current.title);
+                  if (idle) setFocusContext(current?.subjectId ?? focusTimer.subjectId, current?.title ?? '');
                   toggleFocusRunning();
                 }}
                 aria-label={focusTimer.running ? 'Pause quick focus timer' : 'Start quick focus timer'}
@@ -421,7 +422,7 @@ export const DashboardView: React.FC = () => {
                 style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
               >
                 {focusTimer.running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                {focusTimer.running ? 'Pause' : 'Start'}
+                {focusTimer.running ? 'Pause' : idle ? 'Start' : 'Resume'}
               </button>
             </div>
 
@@ -429,7 +430,7 @@ export const DashboardView: React.FC = () => {
               <span className="flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5" /> Cycle {focusTimer.cycleCount} of 4
               </span>
-              <span>Next: 5m break</span>
+              <span>{next ? 'Up next · ' + next.session.title + ' · ' + formatHourLabel(next.from) : 'Next break · ' + preferences.pomodoroBreakMin + ' min'}</span>
             </div>
           </section>
         );
