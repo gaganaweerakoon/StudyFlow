@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod google;
+mod ocr;
 
 use serde_json::Value;
 use std::path::PathBuf;
@@ -49,6 +50,18 @@ fn inspect_legacy_backup(
         tauri::ipc::InvokeBody::Raw(bytes) => studyflow_storage::read_legacy_backup(bytes),
         _ => Err("Choose a SQLite backup file.".into()),
     }
+}
+
+#[tauri::command]
+async fn recognize_pdf_page(request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("Send a PDF page rendered as PNG.".into());
+    };
+    ocr::validate_png(bytes)?;
+    let bytes = bytes.clone();
+    tauri::async_runtime::spawn_blocking(move || ocr::recognize(&bytes))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[derive(Default)]
@@ -105,6 +118,7 @@ fn main() {
             load_snapshot,
             save_snapshot,
             inspect_legacy_backup,
+            recognize_pdf_page,
             assistant_chat,
             cancel_assistant_chat,
             google::google_sign_in

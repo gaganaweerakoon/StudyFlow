@@ -1,7 +1,8 @@
+import {isTauri} from '@tauri-apps/api/core';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {useEffect, useRef, useState} from 'react';
-import {openPdf, preparePages, readFileData, type PdfDocument, type PdfSource, type PdfMark} from './pdf';
+import {openPdf, preparePages, readFileData, recognizePage, type PdfDocument, type PdfSource, type PdfMark} from './pdf';
 
 export function PdfPanel({source, save}: {source?:PdfSource; save:(next:PdfSource)=>void}) {
   const [prepareOnImport,setPrepareOnImport] = useState(false);
@@ -40,6 +41,35 @@ export function PdfPanel({source, save}: {source?:PdfSource; save:(next:PdfSourc
     }).catch(e=>active && setError(String(e)));
     return ()=>{active=false; task?.cancel();};
   },[doc,page]);
+  const [ocrStatus, setOcrStatus] = useState('');
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const scanned = source?.pages?.flatMap((p, i) => !p.text && !p.ocrComplete ? [i] : []) ?? [];
+  async function recognizeScans() {
+    if (!doc || !source?.pages || working) return;
+    setWorking(true);
+    setError('');
+    let pageNumber = 0;
+    try {
+      for (const index of scanned) {
+        if (!mounted.current || latest.current?.data !== source.data) break;
+        pageNumber = index + 1;
+        setOcrStatus('Reading page ' + pageNumber + ' of ' + doc.numPages + '…');
+        const text = await recognizePage(doc, pageNumber);
+        const current = latest.current;
+        if (!mounted.current || current?.data !== source.data || !current.pages) break;
+        const pages = current.pages.map((p, i) => i === index ? {...p, text, ocrComplete: true} : p);
+        save({...current, pages});
+      }
+    } catch (err) {
+      if (mounted.current) setError('Page ' + pageNumber + ': ' + String(err));
+    } finally {
+      if (mounted.current) { setWorking(false); setOcrStatus(''); }
+    }
+  }
   function position(e:React.PointerEvent<SVGSVGElement>) {
     const box=e.currentTarget.getBoundingClientRect();
     return [(e.clientX-box.left)*size.width/box.width,(e.clientY-box.top)*size.height/box.height];
@@ -76,6 +106,10 @@ export function PdfPanel({source, save}: {source?:PdfSource; save:(next:PdfSourc
       if(!doc)return;setWorking(true);try {const pages=await preparePages(doc); save({...latest.current!,pages});}
       catch(err){setError(String(err));}finally{setWorking(false);}
     }}>{working?'Preparing…':source.pages?'Rebuild Markdown':'Prepare Markdown'}</button>}
+    {scanned.length > 0 && (isTauri() ? <button disabled={working || !doc} onClick={recognizeScans}>
+      Recognize scanned text ({scanned.length} {scanned.length === 1 ? 'page' : 'pages'})
+    </button> : <p>Open this note in the desktop app to recognize scanned text offline.</p>)}
+    {ocrStatus && <p role="status">{ocrStatus}</p>}
     {source.pages && <details><summary>Markdown and images</summary>{source.pages.map((p,i)=>(
       <section key={i} className="my-3 space-y-2">
         <strong>Page {i+1}</strong>
@@ -86,7 +120,7 @@ export function PdfPanel({source, save}: {source?:PdfSource; save:(next:PdfSourc
               return figure ? <img src={figure.image} alt={alt ?? 'PDF figure'} /> : null;
             },
           }}>{p.text}</Markdown>
-        </div> : <p>Image-only page. No selectable text.</p>}
+        </div> : <p>{p.ocrComplete ? 'No text recognized on this page.' : 'Image-only page. No selectable text.'}</p>}
         {p.image && <details><summary>Original page image</summary><img src={p.image} alt={'Original page '+(i+1)}/></details>}
       </section>
     ))}</details>}</>}

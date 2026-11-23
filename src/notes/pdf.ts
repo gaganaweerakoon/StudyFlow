@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import { pageMarkdown, type PdfFigure, type PdfTextRun } from './pdfMarkdown';
 
 interface PdfViewport {
@@ -16,7 +17,7 @@ export interface PdfSource {
   name: string;
   data: string;
   marks: PdfMark[];
-  pages?: { text: string; image?: string; figures?: PdfFigure[]; structured?: boolean; hasText?: boolean }[];
+  pages?: { text: string; image?: string; figures?: PdfFigure[]; structured?: boolean; hasText?: boolean; ocrComplete?: boolean }[];
 }
 interface PdfPage {
   getViewport(options: {scale: number}): PdfViewport;
@@ -84,6 +85,25 @@ async function extractFigures(page: PdfPage, canvas: HTMLCanvasElement, viewport
     }
   }
   return figures;
+}
+
+export async function recognizePage(doc: PdfDocument, pageNumber: number): Promise<string> {
+  const page = await doc.getPage(pageNumber);
+  const original = page.getViewport({ scale: 1 });
+  const scale = Math.min(3, 2600 / Math.max(original.width, original.height));
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  try {
+    await page.render({ canvas, viewport }).promise;
+    const png = await new Promise<Blob>((resolve, reject) => canvas.toBlob(
+      blob => blob ? resolve(blob) : reject(new Error('Could not prepare the page image.')), 'image/png',
+    ));
+    return (await invoke<string>('recognize_pdf_page', await png.arrayBuffer())).trim();
+  } finally {
+    canvas.width = canvas.height = 0;
+  }
 }
 
 export async function preparePages(doc: PdfDocument, previews = true) {

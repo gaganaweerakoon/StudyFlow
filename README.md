@@ -20,7 +20,7 @@ Start from the active calendar block with **Quick-Start Focus**, or choose Pomod
 
 ## Work with notes and PDFs
 
-Search notes, assign them to subjects, and attach PDFs. Draw, highlight, and type annotations directly on pages. **Prepare Markdown** extracts selectable text locally and can place aligned tables and embedded figures inline. The original page image stays available for reference, including for scanned pages.
+Search notes, assign them to subjects, and attach PDFs. Draw, highlight, and type annotations directly on pages. **Prepare Markdown** extracts selectable text locally and can place aligned tables and embedded figures inline. The original page image stays available for reference, including for scanned pages. In the desktop app, choose **Recognize scanned text** after preparing Markdown to read image-only pages offline. Recognized text is saved with the note for flashcards and practice questions. Windows uses its installed OCR language packs. Linux uses a local Tesseract installation.
 
 ![StudyFlow Notes with a Markdown editor, PDF annotator, and extracted table](docs/screenshots/notes.jpg)
 

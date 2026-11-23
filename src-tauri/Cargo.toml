@@ -24,3 +24,6 @@ studyflow-storage = { path = "storage" }
 [workspace]
 members = ["assistant", "storage"]
 resolver = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Graphics_Imaging", "Media_Ocr", "Storage_Streams", "Win32_System_WinRT"] }
