@@ -1,6 +1,6 @@
 package io.github.gaganaweerakoon.studyflow
 
-import android.Manifest
+import android.content.pm.ApplicationInfo
 import android.app.AppOpsManager
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
@@ -25,6 +25,59 @@ internal object CompanionUsage {
 
     fun status(context: Context): JSONObject = JSONObject()
         .put("granted", isGranted(context))
+
+    // Package visibility is restricted on Android 11+. The manifest declares a
+    // launcher-intent query; well-known fallbacks cover apps whose labels remain hidden.
+    private val knownApps = mapOf(
+        "com.facebook.katana" to ("Facebook" to "Social"),
+        "com.facebook.lite" to ("Facebook Lite" to "Social"),
+        "com.instagram.android" to ("Instagram" to "Social"),
+        "com.supercell.clashofclans" to ("Clash of Clans" to "Games"),
+        "com.supercell.clashroyale" to ("Clash Royale" to "Games"),
+        "com.openai.chatgpt" to ("ChatGPT" to "Productivity"),
+        "com.whatsapp" to ("WhatsApp" to "Communication"),
+        "com.whatsapp.w4b" to ("WhatsApp Business" to "Communication"),
+        "com.google.android.youtube" to ("YouTube" to "Entertainment"),
+        "com.google.android.apps.youtube.music" to ("YouTube Music" to "Music & Audio"),
+        "com.android.chrome" to ("Google Chrome" to "Browsers"),
+        "com.google.android.gm" to ("Gmail" to "Productivity"),
+        "com.google.android.apps.docs" to ("Google Drive" to "Productivity"),
+        "com.android.vending" to ("Google Play Store" to "Shopping"),
+        "com.google.android.googlequicksearchbox" to ("Google" to "Tools"),
+        "org.telegram.messenger" to ("Telegram" to "Communication"),
+        "com.ss.android.ugc.trill" to ("TikTok" to "Social"),
+        "com.zhiliaoapp.musically" to ("TikTok" to "Social"),
+        "com.hihonor.android.launcher" to ("HONOR Home" to "System"),
+        "com.huawei.android.launcher" to ("Home screen" to "System"),
+        "com.android.launcher3" to ("Home screen" to "System")
+    )
+    private fun category(info: ApplicationInfo): String = when (info.category) {
+        ApplicationInfo.CATEGORY_GAME -> "Games"
+        ApplicationInfo.CATEGORY_AUDIO -> "Music & Audio"
+        ApplicationInfo.CATEGORY_VIDEO -> "Video"
+        ApplicationInfo.CATEGORY_IMAGE -> "Photography"
+        ApplicationInfo.CATEGORY_SOCIAL -> "Social"
+        ApplicationInfo.CATEGORY_NEWS -> "News"
+        ApplicationInfo.CATEGORY_MAPS -> "Maps & Navigation"
+        ApplicationInfo.CATEGORY_PRODUCTIVITY -> "Productivity"
+        ApplicationInfo.CATEGORY_ACCESSIBILITY -> "Accessibility"
+        else -> if ((info.flags and ApplicationInfo.FLAG_SYSTEM) != 0) "System" else "Other"
+    }
+    private fun appInfo(context: Context, pkg: String): Pair<String, String> {
+        val fallback = knownApps[pkg]
+        val application = runCatching { context.packageManager.getApplicationInfo(pkg, 0) }.getOrNull()
+        val label = application?.let { runCatching {
+            context.packageManager.getApplicationLabel(it).toString().trim()
+        }.getOrNull() }
+        val name = when {
+            fallback != null && (label.isNullOrEmpty() || label.equals(pkg.substringAfterLast('.'), true)) -> fallback.first
+            !label.isNullOrBlank() -> label
+            fallback != null -> fallback.first
+            else -> pkg.split('.').lastOrNull()?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "Unknown app"
+        }
+        val kind = fallback?.second ?: application?.let(::category) ?: "Other"
+        return name to kind
+    }
 
     fun snapshot(context: Context, sessionStart: Long): JSONObject {
         if (!isGranted(context)) {
@@ -69,13 +122,11 @@ internal object CompanionUsage {
             }
             val result = JSONArray()
             totals.toList().sortedByDescending { it.second }.take(12).forEach { (pkg, ms) ->
-                val name = runCatching {
-                    val info = context.packageManager.getApplicationInfo(pkg, 0)
-                    context.packageManager.getApplicationLabel(info).toString()
-                }.getOrDefault(pkg.substringAfterLast('.'))
+                val (name, category) = appInfo(context, pkg)
                 result.put(JSONObject()
                     .put("id", pkg)
                     .put("name", name)
+                    .put("category", category)
                     .put("minutes", (ms / 6000.0).toInt() / 10.0))
             }
             return result
