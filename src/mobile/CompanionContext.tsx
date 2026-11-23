@@ -272,14 +272,30 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
     usageAccess: true,
   });
 
-  const [settings, setSettings] = useState<CompanionSettingsState>({
-    theme: 'light',
-    accentColor: '#4F46E5',
-    defaultAdvanceNotice: 15,
-    defaultRingAtStart: true,
-    defaultRemindAtBedtime: true,
-    defaultWakeAtEnd: true,
+  const [settings, setSettings] = useState<CompanionSettingsState>(() => {
+    const defaults: CompanionSettingsState = {
+      theme: 'light', accentColor: '#4F46E5',
+      defaultAdvanceNotice: 15, defaultRingAtStart: true,
+      defaultRemindAtBedtime: true, defaultWakeAtEnd: true,
+    };
+    if (!live) return defaults;
+    try {
+      const saved = JSON.parse(localStorage.getItem('studyflow.phone.appearance') || 'null');
+      if (saved && typeof saved === 'object') return {
+        ...defaults,
+        theme: ['light', 'dark', 'midnight', 'ocean', 'forest', 'warm'].includes(saved.theme) ? saved.theme : defaults.theme,
+        accentColor: /^#[0-9A-Fa-f]{6}$/.test(saved.accentColor) ? saved.accentColor : defaults.accentColor,
+      };
+    } catch { /* Keep defaults. */ }
+    return defaults;
   });
+
+  useEffect(() => {
+    if (!live) return;
+    localStorage.setItem('studyflow.phone.appearance', JSON.stringify({
+      theme: settings.theme, accentColor: settings.accentColor,
+    }));
+  }, [Boolean(live), settings.theme, settings.accentColor]);
 
   const [viewport, setViewportState] = useState<ViewportPreviewConfig>({
     widthDp: 390,
