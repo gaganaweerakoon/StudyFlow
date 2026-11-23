@@ -343,6 +343,15 @@ impl Server {
         let now = unix_seconds();
         let calendar = json!({ "revision": now, "events": events, "paired": true });
         let focus = self.focus.clone().unwrap_or(Value::Null);
+        let configured_name = focus["profileName"].as_str().unwrap_or("").trim();
+        let username = if !configured_name.is_empty() && configured_name != "Student" {
+            configured_name.chars().take(64).collect::<String>()
+        } else {
+            std::env::var("USERNAME")
+                .or_else(|_| std::env::var("USER"))
+                .unwrap_or_else(|_| "Student".into())
+                .chars().take(64).collect()
+        };
         let server_now_ms = now.saturating_mul(1000);
         let proposed = request["token"].as_str().filter(|token| {
             token.len() == 64 && token.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -357,7 +366,7 @@ impl Server {
                     now < pending.expires_at && hash(key) == pending.code_hash
                 })
             {
-                return json!({ "token": token, "calendar": calendar, "focus": focus, "serverNowMs": server_now_ms });
+                return json!({ "token": token, "calendar": calendar, "focus": focus, "serverNowMs": server_now_ms, "userName": username });
             }
         }
         match request["action"].as_str() {
@@ -391,7 +400,7 @@ impl Server {
                 if proposed.is_none() {
                     self.last_sync = Some(now);
                 }
-                json!({ "token": token, "calendar": calendar, "focus": focus, "serverNowMs": server_now_ms })
+                json!({ "token": token, "calendar": calendar, "focus": focus, "serverNowMs": server_now_ms, "userName": username })
             }
             Some("sync" | "focus_control")
                 if self
@@ -424,9 +433,9 @@ impl Server {
                         .filter(|id| id.len() <= 128)
                         .unwrap_or("");
                     self.focus_commands.push(json!({ "action": command, "sessionId": session_id }));
-                    return json!({ "accepted": true, "focus": focus, "serverNowMs": server_now_ms });
+                    return json!({ "accepted": true, "focus": focus, "serverNowMs": server_now_ms, "userName": username });
                 }
-                json!({ "calendar": calendar, "focus": focus, "serverNowMs": server_now_ms })
+                json!({ "calendar": calendar, "focus": focus, "serverNowMs": server_now_ms, "userName": username })
             }
             Some("sync" | "focus_control") => {
                 json!({ "error": "This phone is no longer paired. Scan a new code to reconnect." })
