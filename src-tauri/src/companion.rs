@@ -54,3 +54,49 @@ pub async fn companion_request(
     }
     Ok(data)
 }
+
+#[derive(Default)]
+pub struct LocalCompanion(pub std::sync::Mutex<Option<studyflow_local_companion::Companion>>);
+
+#[tauri::command]
+pub async fn local_companion(
+    app: tauri::AppHandle,
+    action: String,
+    events: Option<Value>,
+) -> Result<Value, String> {
+    use tauri::Manager;
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = app
+            .path()
+            .app_local_data_dir()
+            .map_err(|error| error.to_string())?
+            .join("companion-local.json");
+        let state = app.state::<LocalCompanion>();
+        let mut slot = state.0.lock().map_err(|error| error.to_string())?;
+        if slot.is_none() {
+            if action == "publish" && !path.exists() {
+                return Ok(Value::Null);
+            }
+            *slot = Some(studyflow_local_companion::Companion::open(path)?);
+        }
+        let companion = slot.as_mut().ok_or("Local pairing unavailable.")?;
+        match action.as_str() {
+            "publish" => {
+                companion.publish(events.ok_or("Missing calendar.")?)?;
+                Ok(Value::Null)
+            }
+            "invite" => {
+                companion.publish(events.ok_or("Missing calendar.")?)?;
+                companion.invite()
+            }
+            "status" => companion.status(),
+            "disconnect" => {
+                companion.disconnect()?;
+                companion.status()
+            }
+            _ => Err("Unknown local pairing operation.".into()),
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}

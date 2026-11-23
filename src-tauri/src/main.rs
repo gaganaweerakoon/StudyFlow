@@ -140,6 +140,7 @@ fn cancel_assistant_chat(state: State<'_, ActiveChat>, id: String) -> Result<(),
 fn main() {
     tauri::Builder::default()
         .manage(ActiveChat::default())
+        .manage(companion::LocalCompanion::default())
         .setup(|app| {
             let directory = app.path().app_local_data_dir()?;
             std::fs::create_dir_all(&directory)?;
@@ -156,6 +157,7 @@ fn main() {
             update_assistant_key,
             cancel_assistant_chat,
             companion::companion_request,
+            companion::local_companion,
             google::google_sign_in
         ])
         .run(tauri::generate_context!())

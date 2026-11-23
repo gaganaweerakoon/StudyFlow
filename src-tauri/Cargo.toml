@@ -20,9 +20,10 @@ base64 = "0.23"
 studyflow-assistant = { path = "assistant" }
 tokio = { version = "1", features = ["macros", "sync"] }
 studyflow-storage = { path = "storage" }
+studyflow-local-companion = { path = "local-companion" }
 
 [workspace]
-members = ["assistant", "storage"]
+members = ["assistant", "storage", "local-companion"]
 resolver = "2"
 
 [target.'cfg(windows)'.dependencies]

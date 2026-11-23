@@ -1,3 +1,4 @@
+import { PublishCompanionCalendar } from './companion/DesktopPairing';
 import {Onboarding} from './components/shell/Onboarding';
 /**
  * @license
@@ -109,6 +110,7 @@ const StudyFlowShell: React.FC = () => {
 export default function App({ workspace, desktopUsage, desktopHistory }: { workspace?: WorkspacePersistence; desktopUsage?: DesktopUsage; desktopHistory?: DesktopHistory }) {
   return (
     <AppProvider workspace={workspace}>
+      <PublishCompanionCalendar />
       <AssistantProvider desktopUsage={desktopUsage} desktopHistory={desktopHistory}>
         <StudyFlowShell />
       </AssistantProvider>
