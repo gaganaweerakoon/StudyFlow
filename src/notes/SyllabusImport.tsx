@@ -1,3 +1,4 @@
+import {readWordBinary} from './wordBinary';
 import {useState} from 'react';
 import JSZip from '../vendor/jszip.mjs';
 import {useApp} from '../context/AppContext';
@@ -17,7 +18,9 @@ async function syllabusText(file: File) {
     const dom = new DOMParser().parseFromString(xml,'application/xml');
     return Array.from(dom.getElementsByTagNameNS('*','p'),p=>p.textContent).join('\n');
   }
-  const raw = await file.text();
+  const buffer=await file.arrayBuffer();
+  if(new Uint8Array(buffer)[0]===0xd0) return readWordBinary(buffer);
+  const raw = new TextDecoder().decode(buffer);
   if (/^\s*<(?:!doctype|html)/i.test(raw)) return new DOMParser().parseFromString(raw,'text/html').body.textContent ?? '';
   throw new Error('Save this older binary Word document as DOCX or PDF and select the saved copy.');
 }

@@ -294,6 +294,7 @@ export const SubjectsView: React.FC = () => {
         {/* SYLLABUS TREE TAB */}
         {activeTab === 'syllabus' && (
           <div className="space-y-3">
+            <SyllabusImport key={activeSubject.id} subject={activeSubject.id}/>
             {activeSubject.chapters.map((ch) => {
               const isOpen = expandedChapters[ch.id] !== false;
               const doneCount = ch.topics.filter((t) => t.completed).length;
