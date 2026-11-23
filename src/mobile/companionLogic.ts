@@ -8,15 +8,25 @@ import type {
 
 export const MINUTES_PER_DAY = 1440;
 
-export const WEEK_DAYS = [
-  { dayIndex: 0, short: 'Mon', full: 'Monday', num: 23, monthShort: 'Nov', dateIso: '2026-11-23' },
-  { dayIndex: 1, short: 'Tue', full: 'Tuesday', num: 24, monthShort: 'Nov', dateIso: '2026-11-24' },
-  { dayIndex: 2, short: 'Wed', full: 'Wednesday', num: 25, monthShort: 'Nov', dateIso: '2026-11-25' },
-  { dayIndex: 3, short: 'Thu', full: 'Thursday', num: 26, monthShort: 'Nov', dateIso: '2026-11-26' },
-  { dayIndex: 4, short: 'Fri', full: 'Friday', num: 27, monthShort: 'Nov', dateIso: '2026-11-27' },
-  { dayIndex: 5, short: 'Sat', full: 'Saturday', num: 28, monthShort: 'Nov', dateIso: '2026-11-28' },
-  { dayIndex: 6, short: 'Sun', full: 'Sunday', num: 29, monthShort: 'Nov', dateIso: '2026-11-29' },
-] as const;
+const currentMonday = (() => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+})();
+export const WEEK_DAYS = Array.from({ length: 7 }, (_, dayIndex) => {
+  const date = new Date(currentMonday.getFullYear(), currentMonday.getMonth(), currentMonday.getDate() + dayIndex);
+  return {
+    dayIndex,
+    short: date.toLocaleDateString('en-US', { weekday: 'short' }),
+    full: date.toLocaleDateString('en-US', { weekday: 'long' }),
+    num: date.getDate(),
+    monthShort: date.toLocaleDateString('en-US', { month: 'short' }),
+    dateIso: [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0'),
+    ].join('-'),
+  };
+});
 
 export function toAbsMin(dayIndex: number, minuteOfDay: number): number {
   return dayIndex * MINUTES_PER_DAY + minuteOfDay;
