@@ -108,12 +108,11 @@ function EventCard({ event, onOpen }: { event: import('../../src/companion/clien
   );
 }
 function CompanionWorkspace({
-  pair, busy, offline, lastSync, alarmStatus, armed, status, diagnosticPanel,
+  pair, busy, lastSync, alarmStatus, armed, status, diagnosticPanel,
   onSync, onReconnect, onForget, onPair
 }: {
   pair: PhonePair | null;
   busy: boolean;
-  offline: boolean;
   lastSync: number | undefined;
   alarmStatus: AlarmStatus | null;
   armed: number | null;
@@ -453,12 +452,6 @@ function AndroidCompanion() {
     };
   }, [pair?.token]);
 
-  const today = new Date();
-  const currentEvents = (pair?.calendar?.events ?? []).filter(event => {
-    return Date.parse(event.startAt) + event.durationMinutes * 60000 >= +today;
-  }).sort((a, b) => a.startAt.localeCompare(b.startAt));
-  const dateTime = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-
   function retryWithPcIp() {
     const input = manualAddress.trim();
     const octets = input.split('.').map(Number);
@@ -535,7 +528,6 @@ ${diagnostic}`).then(
     <CompanionWorkspace
       pair={pair}
       busy={busy}
-      offline={offline}
       lastSync={lastSync}
       alarmStatus={alarmStatus}
       armed={armed}
