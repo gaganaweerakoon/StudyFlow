@@ -138,6 +138,16 @@ export const SettingsView: React.FC = () => {
         </section>
       )}
 
+      {liveMode ? (
+        <section aria-label="Session reminder source" className="space-y-2">
+          <h2 className="font-display text-[calc(13px*var(--sf-font-scale,1))] font-semibold text-[var(--text-secondary)] px-0.5">Session reminders</h2>
+          <div className="rounded-xl p-4 space-y-1.5" style={sectionCardStyle}>
+            <p className="text-sm font-medium text-[var(--text-primary)]">Managed from your Windows calendar</p>
+            <p className="text-xs text-[var(--text-muted)]">StudyFlow uses the reminder times and alarm settings synced from Windows. Edit them on your PC, then sync your phone.</p>
+          </div>
+        </section>
+      ) : (
+        <>
       {/* 2. Session Reminders */}
       <section aria-label="Session reminders" className="space-y-2">
         <h2 className="font-display text-[calc(13px*var(--sf-font-scale,1))] font-semibold text-[var(--text-secondary)] px-0.5">
@@ -219,6 +229,10 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       </section>
+
+
+        </>
+      )}
 
       <section aria-label="Appearance" className="space-y-2">
         <h2 className="font-display text-[calc(13px*var(--sf-font-scale,1))] font-semibold text-[var(--text-secondary)] px-0.5">
