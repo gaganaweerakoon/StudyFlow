@@ -1,3 +1,4 @@
+import {Onboarding} from './components/shell/Onboarding';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -100,6 +101,7 @@ const StudyFlowShell: React.FC = () => {
       <FloatingMiniTimer />
       <FloatingAssistant />
       <QuickModals />
+      <Onboarding/>
     </div>
   );
 };

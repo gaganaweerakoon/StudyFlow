@@ -206,7 +206,7 @@ export const SettingsView: React.FC = () => {
                   />
                 </div>
               </div>
-              {legacyCalendar && <GoogleAccount />}
+              {legacyCalendar && <><GoogleAccount /><button onClick={()=>updatePreferences({onboarding:"open"})}>Profile setup</button></>}
             </div>
           )}
 

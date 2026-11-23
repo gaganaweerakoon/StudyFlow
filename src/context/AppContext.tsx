@@ -66,6 +66,7 @@ export interface FocusTimerState {
 }
 
 export interface UserPreferences {
+  onboarding?: 'open'|'later'|'complete';
   focusScene?: string;
   focusTrack?: string;
   musicVolume?: number;
@@ -289,6 +290,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const [preferences, setPreferences] = useState<UserPreferences>(initial?.preferences ?? {
+    onboarding: desktop ? 'open' : undefined,
     name: desktop ? 'Student' : 'Maya Lin',
     email: desktop ? '' : 'maya.lin@university.edu',
     major: desktop ? '' : 'Computer Science & Quantitative Biology',
