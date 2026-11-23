@@ -66,9 +66,26 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
     viewport,
     phoneToast,
     handleAndroidBack,
+    permissions,
+    setPermission,
   } = useCompanion();
 
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [permissionSetupOpen, setPermissionSetupOpen] = useState(() =>
+    installed && localStorage.getItem('studyflow.phone.permission.setup') !== 'dismissed');
+
+  useEffect(() => {
+    if (!installed) return;
+    const open = () => setPermissionSetupOpen(true);
+    window.addEventListener('studyflow-show-permissions', open);
+    return () => window.removeEventListener('studyflow-show-permissions', open);
+  }, [installed]);
+
+  const permissionRows = [
+    { key: 'notifications' as const, title: 'Notifications', description: 'Study-session reminders and alerts' },
+    { key: 'exactAlarms' as const, title: 'Exact alarms', description: 'On-time study and wake-up alarms' },
+    { key: 'usageAccess' as const, title: 'Usage access', description: 'Real screen-time tracking and app categories' },
+  ];
 
   // Sync exact StudyFlow PC theme + accent tokens onto document root for full visual fidelity
   useEffect(() => {
@@ -304,6 +321,44 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
                 `${viewport.widthDp}dp`
               </span>
             </div>}
+
+            {installed && permissionSetupOpen && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/55" role="presentation">
+                <section role="dialog" aria-modal="true" aria-label="StudyFlow permission setup"
+                  className="w-full max-w-md rounded-2xl p-5 space-y-4 shadow-2xl"
+                  style={{ backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}>
+                  <div>
+                    <h2 className="font-display text-lg font-semibold">Set up StudyFlow</h2>
+                    <p className="text-xs text-[var(--text-secondary)] mt-1">Enable the Android permissions you want to use. You can change them later in Settings.</p>
+                  </div>
+                  <div className="space-y-2">
+                    {permissionRows.map(item => (
+                      <div key={item.key} className="rounded-xl p-3 flex items-center justify-between gap-3"
+                        style={{ backgroundColor: 'var(--bg-surface-subtle)', border: '1px solid var(--border-subtle)' }}>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold">{item.title}</p>
+                          <p className="text-xs text-[var(--text-secondary)] mt-1">{item.description}</p>
+                        </div>
+                        {permissions[item.key] ? (
+                          <span className="text-xs font-semibold text-emerald-600 shrink-0">Enabled</span>
+                        ) : (
+                          <button type="button" onClick={() => setPermission(item.key, true)}
+                            className="min-h-10 rounded-lg px-3 text-xs font-semibold shrink-0"
+                            style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}>Allow</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => {
+                    localStorage.setItem('studyflow.phone.permission.setup', 'dismissed');
+                    setPermissionSetupOpen(false);
+                  }} className="w-full min-h-11 rounded-xl font-semibold"
+                    style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}>
+                    {permissionRows.every(row => permissions[row.key]) ? 'Continue' : 'Continue for now'}
+                  </button>
+                </section>
+              </div>
+            )}
 
             {/* Bottom Sheets Layer */}
             <EventDetailSheet />
