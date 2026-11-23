@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import JSZip from '../vendor/jszip.cjs';
+import JSZip from '../vendor/jszip.mjs';
 import {useApp} from '../context/AppContext';
 import {useAssistant} from '../assistant/AssistantContext';
 import {openPdf, preparePages, readFileData} from './pdf';
