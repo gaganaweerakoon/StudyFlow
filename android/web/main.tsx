@@ -64,6 +64,8 @@ function AndroidCompanion() {
   const [status, setStatus] = useState('');
   const [diagnostic, setDiagnostic] = useState('');
   const [attemptedPc, setAttemptedPc] = useState('');
+  const [lastScannedCode, setLastScannedCode] = useState('');
+  const [manualAddress, setManualAddress] = useState('');
   const [lastSync, setLastSync] = useState(pair?.calendar ? undefined : 0);
   const latestPair = useRef(pair);
   const syncing = useRef(false);
@@ -144,6 +146,7 @@ function AndroidCompanion() {
             throw new Error('Scan the QR code shown in StudyFlow on your PC.');
           }
           setAttemptedPc(payload.pc);
+          setLastScannedCode(code);
           const endpoint = JSON.stringify({ v: payload.v, hosts: payload.hosts, port: payload.port, pin: payload.pin });
           const existing = latestPair.current;
           let result: LocalReply;
@@ -204,6 +207,26 @@ function AndroidCompanion() {
   }).sort((a, b) => a.startAt.localeCompare(b.startAt));
   const dateTime = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
+  function retryWithPcIp() {
+    const input = manualAddress.trim();
+    const octets = input.split('.').map(Number);
+    if (octets.length !== 4 || octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255) ||
+      !(octets[0] === 10 || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+        (octets[0] === 192 && octets[1] === 168) || (octets[0] === 169 && octets[1] === 254))) {
+      setStatus('Enter the laptop’s local IPv4 address from ipconfig (for example 192.168.43.100).');
+      return;
+    }
+    if (!lastScannedCode) {
+      setStatus('Scan the PC pairing QR code before entering an address.');
+      return;
+    }
+    // Keep the QR certificate pin and pairing credentials. Override only the destination IP.
+    const payload = JSON.parse(lastScannedCode);
+    window.dispatchEvent(new CustomEvent('studyflow-scan', {
+      detail: { code: JSON.stringify({ ...payload, hosts: [input] }) },
+    }));
+  }
+
   const diagnostics = diagnostic && (
     <details className="text-left text-sm text-[var(--text-secondary)]">
       <summary>Connection details</summary>
@@ -236,6 +259,19 @@ ${diagnostic}`).then(
             <button type="button" disabled={busy} onClick={() => setOffline(true)} className="min-h-11 rounded-xl px-4 text-sm font-medium text-[var(--text-secondary)]">Use offline</button>
           </div>
           {attemptedPc && <p className="text-sm">PC: {attemptedPc}</p>}
+          {lastScannedCode && !busy && status && status !== 'Calendar synced.' && (
+            <form className="grid gap-2 rounded-xl border border-[var(--border-subtle)] p-3 text-left" onSubmit={(event) => {
+              event.preventDefault();
+              retryWithPcIp();
+            }}>
+              <label htmlFor="pc-ip" className="text-sm font-semibold">PC not found? Enter its Wi-Fi IPv4 address</label>
+              <p className="text-xs text-[var(--text-secondary)]">On Windows, open PowerShell and run ipconfig. Use the IPv4 address of the active Wi-Fi or hotspot adapter, not a VPN or virtual adapter.</p>
+              <input id="pc-ip" value={manualAddress} onChange={(event) => setManualAddress(event.target.value)}
+                inputMode="decimal" autoComplete="off" placeholder="192.168.43.100"
+                className="min-h-11 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-sm" />
+              <button type="submit" className="min-h-11 rounded-lg bg-[var(--accent)] px-3 font-semibold text-[var(--accent-fg)]">Retry this PC address</button>
+            </form>
+          )}
           {diagnostics}
           {status && <p role="status" className="break-words text-sm text-[var(--text-secondary)]">{status}</p>}
         </div>
