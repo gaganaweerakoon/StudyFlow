@@ -414,7 +414,7 @@ export const DashboardView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  if (idle) setFocusContext(current?.subjectId ?? focusTimer.subjectId, current?.title ?? '');
+                  if (idle) setFocusContext(current?.subjectId ?? focusTimer.subjectId, current?.title ?? '', current?.id);
                   toggleFocusRunning();
                 }}
                 aria-label={focusTimer.running ? 'Pause quick focus timer' : 'Start quick focus timer'}

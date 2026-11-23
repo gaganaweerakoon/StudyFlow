@@ -52,6 +52,7 @@ export interface ToastMessage {
 }
 
 export interface FocusTimerState {
+  calendarSessionId?: string | null;
   mode: 'Pomodoro' | 'Countdown' | 'Stopwatch' | 'Custom';
   phase: 'focus' | 'break';
   secondsLeft: number;
@@ -174,7 +175,7 @@ interface AppContextValue {
   setFocusMode: (mode: FocusTimerState['mode'], customMinutes?: number) => void;
   toggleFocusRunning: () => void;
   resetFocusTimer: () => void;
-  setFocusContext: (subjectId: string, taskTitle: string) => void;
+  setFocusContext: (subjectId: string, taskTitle: string, calendarSessionId?: string) => void;
   setMiniTimerVisible: (visible: boolean) => void;
   triggerCompleteFocusSession: () => void;
   submitFocusCompletion: (rating: number) => void;
@@ -346,7 +347,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   // Record timer commands and phase changes. The clock itself advances from the timestamp.
   const focusClock = useMemo(() => ({ at: Date.now(), timer: focusTimer }), [
     focusTimer.running, focusTimer.mode, focusTimer.phase, focusTimer.totalSeconds,
-    focusTimer.subjectId, focusTimer.taskTitle, focusTimer.cycleCount, focusTimer.miniVisible,
+    focusTimer.subjectId, focusTimer.taskTitle, focusTimer.calendarSessionId, focusTimer.cycleCount, focusTimer.miniVisible,
     focusTimer.completionModalOpen, focusTimer.lastCompletedMinutes,
     focusTimer.running ? undefined : focusTimer.secondsLeft,
     focusTimer.running ? undefined : focusTimer.elapsedSeconds,
@@ -468,8 +469,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     }));
   }, []);
 
-  const setFocusContext = useCallback((subjectId: string, taskTitle: string) => {
-    setFocusTimer((prev) => ({ ...prev, subjectId, taskTitle }));
+  const setFocusContext = useCallback((subjectId: string, taskTitle: string, calendarSessionId?: string) => {
+    setFocusTimer((prev) => ({ ...prev, subjectId, taskTitle, calendarSessionId: calendarSessionId ?? null }));
   }, []);
 
   const setMiniTimerVisible = useCallback((visible: boolean) => {
@@ -498,6 +499,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
           id: `fh-${Date.now()}`,
           subjectId: focusTimer.subjectId,
           taskTitle: focusTimer.taskTitle,
+          calendarSessionId: focusTimer.calendarSessionId ?? null,
           mode: focusTimer.mode,
           durationMinutes: focusTimer.lastCompletedMinutes,
           completedAt: workspace ? localDay() : 'Just now',
@@ -516,7 +518,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       }));
       pushToast(`Focus session logged (+60 XP)`);
     },
-    [focusTimer.lastCompletedMinutes, focusTimer.mode, focusTimer.subjectId, focusTimer.taskTitle, pushToast, workspace]
+    [focusTimer.lastCompletedMinutes, focusTimer.mode, focusTimer.subjectId, focusTimer.taskTitle, focusTimer.calendarSessionId, pushToast, workspace]
   );
 
   const dismissFocusCompletion = useCallback(() => {

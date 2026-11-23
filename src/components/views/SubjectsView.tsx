@@ -75,10 +75,9 @@ export const SubjectsView: React.FC = () => {
   function weeklyProgress(id: string) {
     const blocks = sessions.filter(s => s.subjectId === id && s.countsTowardStudy !== false);
     const history = focusHistory.filter(h => h.subjectId === id);
-    const weekly = studyChart('weekly', blocks, history);
-    const finished = studyChart('weekly', blocks.filter(s => s.status === 'completed'), []);
+    const weekly = studyChart('weekly', blocks, history, { creditCompletedBlocks: true });
     const total = weekly.reduce((sum, day) => sum + day.planned, 0);
-    const completed = weekly.reduce((sum, day, i) => sum + Math.max(day.actual, finished[i].planned), 0);
+    const completed = weekly.reduce((sum, day) => sum + day.actual, 0);
     return { total: +total.toFixed(2), completed: +completed.toFixed(2), percent: total ? Math.min(100, Math.round(100 * completed / total)) : 0 };
   }
 

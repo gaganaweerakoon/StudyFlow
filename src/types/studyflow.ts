@@ -209,6 +209,7 @@ export interface PracticeQuiz {
 }
 
 export interface FocusHistoryItem {
+  calendarSessionId?: string | null;
   id: string;
   subjectId: string;
   taskTitle: string;
