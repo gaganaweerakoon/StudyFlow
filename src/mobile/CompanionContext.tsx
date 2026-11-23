@@ -35,6 +35,7 @@ import type {
 
 export interface LiveCompanionData {
   pcName: string;
+  profileName?: string;
   calendar?: CompanionCalendar;
   isPaired: boolean;
   lastSync?: number;
@@ -106,6 +107,7 @@ interface SnoozedWakeUp {
 interface CompanionContextValue {
   // Navigation & overlays
   liveMode: boolean;
+  profileName?: string;
   syncOptions?: { autoSync: boolean; intervalSeconds: number; setAutoSync: (enabled: boolean) => void; setIntervalSeconds: (seconds: number) => void };
   activeTab: MobileTabId;
   setActiveTab: (tab: MobileTabId) => void;
@@ -1144,6 +1146,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
 
   const value: CompanionContextValue = {
     liveMode: Boolean(live),
+    profileName: live?.profileName,
     syncOptions: live?.setAutoSync && live.setSyncIntervalSeconds ? {
       autoSync: live.autoSync !== false,
       intervalSeconds: live.syncIntervalSeconds ?? 2,
