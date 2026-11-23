@@ -160,8 +160,8 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
             className={`relative overflow-hidden flex flex-col select-none ${installed ? "" : "rounded-[32px] transition-[width] duration-200"}`}
             style={phoneStyle}
           >
-            {/* Android Status Bar (Safe Area Top) */}
-            <div
+            {/* Simulated status bar belongs only to the browser preview. Android supplies its own. */}
+            {!installed && <div
               className="h-[34px] px-5 flex items-center justify-between text-[12px] font-medium shrink-0 z-20"
               style={{
                 backgroundColor:
@@ -181,7 +181,7 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
                 )}
                 <BatteryMedium className="w-4 h-4" />
               </div>
-            </div>
+            </div>}
 
             {/* Quiet Top Android Notification Banner */}
             <NotificationBanner />
@@ -273,8 +273,8 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
               })}
             </nav>
 
-            {/* Android Gesture Safe Area + Interactive Back Trigger */}
-            <div
+            {/* Demo-only gesture strip and Back button. Android's system back handles the installed app. */}
+            {!installed && <div
               className="h-[26px] px-6 flex items-center justify-between shrink-0 z-20"
               style={{ backgroundColor: 'var(--bg-surface)' }}
             >
@@ -294,9 +294,9 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
                 aria-hidden="true"
               />
               <span className="w-10 text-right font-mono-num text-[10px] text-[var(--text-muted)]">
-                {!installed && `${viewport.widthDp}dp`}
+                `${viewport.widthDp}dp`
               </span>
-            </div>
+            </div>}
 
             {/* Bottom Sheets Layer */}
             <EventDetailSheet />
