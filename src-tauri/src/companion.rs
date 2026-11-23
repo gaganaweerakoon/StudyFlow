@@ -90,6 +90,7 @@ pub async fn local_companion(
                 companion.invite()
             }
             "status" => companion.status(),
+            "test" => companion.check_listener(),
             "disconnect" => {
                 companion.disconnect()?;
                 companion.status()

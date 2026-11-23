@@ -1,16 +1,23 @@
 package io.github.gaganaweerakoon.studyflow
 
 import android.os.Build
+import android.os.SystemClock
 import android.util.Base64
 import org.json.JSONObject
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.InetSocketAddress
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.net.ConnectException
+import java.net.SocketTimeoutException
 import java.net.Socket
 import java.security.MessageDigest
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
@@ -23,13 +30,29 @@ internal object LocalCompanion {
             first == 192 && second == 168 || first == 169 && second == 254
     }
 
+    private fun nearbyHosts(endpoint: JSONObject): List<String> {
+        val hosts = endpoint.getJSONArray("hosts")
+        val interfaces = runCatching {
+            NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+                .filter { it.isUp && !it.isLoopback }.flatMap { it.interfaceAddresses }
+                .filter { it.address is Inet4Address && it.networkPrefixLength in 1..32 }
+        }.getOrDefault(emptyList())
+        fun ipv4(value: String) = value.split('.').fold(0) { ip, part -> (ip shl 8) or part.toInt() }
+        fun matches(host: String) = interfaces.any {
+            val shift = 32 - it.networkPrefixLength
+            (ipv4(host) ushr shift) == (ipv4(it.address.hostAddress ?: "0.0.0.0") ushr shift)
+        }
+        return (0 until hosts.length()).map { hosts.getString(it) }
+            .filter(::localAddress).distinct().sortedByDescending(::matches)
+    }
+
     fun request(raw: String, token: String?): JSONObject {
         val endpoint = JSONObject(raw)
-        val hosts = endpoint.getJSONArray("hosts")
+        val hosts = nearbyHosts(endpoint)
         val port = endpoint.getInt("port")
         val pin = Base64.decode(endpoint.getString("pin"), Base64.DEFAULT)
         val key = token ?: endpoint.getString("code")
-        require(endpoint.getInt("v") == 1 && hosts.length() in 1..5 && port == 8475 &&
+        require(endpoint.getInt("v") == 1 && hosts.size in 1..12 && port == 8475 &&
             pin.size == 32 && key.matches(Regex("[0-9a-f]{64}"))) { "This is not a valid StudyFlow pairing code." }
         val manager = object : X509TrustManager {
             override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
@@ -45,17 +68,27 @@ internal object LocalCompanion {
         }
         val context = SSLContext.getInstance("TLS").apply { init(null, arrayOf<TrustManager>(manager), null) }
         val request = JSONObject().put("action", if (token == null) "claim" else "sync").put("key", key)
-        if (token == null) request.put("phone", listOf(Build.MANUFACTURER, Build.MODEL).distinct().joinToString(" ").take(48))
+        if (token == null) {
+            request.put("phone", listOf(Build.MANUFACTURER, Build.MODEL).distinct().joinToString(" ").take(48))
+            request.put("token", endpoint.optString("token"))
+        }
         val bytes = request.toString().toByteArray(Charsets.UTF_8)
-        var connectionError: Exception? = null
-        for (i in 0 until hosts.length()) {
-            val host = hosts.getString(i)
-            if (!localAddress(host)) continue
+        val started = SystemClock.elapsedRealtime()
+        val deadline = started + 12_000
+        val attempts = mutableListOf<String>()
+        fun remaining(limit: Int): Int = (deadline - SystemClock.elapsedRealtime()).coerceIn(1L, limit.toLong()).toInt()
+        for (host in hosts) {
+            if (SystemClock.elapsedRealtime() >= deadline) break
+            var stage = "TCP"
             try {
                 return Socket().use { transport ->
-                    transport.connect(InetSocketAddress(host, port), 1500)
-                    transport.soTimeout = 3000
-                    context.socketFactory.createSocket(transport, host, port, true).use { socket ->
+                    transport.connect(InetSocketAddress(host, port), remaining(900))
+                    transport.soTimeout = remaining(2500)
+                    (context.socketFactory.createSocket(transport, host, port, true) as SSLSocket).use { socket ->
+                        stage = "TLS"
+                        socket.startHandshake()
+                        stage = "calendar"
+                        socket.soTimeout = remaining(3500)
                         val output = DataOutputStream(socket.getOutputStream())
                         output.writeInt(bytes.size)
                         output.write(bytes)
@@ -65,16 +98,28 @@ internal object LocalCompanion {
                         require(size in 1..2_100_000) { "Invalid StudyFlow calendar response." }
                         val reply = ByteArray(size)
                         input.readFully(reply)
-                        JSONObject(String(reply, Charsets.UTF_8))
+                        JSONObject(String(reply, Charsets.UTF_8)).also {
+                            it.put("diagnostic", "$host:$port • ${if (it.has("error")) "PC rejected request" else "connected"} • ${SystemClock.elapsedRealtime() - started} ms")
+                        }
                     }
                 }
             } catch (error: Exception) {
-                connectionError = error
+                val result = when (error) {
+                    is ConnectException -> "refused"
+                    is SocketTimeoutException -> "timed out"
+                    is SSLHandshakeException -> "verification failed"
+                    else -> "failed"
+                }
+                attempts.add("$host:$port $stage $result")
             }
         }
-        if (connectionError is javax.net.ssl.SSLException) {
-            error("Could not verify the PC. Open StudyFlow on Windows and scan a new code.")
+        val error = when {
+            attempts.any { it.contains("TLS verification") } -> "Could not verify this PC’s identity. Open StudyFlow on Windows and scan a fresh code."
+            attempts.any { it.contains("calendar") } -> "The PC answered, but the calendar transfer failed. Tap Sync calendar or retry the pairing."
+            attempts.any { it.contains("TCP refused") } -> "The PC address refused the connection. Open StudyFlow on Windows and run Test connection under Mobile companion."
+            else -> "Could not reach the PC on this network. Check that both devices are on the same Wi-Fi. If Windows prompts for access, allow StudyFlow on private networks."
         }
-        error("Could not reach your PC. Keep StudyFlow open and connect both devices to the same Wi-Fi.")
+        return JSONObject().put("error", error)
+            .put("diagnostic", attempts.joinToString("\n") + "\nElapsed: ${SystemClock.elapsedRealtime() - started} ms")
     }
 }

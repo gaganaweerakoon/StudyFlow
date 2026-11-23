@@ -17,6 +17,7 @@ import {
   Check,
   Download,
   Sparkles,
+  Smartphone,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAssistant } from '../../assistant/AssistantContext';
@@ -30,6 +31,7 @@ type SettingsSection =
   | 'study'
   | 'timer'
   | 'notifications'
+  | 'companion'
   | 'privacy'
   | 'backup'
   | 'assistant'
@@ -43,6 +45,7 @@ const SECTIONS: { id: SettingsSection; label: string; icon: React.ComponentType<
   { id: 'study', label: 'Study Preferences', icon: BookOpen },
   { id: 'timer', label: 'Focus Timer', icon: Timer },
   { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'companion', label: 'Mobile companion', icon: Smartphone },
   { id: 'privacy', label: 'Privacy', icon: Shield },
   { id: 'assistant', label: 'AI Usage', icon: Sparkles },
   { id: 'backup', label: 'Data & Backup', icon: Database },
@@ -131,8 +134,6 @@ export const SettingsView: React.FC = () => {
         </p>
       </div>
 
-      {isTauri() && <DesktopPairing />}
-
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* Settings Left Navigation */}
         <nav
@@ -140,7 +141,7 @@ export const SettingsView: React.FC = () => {
           className="lg:col-span-3 rounded-xl p-2 space-y-0.5"
           style={surfaceStyle}
         >
-          {SECTIONS.map((s) => {
+          {SECTIONS.filter(item => item.id !== 'companion' || isTauri()).map((s) => {
             const Icon = s.icon;
             const active = section === s.id;
             return (
@@ -163,6 +164,7 @@ export const SettingsView: React.FC = () => {
 
         {/* Settings Main Panel */}
         <div className="lg:col-span-9 rounded-xl p-5 space-y-5" style={surfaceStyle}>
+          {section === 'companion' && <DesktopPairing />}
           {section === 'assistant' && <AssistantSettings />}
           {section === 'profile' && (
             <div className="space-y-4">

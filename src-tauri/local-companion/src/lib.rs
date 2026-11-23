@@ -6,12 +6,17 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     io::{Read, Write},
-    net::{Ipv4Addr, TcpListener, TcpStream, ToSocketAddrs, UdpSocket},
+    net::{Ipv4Addr, TcpListener, TcpStream},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use uuid::Uuid;
+
+#[cfg(windows)]
+mod windows_network;
+#[cfg(not(windows))]
+use std::net::{ToSocketAddrs, UdpSocket};
 
 const PORT: u16 = 8475;
 const MAX_CALENDAR_BYTES: usize = 2_000_000;
@@ -28,6 +33,21 @@ struct Identity {
 struct Phone {
     token_hash: [u8; 32],
     name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pending: Option<PendingClaim>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct PendingClaim {
+    code_hash: [u8; 32],
+    expires_at: u64,
+}
+
+fn unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 struct Server {
@@ -60,7 +80,8 @@ fn pc_name() -> String {
         .collect()
 }
 
-fn addresses() -> Vec<String> {
+#[cfg(not(windows))]
+fn host_addresses() -> Vec<Ipv4Addr> {
     let name = pc_name();
     let mut addresses = Vec::new();
     if let Ok(socket) = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)) {
@@ -76,12 +97,18 @@ fn addresses() -> Vec<String> {
             _ => None,
         }));
     }
-    addresses.retain(|ip| ip.is_private() || ip.is_link_local());
-    addresses.sort_unstable();
-    addresses.dedup();
     addresses
+}
+
+#[cfg(windows)]
+use windows_network::addresses as host_addresses;
+
+fn addresses() -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    host_addresses()
         .into_iter()
-        .take(5)
+        .filter(|ip| (ip.is_private() || ip.is_link_local()) && seen.insert(*ip))
+        .take(12)
         .map(|ip| ip.to_string())
         .collect()
 }
@@ -188,30 +215,48 @@ impl Companion {
             );
         }
         let port = self.start(PORT)?;
+        TcpStream::connect_timeout(&(Ipv4Addr::LOCALHOST, port).into(), Duration::from_secs(2))
+            .map_err(|_| "StudyFlow could not reach its local listener.")?;
         let raw = secret();
         let mut state = self.state.lock().map_err(|error| error.to_string())?;
-        if state.identity.phone.is_some() {
-            return Err("Disconnect the paired phone before pairing another one.".into());
+        let reconnect = state
+            .identity
+            .phone
+            .as_ref()
+            .is_some_and(|phone| phone.pending.is_none());
+        if !reconnect && state.identity.phone.is_some() {
+            let previous = state.identity.phone.take();
+            if let Err(error) = write_identity(&state.path, &state.identity) {
+                state.identity.phone = previous;
+                return Err(error);
+            }
         }
         let value = json!({
             "v": 1, "hosts": hosts, "port": port, "pc": pc_name(),
-            "pin": STANDARD.encode(hash(&state.identity.cert)), "code": raw,
+            "pin": STANDARD.encode(hash(&state.identity.cert)), "code": (!reconnect).then_some(&raw),
         });
         let svg = qrcode::QrCode::new(value.to_string())
             .map_err(|error| error.to_string())?
             .render::<qrcode::render::svg::Color>()
             .min_dimensions(260, 260)
             .build();
-        state.invitation = Some((hash(raw), Instant::now() + QR_LIFETIME));
+        state.invitation = (!reconnect).then(|| (hash(raw), Instant::now() + QR_LIFETIME));
         Ok(
             json!({ "qr": format!("data:image/svg+xml;base64,{}", STANDARD.encode(svg)), "seconds": QR_LIFETIME.as_secs() }),
         )
     }
 
+    pub fn check_listener(&mut self) -> Result<Value, String> {
+        let port = self.start(PORT)?;
+        TcpStream::connect_timeout(&(Ipv4Addr::LOCALHOST, port).into(), Duration::from_secs(2))
+            .map_err(|_| "StudyFlow could not reach its local listener.")?;
+        Ok(json!({ "pc": pc_name(), "port": port, "addresses": addresses() }))
+    }
+
     pub fn status(&self) -> Result<Value, String> {
         let state = self.state.lock().map_err(|error| error.to_string())?;
         Ok(
-            json!({ "phone": state.identity.phone.as_ref().map(|phone| &phone.name), "lastSync": state.last_sync }),
+            json!({ "pc": pc_name(), "phone": state.identity.phone.as_ref().filter(|phone| phone.pending.is_none()).map(|phone| &phone.name), "lastSync": state.last_sync }),
         )
     }
 
@@ -268,11 +313,24 @@ impl Server {
         let Some(events) = self.calendar.as_ref() else {
             return json!({ "error": "Open your StudyFlow workspace on the PC, then try again." });
         };
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let now = unix_seconds();
         let calendar = json!({ "revision": now, "events": events, "paired": true });
+        let proposed = request["token"].as_str().filter(|token| {
+            token.len() == 64 && token.bytes().all(|byte| byte.is_ascii_hexdigit())
+        });
+        if let (Some("claim"), Some(token), Some(phone)) = (
+            request["action"].as_str(),
+            proposed,
+            self.identity.phone.as_ref(),
+        ) {
+            if phone.token_hash == hash(token)
+                && phone.pending.as_ref().is_some_and(|pending| {
+                    now < pending.expires_at && hash(key) == pending.code_hash
+                })
+            {
+                return json!({ "token": token, "calendar": calendar });
+            }
+        }
         match request["action"].as_str() {
             Some("claim")
                 if self.identity.phone.is_none()
@@ -280,7 +338,7 @@ impl Server {
                         Instant::now() < expires && hash(key) == valid
                     }) =>
             {
-                let token = secret();
+                let token = proposed.map(str::to_owned).unwrap_or_else(secret);
                 let name = request["phone"]
                     .as_str()
                     .unwrap_or("Android phone")
@@ -291,13 +349,19 @@ impl Server {
                 self.identity.phone = Some(Phone {
                     token_hash: hash(&token),
                     name,
+                    pending: proposed.map(|_| PendingClaim {
+                        code_hash: hash(key),
+                        expires_at: now + QR_LIFETIME.as_secs(),
+                    }),
                 });
                 if let Err(error) = write_identity(&self.path, &self.identity) {
                     self.identity.phone = None;
                     return json!({ "error": error });
                 }
                 self.invitation = None;
-                self.last_sync = Some(now);
+                if proposed.is_none() {
+                    self.last_sync = Some(now);
+                }
                 json!({ "token": token, "calendar": calendar })
             }
             Some("sync")
@@ -307,6 +371,16 @@ impl Server {
                     .as_ref()
                     .is_some_and(|phone| hash(key) == phone.token_hash) =>
             {
+                if let Some(phone) = self.identity.phone.as_mut() {
+                    if let Some(pending) = phone.pending.take() {
+                        if let Err(error) = write_identity(&self.path, &self.identity) {
+                            if let Some(phone) = self.identity.phone.as_mut() {
+                                phone.pending = Some(pending);
+                            }
+                            return json!({ "error": error });
+                        }
+                    }
+                }
                 self.last_sync = Some(now);
                 json!({ "calendar": calendar })
             }
@@ -404,6 +478,44 @@ mod tests {
         );
         companion.disconnect().unwrap();
         assert!(request(port, &cert, sync).unwrap()["error"].is_string());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn an_interrupted_claim_can_be_retried_after_the_pc_restarts() {
+        let directory = std::env::temp_dir().join(format!("studyflow-test-{}", Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let file = directory.join("local.json");
+        let mut companion = Companion::open(file.clone()).unwrap();
+        companion.publish(json!([])).unwrap();
+        let port = companion.start(0).unwrap();
+        let code = secret();
+        let token = secret();
+        let cert = {
+            let mut state = companion.state.lock().unwrap();
+            state.invitation = Some((hash(&code), Instant::now() + QR_LIFETIME));
+            state.identity.cert.clone()
+        };
+        let claim =
+            json!({ "action": "claim", "key": code, "phone": "Test phone", "token": token });
+        assert_eq!(request(port, &cert, claim.clone()).unwrap()["token"], token);
+        assert_eq!(companion.status().unwrap()["phone"], Value::Null);
+
+        let reopened = Companion::open(file).unwrap();
+        reopened.state.lock().unwrap().calendar = Some(json!([]));
+        assert_eq!(
+            reopened.state.lock().unwrap().respond(claim.clone())["token"],
+            token
+        );
+        let wrong = json!({ "action": "claim", "key": code, "token": secret() });
+        assert!(reopened.state.lock().unwrap().respond(wrong)["error"].is_string());
+        assert!(reopened
+            .state
+            .lock()
+            .unwrap()
+            .respond(json!({ "action": "sync", "key": token }))["calendar"]
+            .is_object());
+        assert_eq!(reopened.status().unwrap()["phone"], "Test phone");
+        assert!(reopened.state.lock().unwrap().respond(claim)["error"].is_string());
         std::fs::remove_dir_all(directory).unwrap();
     }
 }

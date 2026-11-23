@@ -24,10 +24,11 @@ declare global {
 }
 
 const storageKey = 'studyflow.companion.phone';
+const pendingKey = 'studyflow.companion.pending';
 type PhonePair = { token: string; calendar?: CompanionCalendar } & (
   { origin: string; endpoint?: never; pc?: never } | { origin?: never; endpoint: string; pc: string }
 );
-interface LocalReply { id: string; error?: string; token?: string; calendar?: CompanionCalendar }
+interface LocalReply { id: string; diagnostic?: string; error?: string; token?: string; calendar?: CompanionCalendar }
 
 function localRequest(endpoint: string, token: string | null): Promise<LocalReply> {
   const bridge = window.StudyFlowPairing;
@@ -38,7 +39,7 @@ function localRequest(endpoint: string, token: string | null): Promise<LocalRepl
       const data = (event as CustomEvent<LocalReply>).detail;
       if (data.id !== id) return;
       cleanup();
-      if (data.error) reject(new Error(data.error));
+      if (data.error) reject(Object.assign(new Error(data.error), { diagnostic: data.diagnostic }));
       else resolve(data);
     };
     const timer = window.setTimeout(() => {
@@ -61,6 +62,9 @@ function AndroidCompanion() {
   });
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [diagnostic, setDiagnostic] = useState('');
+  const [attemptedPc, setAttemptedPc] = useState('');
+  const [lastSync, setLastSync] = useState(pair?.calendar ? undefined : 0);
   const latestPair = useRef(pair);
   const syncing = useRef(false);
 
@@ -100,15 +104,21 @@ function AndroidCompanion() {
     syncing.current = true;
     setBusy(true);
     try {
-      const calendar = credentials.endpoint
-        ? (await localRequest(credentials.endpoint, credentials.token)).calendar
-        : await relayRequest<CompanionCalendar>(credentials.origin!, '/v1/calendar', 'GET', credentials.token);
+      const result = credentials.endpoint ? await localRequest(credentials.endpoint, credentials.token) : undefined;
+      const calendar = result?.calendar ?? (credentials.origin
+        ? await relayRequest<CompanionCalendar>(credentials.origin, '/v1/calendar', 'GET', credentials.token)
+        : undefined);
       if (!calendar) throw new Error('The PC did not return a calendar.');
       if (latestPair.current?.token !== credentials.token) return;
       if (JSON.stringify(calendar.events) !== JSON.stringify(credentials.calendar?.events)) save({ ...credentials, calendar });
+      setDiagnostic(result?.diagnostic ?? '');
+      setLastSync(Date.now());
       setStatus('Calendar synced.');
     } catch (error) {
-      if (latestPair.current?.token === credentials.token) setStatus(error instanceof Error ? error.message : String(error));
+      if (latestPair.current?.token === credentials.token) {
+        setStatus(error instanceof Error ? error.message : String(error));
+        setDiagnostic((error as { diagnostic?: string })?.diagnostic ?? '');
+      }
     } finally {
       syncing.current = false;
       setBusy(false);
@@ -118,7 +128,7 @@ function AndroidCompanion() {
   useEffect(() => {
     const onScan = (event: Event) => {
       const { code, error } = (event as CustomEvent<{ code?: string; error?: string }>).detail;
-      if (!code || syncing.current || latestPair.current) {
+      if (!code || syncing.current) {
         if (error) setStatus(error);
         return;
       }
@@ -130,16 +140,36 @@ function AndroidCompanion() {
           let payload;
           try { payload = JSON.parse(code); } catch { throw new Error('Scan the QR code shown in StudyFlow on your PC.'); }
           if (!payload || payload.v !== 1 || typeof payload.pc !== 'string' || !Array.isArray(payload.hosts) ||
-              typeof payload.code !== 'string' || typeof payload.pin !== 'string' || payload.port !== 8475) {
+              (payload.code !== null && typeof payload.code !== 'string') || typeof payload.pin !== 'string' || payload.port !== 8475) {
             throw new Error('Scan the QR code shown in StudyFlow on your PC.');
           }
-          const { token, calendar } = await localRequest(code, null);
-          if (!token || !calendar) throw new Error('The PC did not complete pairing.');
+          setAttemptedPc(payload.pc);
           const endpoint = JSON.stringify({ v: payload.v, hosts: payload.hosts, port: payload.port, pin: payload.pin });
-          save({ endpoint, pc: payload.pc, token, calendar });
+          const existing = latestPair.current;
+          let result: LocalReply;
+          if (existing?.endpoint && JSON.parse(existing.endpoint).pin === payload.pin) {
+            result = await localRequest(endpoint, existing.token);
+            if (!result.calendar) throw new Error('The PC did not return a calendar.');
+            save({ ...existing, endpoint, pc: payload.pc, calendar: result.calendar });
+          } else {
+            if (existing) throw new Error('Disconnect the current pairing before connecting to a different PC.');
+            if (payload.code === null) throw new Error('This code is for the paired phone. Disconnect it on the PC to pair a new phone.');
+            const pending = JSON.parse(localStorage.getItem(pendingKey) ?? 'null');
+            const token = pending?.code === payload.code && pending?.pin === payload.pin
+              ? pending.token
+              : Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('');
+            localStorage.setItem(pendingKey, JSON.stringify({ code: payload.code, pin: payload.pin, token }));
+            result = await localRequest(JSON.stringify({ ...payload, token }), null);
+            if (!result.token || !result.calendar) throw new Error('The PC did not complete pairing.');
+            save({ endpoint, pc: payload.pc, token: result.token, calendar: result.calendar });
+            localStorage.removeItem(pendingKey);
+          }
+          setDiagnostic(result.diagnostic ?? '');
+          setLastSync(Date.now());
           setStatus('Calendar synced.');
         } catch (failure) {
           setStatus(failure instanceof Error ? failure.message : String(failure));
+          setDiagnostic((failure as { diagnostic?: string })?.diagnostic ?? '');
         } finally {
           syncing.current = false;
           setBusy(false);
@@ -174,6 +204,18 @@ function AndroidCompanion() {
   }).sort((a, b) => a.startAt.localeCompare(b.startAt));
   const dateTime = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
+  const diagnostics = diagnostic && (
+    <details className="text-left text-sm text-[var(--text-secondary)]">
+      <summary>Connection details</summary>
+      <pre className="mt-2 whitespace-pre-wrap break-all">{diagnostic}</pre>
+      <button type="button" className="mt-2 underline" onClick={() => void navigator.clipboard.writeText(`StudyFlow companion
+${diagnostic}`).then(
+        () => setStatus('Connection details copied.'),
+        () => setStatus('Select and copy the connection details above.'),
+      )}>Copy details</button>
+    </details>
+  );
+
   if (!pair && !offline) {
     return (
       <main className="flex min-h-dvh w-full px-6 py-8">
@@ -193,6 +235,8 @@ function AndroidCompanion() {
             </button>
             <button type="button" disabled={busy} onClick={() => setOffline(true)} className="min-h-11 rounded-xl px-4 text-sm font-medium text-[var(--text-secondary)]">Use offline</button>
           </div>
+          {attemptedPc && <p className="text-sm">PC: {attemptedPc}</p>}
+          {diagnostics}
           {status && <p role="status" className="break-words text-sm text-[var(--text-secondary)]">{status}</p>}
         </div>
       </main>
@@ -204,10 +248,12 @@ function AndroidCompanion() {
       <header>
         <h1 className="font-display text-2xl font-semibold">Today</h1>
         <p className="mt-2 text-sm text-[var(--text-secondary)]">{pair ? (pair.pc ? `Calendar from ${pair.pc}` : 'Calendar from your paired Windows app') : 'Pair your PC to bring your schedule here.'}</p>
+        {!!lastSync && <p className="text-sm text-[var(--text-secondary)]">Last synced {new Date(lastSync).toLocaleTimeString()}</p>}
       </header>
       {pair ? (
         <>
           <button disabled={busy} className="min-h-12 rounded-xl bg-[var(--accent)] px-4 font-medium text-[var(--accent-fg)]" onClick={() => void pull()}>{busy ? 'Syncing…' : 'Sync calendar'}</button>
+          {pair.endpoint && <button type="button" disabled={busy} className="min-h-12 rounded-xl border border-[var(--border-subtle)] px-4" onClick={() => window.StudyFlowPairing?.scan()}>Reconnect</button>}
           {alarmStatus && (
             <section className="space-y-2 rounded-xl border border-[var(--border-subtle)] p-3 text-sm">
               <h2 className="font-semibold">Alarms and reminders</h2>
@@ -229,11 +275,14 @@ function AndroidCompanion() {
           ) : <p className="text-sm text-[var(--text-muted)]">No upcoming events in the synced calendar.</p>}
           <button disabled={busy} className="min-h-12 rounded-xl border border-[var(--border-subtle)] px-4" onClick={() => {
             save(null);
+            setLastSync(0);
+            setDiagnostic('');
             setOffline(false);
             setStatus('');
           }}>Forget this pairing</button>
         </>
       ) : <button type="button" className="min-h-12 rounded-xl bg-[var(--accent)] px-4 font-medium text-[var(--accent-fg)]" onClick={() => setOffline(false)}>Pair with PC</button>}
+      {diagnostics}
       {status && <p role="status" className="break-words text-sm text-[var(--text-secondary)]">{status}</p>}
     </main>
   );
