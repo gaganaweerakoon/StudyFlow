@@ -1,6 +1,6 @@
 import { readGeneratedCards, readGeneratedQuestions } from '../notes/generatedStudyItems';
 import type { useApp } from '../context/AppContext';
-import type { StudySession, TaskItem } from '../types/studyflow';
+import type { ExamItem, StudySession, TaskItem } from '../types/studyflow';
 
 type Workspace = ReturnType<typeof useApp>;
 
@@ -79,6 +79,57 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
             current.updateNote(existing.id, { title: name, content, updatedAt: 'Just now' });
           } else if (!current.notes.some(note => note.title === name && note.content === content && note.subjectId === subjectId)) {
             current.createNote(subjectId, 'fld-all', { title: name, content });
+          }
+          return true;
+        },
+      };
+    }
+    if (edit.action === 'delete_note' || edit.action === 'delete_exam') {
+      const note = edit.action === 'delete_note';
+      const record = (note ? app.notes : app.exams).find(item => item.id === id);
+      if (!record) return;
+      return {
+        title: note ? `Delete note “${record.title}” and its attachments` : `Delete exam “${record.title}” and its mock exam history`,
+        success: `Deleted “${record.title}” from ${note ? 'Notes' : 'Exams'}.`,
+        confirmation: true,
+        apply: current => {
+          if ((note ? current.notes : current.exams).find(item => item.id === record.id) !== record) return false;
+          if (note) current.deleteNote(record.id);
+          else current.deleteExam(record.id);
+          return true;
+        },
+      };
+    }
+    if (edit.action === 'create_exam' || edit.action === 'update_exam') {
+      const updating = edit.action === 'update_exam';
+      const exam = updating ? app.exams.find(item => item.id === id) : undefined;
+      if (updating && !exam) return;
+      const name = title ?? exam?.title;
+      const date = edit.date === undefined ? exam?.date : edit.date;
+      const time = edit.time === undefined ? exam?.time ?? '' : edit.time;
+      const subjectId = edit.subjectId === undefined ? exam?.subjectId ?? '' : edit.subjectId;
+      const room = edit.room === undefined ? exam?.room ?? '' : edit.room;
+      const targetGrade = edit.targetGrade === undefined ? exam?.targetGrade ?? '' : edit.targetGrade;
+      const weightPercent = edit.weightPercent === undefined ? exam?.weightPercent ?? 0 : edit.weightPercent;
+      if ((edit.title !== undefined && !title) || !name || !validDate(date) ||
+          typeof time !== 'string' || (edit.time !== undefined && time !== '' && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) ||
+          typeof subjectId !== 'string' || (edit.subjectId !== undefined && subjectId && !app.subjects.some(item => item.id === subjectId)) ||
+          typeof room !== 'string' || room.length > 200 || typeof targetGrade !== 'string' || targetGrade.length > 80 ||
+          typeof weightPercent !== 'number' || weightPercent < 0 || weightPercent > 100) return;
+      const fields: Pick<ExamItem, 'title' | 'date' | 'time' | 'subjectId' | 'room' | 'targetGrade' | 'weightPercent'> = {
+        title: name, date, time, subjectId, room: room.trim(), targetGrade: targetGrade.trim(), weightPercent,
+      };
+      return {
+        title: `${exam ? 'Update' : 'Add'} exam “${name}” on ${date}`,
+        success: `${exam ? 'Updated' : 'Added'} “${name}” in Exams for ${date}${time ? ` at ${time}` : ''}.`,
+        apply: current => {
+          if (edit.subjectId !== undefined && subjectId && !current.subjects.some(item => item.id === subjectId)) return false;
+          if (exam) {
+            if (current.exams.find(item => item.id === exam.id) !== exam) return false;
+            current.updateExam(exam.id, fields);
+          } else if (!current.exams.some(item => item.title === name && item.date === date &&
+              item.time === time && item.subjectId === subjectId)) {
+            current.addExam({ ...fields, prepProgress: 0, syllabusTopics: [] });
           }
           return true;
         },
