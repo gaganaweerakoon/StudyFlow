@@ -609,12 +609,14 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
 
   const startFocusForBlock = useCallback(
     (blockId?: string, origin: 'phone' | 'pc' | 'alarm' = 'phone', openFullScreen = false) => {
-      const target =
+      const target: ScheduleBlock =
         blocks.find((b) => b.id === blockId) ??
         blocks.find((b) => b.type === 'study' && b.dayIndex === fromAbsMin(nowAbsMin).dayIndex) ??
         blocks.find((b) => b.type === 'study') ??
-        { id: 'local-focus', subjectId: 'synced-study', title: 'Focus session',
-          focusIntervalMin: 25 };
+        { id: 'local-focus', revision: 0, type: 'study', title: 'Focus session',
+          subjectId: 'synced-study', dayIndex: fromAbsMin(nowAbsMin).dayIndex,
+          startMin: fromAbsMin(nowAbsMin).minuteOfDay, durationMin: 25, advanceNoticeMin: 0,
+          ringAtStart: false, focusIntervalMin: 25, remindAtBedtime: false, wakeAtEnd: false };
 
       const intervalMin = target.focusIntervalMin ?? 25;
       const startMinute =
