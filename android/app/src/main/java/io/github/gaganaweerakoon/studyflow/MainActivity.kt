@@ -24,6 +24,7 @@ class MainActivity : Activity() {
             settings.domStorageEnabled = true
             settings.allowFileAccess = false
             settings.allowContentAccess = false
+            addJavascriptInterface(AlarmBridge(this@MainActivity), "StudyFlowAlarms")
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = true
 

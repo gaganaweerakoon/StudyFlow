@@ -1,8 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { relayOrigin, relayRequest, type CompanionCalendar } from '../../src/companion/client';
+import { deviceAlerts } from '../../src/companion/alarms';
 import { MobileCompanionApp } from '../../src/mobile/MobileCompanionApp';
 import './index.css';
+
+interface AlarmStatus { exact: boolean; notifications: boolean }
+
+declare global {
+  interface Window {
+    StudyFlowAlarms?: {
+      status(): string;
+      replace(alerts: string): number;
+      enableExact(): void;
+      enableNotifications(): void;
+    };
+  }
+}
 
 const storageKey = 'studyflow.companion.phone';
 interface PhonePair {
@@ -20,6 +34,29 @@ function AndroidCompanion() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+
+  const [alarmStatus, setAlarmStatus] = useState<AlarmStatus | null>(null);
+  const [armed, setArmed] = useState<number | null>(null);
+
+  useEffect(() => {
+    const bridge = window.StudyFlowAlarms;
+    if (!bridge) return;
+    const refresh = () => setAlarmStatus(JSON.parse(bridge.status()));
+    refresh();
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    const bridge = window.StudyFlowAlarms;
+    if (!bridge) return;
+    const alerts = deviceAlerts(pair?.calendar?.events ?? [], Date.now());
+    setArmed(bridge.replace(JSON.stringify(alerts)));
+  }, [pair, alarmStatus?.exact]);
 
   function save(next: PhonePair) {
     localStorage.setItem(storageKey, JSON.stringify(next));
@@ -78,6 +115,15 @@ function AndroidCompanion() {
       ) : (
         <>
           <button disabled={busy} className="min-h-12 rounded-xl bg-[var(--accent)] px-4 font-medium text-[var(--accent-fg)]" onClick={() => void run(() => pull(pair))}>{busy ? 'Syncing…' : 'Sync calendar'}</button>
+          {alarmStatus && (
+            <section className="space-y-2 rounded-xl border border-[var(--border-subtle)] p-3 text-sm">
+              <h2 className="font-semibold">Alarms and reminders</h2>
+              {!alarmStatus.notifications && <button className="min-h-12 underline" onClick={() => window.StudyFlowAlarms?.enableNotifications()}>Enable notifications</button>}
+              {!alarmStatus.exact && <button className="min-h-12 underline" onClick={() => window.StudyFlowAlarms?.enableExact()}>Enable exact alarms</button>}
+              {armed === -1 && <p>Could not save the alarm schedule on this phone.</p>}
+              {armed !== null && armed >= 0 && alarmStatus.notifications && <p>{armed} upcoming alerts scheduled on this phone.</p>}
+            </section>
+          )}
           {currentEvents.length ? (
             <ul className="space-y-2">
               {currentEvents.map(event => (
