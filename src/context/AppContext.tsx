@@ -66,6 +66,10 @@ export interface FocusTimerState {
 }
 
 export interface UserPreferences {
+  focusScene?: string;
+  focusTrack?: string;
+  musicVolume?: number;
+  musicMuted?: boolean;
   googleAccount?: import('../desktop/GoogleAccount').GoogleProfile;
   name: string;
   email: string;

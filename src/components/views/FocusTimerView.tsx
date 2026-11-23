@@ -1,3 +1,4 @@
+import {COMPANION_DESK_URL} from '../../data/mockData';
 import React, { useState } from 'react';
 import {
   Play,
@@ -18,7 +19,7 @@ const MODES = ['Pomodoro', 'Countdown', 'Stopwatch', 'Custom'] as const;
 
 export const FocusTimerView: React.FC = () => {
   const {
-    focusTimer,
+    focusTimer, xpPoints,
     setFocusMode,
     toggleFocusRunning,
     resetFocusTimer,
@@ -37,6 +38,19 @@ export const FocusTimerView: React.FC = () => {
   const [customMin, setCustomMin] = useState(35);
   const [fullScreenMode, setFullScreenMode] = useState(false);
 
+  const level=Math.floor(xpPoints/500)+1;
+  const scene=level<3 && preferences.focusScene==='dusk'?'desk':preferences.focusScene;
+  const background=scene && scene!=='plain' ? {backgroundImage:'linear-gradient('+(scene==='dusk'?'#261b4099,#141326ee':'#14171f99,#14171fee')+'),url('+COMPANION_DESK_URL+')',backgroundSize:'cover',backgroundPosition:'center',color:'white'} : {};
+  const audio=React.useRef<HTMLAudioElement>(null);
+  const track=preferences.focusTrack==='dusk' && level<3 ? '' : preferences.focusTrack;
+  React.useEffect(()=>{
+    if(!audio.current)return;
+    audio.current.volume=preferences.musicVolume ?? 0.35;
+    audio.current.muted=Boolean(preferences.musicMuted);
+    if(focusTimer.running && track) void audio.current.play().catch(()=>{});
+    else audio.current.pause();
+  },[focusTimer.running,track,preferences.musicVolume,preferences.musicMuted,fullScreenMode]);
+  const music=<audio ref={audio} loop src={track ? '/focus/'+track+'.ogg':undefined}/>;
   const activeSubject = subjects.find((s) => s.id === focusTimer.subjectId);
   const displayTime =
     focusTimer.mode === 'Stopwatch'
@@ -222,7 +236,7 @@ export const FocusTimerView: React.FC = () => {
     return (
       <div
         className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6"
-        style={{ backgroundColor: 'var(--bg-canvas)' }}
+        style={{ backgroundColor: 'var(--bg-canvas)', ...background }}
       >
         <div className="absolute top-5 right-5 flex items-center gap-2">
           <button
@@ -234,7 +248,7 @@ export const FocusTimerView: React.FC = () => {
             <Minimize2 className="w-3.5 h-3.5" /> Exit Distraction-Free
           </button>
         </div>
-        {timerContent}
+        {music}{timerContent}
       </div>
     );
   }
@@ -274,10 +288,15 @@ export const FocusTimerView: React.FC = () => {
         </div>
       </div>
 
+      <details className="rounded-lg border border-[var(--border-subtle)] p-3 text-sm"><summary>Focus background and music</summary>
+        <div className="mt-2 flex flex-wrap gap-3"><label>Background <select value={scene ?? 'plain'} onChange={e=>updatePreferences({focusScene:e.target.value})}><option value="plain">Plain</option><option value="desk">Oak desk</option><option value="dusk" disabled={level<3}>Dusk desk · Level 3</option></select></label>
+        <label>Music <select value={track ?? ''} onChange={e=>updatePreferences({focusTrack:e.target.value})}><option value="">Off</option><option value="quiet-keys">Quiet keys</option><option value="dusk" disabled={level<3}>Dusk melody · Level 3</option></select></label>
+        <label>Volume <input type="range" min="0" max="1" step=".05" value={preferences.musicVolume ?? .35} onChange={e=>updatePreferences({musicVolume:Number(e.target.value)})}/></label>
+        <label><input type="checkbox" checked={!!preferences.musicMuted} onChange={e=>updatePreferences({musicMuted:e.target.checked})}/> Mute</label></div></details>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Main Centered Timer Surface */}
-        <div className="lg:col-span-8 rounded-xl" style={surfaceStyle}>
-          {timerContent}
+        <div className="lg:col-span-8 rounded-xl" style={{...surfaceStyle,...background}}>
+          {music}{timerContent}
         </div>
 
         {/* Right Side: Context Selector & Session History */}
