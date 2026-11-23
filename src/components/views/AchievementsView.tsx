@@ -9,10 +9,12 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { focusScenes, focusTracks } from '../../utils/focusScenes';
 import { COMPANION_DESK_URL } from '../../data/mockData';
 
 export const AchievementsView: React.FC = () => {
   const { achievements, challenges, claimChallenge, xpPoints, legacyCalendar } = useApp();
+  const [rewardFilter, setRewardFilter] = useState<'all' | 'available' | 'locked'>('all');
   const [badgeFilter, setBadgeFilter] = useState<'all' | 'unlocked' | 'locked'>('all');
   const [celebratingId, setCelebratingId] = useState<string | null>(null);
   const [companionImgFailed, setCompanionImgFailed] = useState(false);
@@ -20,6 +22,11 @@ export const AchievementsView: React.FC = () => {
   const level = Math.floor(xpPoints / 500) + 1;
   const levelProgress = Math.round(((xpPoints % 500) / 500) * 100);
   const xpToNext = 500 - (xpPoints % 500);
+
+  const rewards = [
+    ...focusScenes.filter(scene => scene.id !== 'plain').map(scene => ({ ...scene, kind: 'Background' })),
+    ...focusTracks.filter(track => track.id).map(track => ({ ...track, kind: 'Music', image: '' })),
+  ].filter(reward => rewardFilter === 'all' || (rewardFilter === 'available' ? level >= reward.level : level < reward.level));
 
   const recentBadges = achievements.filter(badge => badge.unlocked && badge.unlockedDate)
     .sort((a, b) => (b.unlockedDate ?? '').localeCompare(a.unlockedDate ?? '')).slice(0, 3);
@@ -149,11 +156,34 @@ export const AchievementsView: React.FC = () => {
               </p>
             </div>
             <div className="mt-2.5 text-[11.5px] font-mono-num" style={{ color: 'var(--accent)' }}>
-              Next unlock at Level {level + 1}: Dusk Window Light
+              Browse backgrounds and music in Rewards
             </div>
           </div>
         </div>
       </div>
+
+      <section className="space-y-3 rounded-xl p-4" style={surfaceStyle} aria-label="Rewards">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-[15px] font-semibold">Rewards</h2>
+          <label className="text-xs">Show <select value={rewardFilter} onChange={event => setRewardFilter(event.target.value as typeof rewardFilter)} className="rounded border border-[var(--border-subtle)] p-1">
+            <option value="all">All rewards</option>
+            <option value="available">Available</option>
+            <option value="locked">Locked</option>
+          </select></label>
+        </div>
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          {rewards.map(reward => (
+            <article key={reward.kind + reward.id} className="overflow-hidden rounded-lg border border-[var(--border-subtle)]">
+              {reward.image && <div aria-hidden="true" className="h-14 bg-cover bg-center" style={{ backgroundImage: reward.image }} />}
+              <div className="space-y-1 p-3 text-xs">
+                <p className="font-semibold">{reward.label}</p>
+                <p className="text-[var(--text-muted)]">{reward.kind} · {level >= reward.level ? 'Available' : `Unlocks at level ${reward.level}`}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+        {!rewards.length && <p className="text-sm text-[var(--text-muted)]">No rewards in this view.</p>}
+      </section>
 
       {/* Weekly Challenges & Monthly Milestones */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
