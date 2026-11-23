@@ -93,7 +93,7 @@ export interface UserPreferences {
 interface AppContextValue {
   recurringSeries: LegacyArchive[string];
   updateRecurringSeries?: (id: number, title: string, startHour: number, durationHours: number, countsTowardStudy?: boolean) => void;
-  wipeData?: (section: WipeSection) => Promise<void>;
+  wipeData?: (sections: WipeSection[]) => Promise<void>;
   importLegacyBackup?: () => Promise<void>;
   legacyCalendar: boolean;
   cardReviews: Record<string, number>;
@@ -852,14 +852,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     }
   });
 
-  const wipeData = workspace && (async (section: WipeSection) => {
-    const { label, detail } = WIPE_OPTIONS[section];
-    if (!window.confirm(`Delete ${label}? ${detail} This also clears matching records from the saved pre-import snapshot.`)) return;
+  const wipeData = workspace && (async (sections: WipeSection[]) => {
+    if (!sections.length) return;
     try {
-      await workspace.writer.save(wipeWorkspace(snapshot, section));
+      await workspace.writer.save(sections.reduce(wipeWorkspace, snapshot));
       window.location.reload();
     } catch (error) {
-      window.alert(`Could not delete ${label}. ${String(error)}`);
+      window.alert('Could not reset workspace data. '+String(error));
     }
   });
 

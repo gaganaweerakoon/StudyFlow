@@ -60,12 +60,16 @@ export const SettingsView: React.FC = () => {
     updatePreferences,
     exportWorkspace,
     importLegacyBackup,
-    wipeData,
+    wipeData, subjects, tasks, sessions, notes, goals, focusHistory, quizzes, exams, flashcards,
     legacyCalendar,
     pushToast,
   } = useApp();
 
   const { settingsRequested, setSettingsRequested } = useAssistant();
+  const resetDialog=React.useRef<HTMLDialogElement>(null);
+  const [selected,setSelected]=useState<WipeSection[]>([]);
+  const categories=Object.keys(WIPE_OPTIONS) as WipeSection[];
+  const counts={subjects:subjects.length,tasks:tasks.length,calendar:sessions.length,study:notes.length+goals.length+focusHistory.length+quizzes.length+exams.length+flashcards.length};
   const [section, setSection] = useState<SettingsSection>(settingsRequested ? 'assistant' : 'themes');
 
   useEffect(() => {
@@ -499,14 +503,15 @@ export const SettingsView: React.FC = () => {
                 </button>}
               </div>
               {wipeData && <div className="space-y-2 border-t border-[var(--border-subtle)] pt-4">
-                <h3 className="text-[13px] font-semibold">Delete workspace data</h3>
-                {Object.entries(WIPE_OPTIONS).map(([key, option]) => (
-                  <div key={key} className="flex flex-wrap items-center justify-between gap-2 py-1">
-                    <p className="text-[12px] text-[var(--text-muted)]">{option.detail}</p>
-                    <button type="button" className="rounded-lg border border-[var(--border-subtle)] px-2.5 py-1.5 text-[12px] text-red-500"
-                      onClick={() => void wipeData(key as WipeSection)}>Delete {option.label}</button>
-                  </div>
-                ))}
+                <button onClick={()=>{setSelected([]);resetDialog.current?.showModal();}}>Reset workspace data</button>
+                <dialog ref={resetDialog} className="m-auto max-w-md p-5 rounded-xl bg-[var(--bg-elevated)] text-[var(--text-primary)] backdrop:bg-black/60">
+                  <h3 className="font-semibold mb-3">Reset workspace data</h3>
+                  <label><input type="checkbox" checked={selected.length===categories.length} onChange={e=>setSelected(e.target.checked?categories:[])}/> Select all</label>
+                  {categories.map(key=><label key={key} className="block my-3"><input type="checkbox" checked={selected.includes(key)} onChange={e=>setSelected(e.target.checked?[...selected,key]:selected.filter(item=>item!==key))}/> {WIPE_OPTIONS[key].label} ({counts[key]})
+                    <small className="block">{WIPE_OPTIONS[key].detail}</small></label>)}
+                  <p className="text-xs">Deletion also applies to the saved pre-import snapshot and cannot be undone.</p>
+                  <div className="flex gap-4 mt-4"><button onClick={()=>resetDialog.current?.close()}>Cancel</button><button disabled={!selected.length} className="text-red-500" onClick={()=>void wipeData(selected)}>Delete selected data</button></div>
+                </dialog>
               </div>}
             </div>
           )}
