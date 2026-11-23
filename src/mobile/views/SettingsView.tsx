@@ -20,6 +20,7 @@ export const SettingsView: React.FC = () => {
     snoozedWakeUp,
     connection,
     permissions,
+    liveMode,
     settings,
     updateSettings,
     setPermission,
@@ -319,7 +320,8 @@ export const SettingsView: React.FC = () => {
                     aria-label={perm.title}
                     onClick={() => {
                       setPermission(perm.key, !granted);
-                      showPhoneToast(
+                      if (liveMode) showPhoneToast('Manage this permission in Android settings');
+                      else showPhoneToast(
                         !granted ? `${perm.title} enabled` : `${perm.title} turned off`
                       );
                     }}
@@ -342,7 +344,7 @@ export const SettingsView: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setPermission(perm.key, true);
-                      showPhoneToast(`${perm.title} granted`);
+                      if (!liveMode) showPhoneToast(`${perm.title} granted`);
                     }}
                     className="w-full min-h-[44px] rounded-lg text-[calc(12.5px*var(--sf-font-scale,1))] font-semibold transition-opacity hover:opacity-90"
                     style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
