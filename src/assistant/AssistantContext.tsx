@@ -3,8 +3,8 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import { parseWorkspaceEdit, splitWorkspaceResponse, type WorkspaceEdit } from './workspaceEdit';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '../context/AppContext';
-import { estimatedTokens, isAssistantAvailable, sendChat, type Attachment } from './chatClient';
-import { CHAT_LIMITS, PROVIDERS, type ChatRequest, type StudyGenerationKind, type ChatTurn, type Provider, type TokenUsage } from './protocol';
+import { estimatedTokens, isAssistantAvailable, retrySeconds, sendChat, type Attachment } from './chatClient';
+import { CHAT_LIMITS, PROVIDERS, type ChatEvent, type ChatRequest, type StudyGenerationKind, type ChatTurn, type Provider, type TokenUsage } from './protocol';
 import { localDay, requestClock, workspaceContext, type WorkspacePage } from './workspaceContext';
 import { mergeUsage, readSettings, readUsage, todayTokens, usageKey, writeSettings, writeUsage, type AssistantSettings, type UsageEntry } from './usage';
 
@@ -53,6 +53,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   const app = useApp();
   const currentApp = useRef(app);
   currentApp.current = app;
+  const cooldowns = useRef<Partial<Record<Provider, number>>>({});
+  const [cooldownTick, setCooldownTick] = useState(() => Date.now());
   const [settings, setSettings] = useState(readSettings);
   const [usage, setUsage] = useState(() => mergeUsage(desktopUsage?.records ?? readUsage()));
   const [configured, setConfigured] = useState<Provider[]>([]);
@@ -127,6 +129,22 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   }, [busy, conversations, desktopHistory]);
 
   const active = conversations.find(chat => chat.id === activeId) ?? conversations[0];
+  const cooldownUntil = cooldowns.current[settings.provider] ?? 0;
+  const cooldown = Math.max(0, Math.ceil((cooldownUntil - cooldownTick) / 1000));
+  useEffect(() => {
+    if (!cooldown) return;
+    const timer = window.setInterval(() => setCooldownTick(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [cooldown]);
+
+  function providerFailure(provider: Provider, event: Extract<ChatEvent, { type: 'error' }>) {
+    if (event.status === 429 || event.status === 503) {
+      cooldowns.current[provider] = Date.now() + retrySeconds(event.status, event.retryAfter) * 1000;
+      setCooldownTick(Date.now());
+    }
+    return new Error(event.message);
+  }
+
   const model = settings.models[settings.provider] ?? PROVIDERS[settings.provider].model;
   const currentPage = app.route === 'assistant' || app.route === 'settings' ? lastPage : app.route;
   const context = workspaceContext(app, currentPage, draft.trim() || (attachment ? imagePrompt : ''), requestClock(settings.timezone));
@@ -203,6 +221,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
 
   async function send(generateImage = false) {
     const typed = draft.trim();
+    if (cooldownUntil > Date.now()) return;
     if ((!typed && !attachment) || activeRequest.current || !available) return;
     const { provider } = settings;
     const key = keys.current[provider];
@@ -277,9 +296,17 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           updateMessage(message => ({ ...message, text: responseText, generatedImage: { mime: event.mime, base64: event.base64 } }));
         }
         if (event.type === 'usage') tokens = event.usage;
-        if (event.type === 'error') throw new Error(event.message);
+        if (event.type === 'retry') setNotice(`Provider unavailable. Retrying in ${event.seconds}s…`);
+        if (event.type === 'error') {
+          if (event.status === 429 || event.status === 503) {
+            setDraft(current => current || typed);
+            setAttachment(current => current ?? attachment);
+          }
+          throw providerFailure(provider, event);
+        }
         if (event.type === 'done') {
           status = 'complete';
+          setNotice('');
           const { text, command: legacyCommand } = splitWorkspaceResponse(responseText, true);
           if (actionCalls.size > 1) {
             updateMessage(message => ({ ...message, text: 'Pip received more than one change. Ask for one change at a time.' }));
@@ -334,6 +361,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const key = keys.current[provider];
     if (keyStorage === 'loading') throw new Error('Pip is checking for saved API keys. Try again in a moment.');
     if (!configured.includes(provider) && !keyStorageError) throw new Error('Add your '+PROVIDERS[provider].label+' API key in Settings.');
+    if (cooldownUntil > Date.now()) throw new Error('The AI provider is cooling down. Try again when the countdown ends.');
     if (activeRequest.current) throw new Error('Pip is already working on a request. Try again when it finishes.');
     if (!source.trim()) throw new Error('Select a section containing text.');
     if (source.length > CHAT_LIMITS.context) throw new Error('Choose a shorter section for this request.');
@@ -351,7 +379,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         clientContext: `Current local date and time: ${clock.label}. Default response language: ${settings.language ?? 'match the source'}.`,
       }, key, control.signal)) {
         if (event.type==='text') body+=event.text;
-        if (event.type==='error') throw new Error(event.message);
+        if (event.type==='error') throw providerFailure(provider, event);
         if (event.type==='usage') tokens=event.usage;
         if (event.type==='done') complete=!event.truncated;
       }
@@ -395,7 +423,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           ? { ...item, text: 'Change cancelled.', edit: undefined } : item),
       })));
     },
-    generate, available, settings, updateSettings, usage, configured, setKey, keyStorage, keyStorageError, model,
+    generate, available, cooldown, settings, updateSettings, usage, configured, setKey, keyStorage, keyStorageError, model,
     active, activeId, conversations, switchChat, newChat, renameChat, removeChat,
     petOpen, setPetOpen, settingsRequested, setSettingsRequested,
     openSettings, openFullChat: () => app.setRoute('assistant'), context, includeContext, setIncludeContext, draft, setDraft, attachment,

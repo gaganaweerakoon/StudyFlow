@@ -63,7 +63,8 @@ export type ChatEvent =
   | { type: 'image'; mime: 'image/png' | 'image/jpeg' | 'image/webp'; base64: string }
   | { type: 'usage'; usage: TokenUsage }
   | { type: 'done'; truncated?: boolean }
-  | { type: 'error'; message: string };
+  | { type: 'retry'; seconds: number }
+  | { type: 'error'; message: string; status?: number; retryAfter?: string };
 
 export function isProvider(value: unknown): value is Provider {
   return typeof value === 'string' && Object.hasOwn(PROVIDERS, value);

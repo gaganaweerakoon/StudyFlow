@@ -49,7 +49,7 @@ async function* sendDesktopChat(request: ChatRequest, key: string | undefined, s
   }
 }
 
-export async function* sendChat(request: ChatRequest, key: string | undefined, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+async function* sendOnce(request: ChatRequest, key: string | undefined, signal: AbortSignal): AsyncGenerator<ChatEvent> {
   if (isTauri()) {
     yield* sendDesktopChat(request, key, signal);
     return;
@@ -83,6 +83,48 @@ export async function* sendChat(request: ChatRequest, key: string | undefined, s
   } finally {
     await reader.cancel().catch(() => {});
     reader.releaseLock();
+  }
+}
+
+export function retrySeconds(status: number, header?: string) {
+  const value = header?.trim() ?? '';
+  const declared = /^\d+$/.test(value) ? Number(value) : (Date.parse(value) - Date.now()) / 1000;
+  return Number.isFinite(declared) ? Math.max(1, Math.ceil(declared)) : status === 429 ? 30 : 5;
+}
+
+function pause(seconds: number, signal: AbortSignal) {
+  signal.throwIfAborted();
+  return new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      signal.removeEventListener('abort', stop);
+      resolve();
+    }, seconds * 1000);
+    function stop() {
+      window.clearTimeout(timer);
+      reject(signal.reason);
+    }
+    signal.addEventListener('abort', stop, { once: true });
+  });
+}
+
+export async function* sendChat(request: ChatRequest, key: string | undefined, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+  let retry: number | undefined;
+  let received = false;
+  for await (const event of sendOnce(request, key, signal)) {
+    if (event.type === 'error' && event.status === 503 && !received && !request.generateImage) {
+      const seconds = retrySeconds(503, event.retryAfter);
+      if (seconds <= 10) {
+        retry = seconds;
+        break;
+      }
+    }
+    received = true;
+    yield event;
+  }
+  if (retry !== undefined) {
+    yield { type: 'retry', seconds: retry };
+    await pause(retry, signal);
+    yield* sendOnce(request, key, signal);
   }
 }
 

@@ -308,6 +308,12 @@ async fn generate_image(
         .send()
         .await
         .map_err(|_| "Could not connect to your image provider.")?;
+    if matches!(response.status().as_u16(), 429 | 503) {
+        let status = response.status().as_u16();
+        let retry_after = response.headers().get("retry-after").and_then(|value| value.to_str().ok());
+        let message = if status == 429 { "The image provider is rate limiting requests." } else { "The image provider is temporarily unavailable." };
+        return emit(json!({"type":"error","message":message,"status":status,"retryAfter":retry_after}));
+    }
     if !response.status().is_success() {
         return Err(format!(
             "Image request rejected ({}). Check API key, model access, and billing.",
@@ -369,8 +375,14 @@ pub async fn stream(
         })?;
     let status = response.status();
     if !status.is_success() {
+        let retry_after = response.headers().get("retry-after").and_then(|value| value.to_str().ok()).map(str::to_owned);
         let payload: Value = response.json().await.unwrap_or(Value::Null);
         let code = payload["error"]["code"].as_str().unwrap_or("");
+        if matches!(status.as_u16(), 429 | 503) && code != "insufficient_quota" {
+            let message = if status.as_u16() == 429 { "The provider is rate limiting requests." } else { "The provider is temporarily unavailable." };
+            emit(json!({"type":"error","message":message,"status":status.as_u16(),"retryAfter":retry_after}))?;
+            return Ok(());
+        }
         return Err(match (status.as_u16(), code) {
             (_, "insufficient_quota") => "OpenAI API credits are unavailable. Check your API account's billing and project budget.".into(),
             (401, _) => "The provider rejected the API key. Check AI Settings and use a key from the selected provider.".into(),

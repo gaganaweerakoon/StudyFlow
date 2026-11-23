@@ -124,7 +124,8 @@ function providerRequest(request: ChatRequest, key: string) {
 function providerError(status: number, label: string) {
   if (status === 401 || status === 403) return `${label} rejected the API key or denied model access. Check AI Settings.`;
   if (status === 404 || status === 400 || status === 422) return `${label} rejected the request. Check the model ID and its image support.`;
-  if (status === 402 || status === 429) return `${label} returned a billing, quota, or rate limit error. Check your provider account.`;
+  if (status === 402) return `${label} rejected the request due to billing. Check your provider account.`;
+  if (status === 429) return `${label} is rate limiting requests.`;
   return `${label} is temporarily unavailable.`;
 }
 
@@ -143,7 +144,7 @@ async function* generateProviderImage(request: ChatRequest, key: string, signal:
       : { contents: [{ parts: [{ text: request.prompt }] }], generationConfig: { responseModalities: ['IMAGE'] } }),
   });
   if (!response.ok) {
-    yield { type: 'error', message: `Image request rejected (${response.status}). Check API key, model access, and billing.` };
+    yield { type: 'error', message: providerError(response.status, PROVIDERS[request.provider].label), status: response.status, retryAfter: response.headers.get('Retry-After') ?? undefined };
     return;
   }
   const data = await response.json();
@@ -172,7 +173,7 @@ export async function* streamProvider(
   const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal, redirect: 'error' });
   if (!response.ok || !response.body) {
     await response.body?.cancel();
-    yield { type: 'error', message: providerError(response.status, label) };
+    yield { type: 'error', message: providerError(response.status, label), status: response.status, retryAfter: response.headers.get('Retry-After') ?? undefined };
     return;
   }
 

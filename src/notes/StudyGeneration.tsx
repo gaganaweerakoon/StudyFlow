@@ -5,7 +5,7 @@ import {useAssistant} from '../assistant/AssistantContext';
 import { readGeneratedCards, readGeneratedQuestions, type GeneratedCard } from './generatedStudyItems';
 export function StudyGeneration({quiz=false}:{quiz?:boolean}) {
   const {notes,decks,addQuiz,addFlashcard,pushToast}=useApp();
-  const {generate}=useAssistant();
+  const {generate,cooldown}=useAssistant();
   const [noteId,setNoteId]=useState(notes[0]?.id ?? '');
   const [index,setIndex]=useState(0);
   const note=notes.find(n=>n.id===noteId);
@@ -17,7 +17,7 @@ export function StudyGeneration({quiz=false}:{quiz?:boolean}) {
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   return <details className="rounded-xl border border-[var(--border-subtle)] p-3 text-sm"><summary>{quiz?'Generate practice test':'Generate flashcards'} from notes</summary>
-    <fieldset disabled={busy} className="grid gap-2 mt-3">
+    <fieldset disabled={busy || cooldown > 0} className="grid gap-2 mt-3">
     <label>Note <select value={noteId} onChange={e=>{setNoteId(e.target.value);setIndex(0);setCards([]);}}>{notes.map(n=><option key={n.id} value={n.id}>{n.title}</option>)}</select></label>
     <label>Section <select value={index} onChange={e=>{setIndex(Number(e.target.value));setCards([]);}}>{sections.map((s,i)=><option key={i} value={i}>{s.split('\n')[0].slice(0,90)}</option>)}</select></label>
     {quiz ? <label>Questions <select value={kind} onChange={e=>setKind(e.target.value)}>{["mixed","mcq","multi","short"].map(k=><option key={k}>{k}</option>)}</select></label> : <label>Deck <select value={deck} onChange={e=>setDeck(e.target.value)}>{decks.map(d=><option key={d.id} value={d.id}>{d.title}</option>)}</select></label>}
@@ -36,5 +36,6 @@ export function StudyGeneration({quiz=false}:{quiz?:boolean}) {
     }}>{busy?'Generating…':'Generate draft'}</button>
     {cards.map((c,i)=><div key={i} className="grid gap-1">{(['front','back'] as const).map(k=><textarea key={k} aria-label={k} value={c[k]} onChange={e=>setCards(cards.map((v,j)=>j===i?{...v,[k]:e.target.value}:v))}/>)}<button onClick={()=>setCards(cards.filter((_,j)=>i!==j))}>Discard card</button></div>)}
     {cards.length>0 && <button disabled={cards.some(c=>!c.front.trim()||!c.back.trim())} onClick={()=>{cards.forEach(c=>addFlashcard({...c,deckId:deck,hint:note?.title}));setCards([]);pushToast('Reviewed cards saved');}}>Save reviewed cards</button>}
+    {cooldown > 0 && <p role="status">Try again in {cooldown}s.</p>}
     {error && <p role="alert">{error}</p>}</fieldset></details>;
 }

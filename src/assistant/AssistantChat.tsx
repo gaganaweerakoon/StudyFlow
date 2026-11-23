@@ -193,6 +193,7 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
             <pre>{assistant.context.text || 'No workspace records will be sent.'}</pre>
           </details>}
         </div>
+        {assistant.cooldown > 0 && <p className="pip-notice" role="status">Try again in {assistant.cooldown}s.</p>}
         {assistant.notice && <p className="pip-notice" role="status">{assistant.notice}</p>}
         {assistant.attachment && <div className="pip-attachment">
           <img alt="" src={`data:${assistant.attachment.image.mime};base64,${assistant.attachment.image.base64}`} />
@@ -238,7 +239,7 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
               <button type="button" className="pip-icon" title="Attach a screenshot or image" aria-label="Attach image" disabled={!configured || assistant.busy || processing || !assistant.available} onClick={() => picker.current?.click()}><Paperclip size={17} /></button>
               <button type="button" className="pip-icon" aria-label="Generate image from message"
                 title={assistant.settings.provider === 'claude' ? 'Choose OpenAI or Gemini to generate images' : 'Generate an image from your message'}
-                disabled={!configured || assistant.busy || processing || !assistant.available || !assistant.draft.trim() || !!assistant.attachment || assistant.settings.provider === 'claude'}
+                disabled={!configured || assistant.busy || assistant.cooldown > 0 || processing || !assistant.available || !assistant.draft.trim() || !!assistant.attachment || assistant.settings.provider === 'claude'}
                 onClick={() => { follow.current = true; void assistant.send(true); }}><ImagePlus size={17} /></button>
               <select aria-label="Image detail" value={assistant.detail} onChange={event => assistant.setDetail(event.target.value === 'high' ? 'high' : 'standard')} disabled={assistant.busy || processing || !!assistant.attachment}>
                 <option value="standard">Image detail</option>
@@ -251,7 +252,7 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
             </div>
             {assistant.busy
               ? <button type="button" className="pip-send" onClick={assistant.stop} aria-label="Stop reply" title="Stop reply"><Square size={14} /></button>
-              : <button type="submit" className="pip-send" disabled={!assistant.available || processing || (!assistant.draft.trim() && !assistant.attachment)} aria-label="Send message" title="Send message"><ArrowUp size={18} /></button>}
+              : <button type="submit" className="pip-send" disabled={!assistant.available || assistant.cooldown > 0 || processing || (!assistant.draft.trim() && !assistant.attachment)} aria-label="Send message" title="Send message"><ArrowUp size={18} /></button>}
           </div>
         </div>
       </form>
