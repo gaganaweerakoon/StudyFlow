@@ -4,7 +4,7 @@ import { localDay } from '../../assistant/workspaceContext';
 import { useApp } from '../../context/AppContext';
 import type { Priority, GoalItem } from '../../types/studyflow';
 
-import { CalendarBlockFields, readCalendarBlockFields } from './CalendarBlockFields';
+import { CalendarBlockFields, readCalendarBlockFields, RepeatWeekdays } from './CalendarBlockFields';
 
 const SUBJECT_SWATCHES = ['#4F46E5', '#0D9488', '#D97706', '#E11D48', '#7C3AED', '#2563EB', '#059669'];
 
@@ -521,16 +521,7 @@ export const QuickModals: React.FC = () => {
                     <option value="weekly">Selected weekdays</option>
                   </select>
                 </label>
-                {sesRepeat === 'weekly' && (
-                  <fieldset className="flex flex-wrap gap-3 text-xs">
-                    <legend className="mb-2">Repeat each week on</legend>
-                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => (
-                      <label className="flex items-center gap-1" key={day}>
-                        <input type="checkbox" name="repeat-day" value={index} /> {day}
-                      </label>
-                    ))}
-                  </fieldset>
-                )}
+                {sesRepeat === 'weekly' && <RepeatWeekdays />}
                 <div className="flex justify-end gap-2 pt-2">
                   <button type="button" onClick={closeModal} className="px-3.5 py-1.5 rounded-lg text-[13px] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]">
                     Cancel

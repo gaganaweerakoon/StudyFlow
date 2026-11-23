@@ -15,11 +15,12 @@ import {
 } from 'lucide-react';
 import { localDay } from '../../assistant/workspaceContext';
 import { useApp } from '../../context/AppContext';
+import { recurringSeriesTemplate, recurringWeekdays } from '../../desktop/legacy';
 import type { StudySession } from '../../types/studyflow';
 import { layoutCalendarDay } from '../../utils/calendarLayout';
 import { formatHourLabel } from '../../utils/studyLogic';
 
-import { CalendarBlockFields, readCalendarBlockFields } from '../shell/CalendarBlockFields';
+import { CalendarBlockFields, readCalendarBlockFields, RepeatWeekdays } from '../shell/CalendarBlockFields';
 
 type PlannerMode = 'day' | 'week' | 'month' | 'agenda';
 
@@ -41,7 +42,7 @@ export const PlannerView: React.FC = () => {
     sessions,
     legacyCalendar,
     subjects,
-    updateSession, updateRecurringSeries,
+    updateSession, updateRecurringSeries, recurringSeries,
     deleteSession,
     setActiveModal,
     pushToast,
@@ -65,6 +66,10 @@ export const PlannerView: React.FC = () => {
 
 
   const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? null;
+  const selectedSeriesId = /^legacy-series-(\d+)-/.exec(selectedSession?.id ?? '')?.[1];
+  const selectedSeries = recurringSeries.find(row => row.id === Number(selectedSeriesId));
+  const [editScope, setEditScope] = useState<{ id: string | null; series: boolean }>({ id: null, series: false });
+  const editingSeries = editScope.id === selectedSessionId && editScope.series;
 
   const blocksByDate = new Map(DAYS.map(day => [day.date, layoutCalendarDay(sessions, day.date)]));
   const getWorkloadForDay = (dayIdx: number) => (blocksByDate.get(DAYS[dayIdx].date) ?? [])
@@ -499,6 +504,7 @@ export const PlannerView: React.FC = () => {
             {selectedSession ? (
               (() => {
                 const sub = subjects.find((s) => s.id === selectedSession.subjectId);
+                const formSession = selectedSeries && editingSeries ? recurringSeriesTemplate(selectedSeries, selectedSession) : selectedSession;
                 return (
                   <div className="space-y-3">
                     <div>
@@ -534,7 +540,7 @@ export const PlannerView: React.FC = () => {
                       </p>
                     )}
 
-                    <form key={selectedSession.id} className="grid gap-2 text-xs [&_input:not([type=checkbox])]:block [&_input:not([type=checkbox])]:w-full [&_input:not([type=checkbox])]:rounded [&_input:not([type=checkbox])]:border [&_input:not([type=checkbox])]:border-[var(--border-subtle)] [&_input:not([type=checkbox])]:p-1" onSubmit={e => {
+                    <form key={`${selectedSession.id}-${editingSeries}`} className="grid gap-2 text-xs [&_input:not([type=checkbox])]:block [&_input:not([type=checkbox])]:w-full [&_input:not([type=checkbox])]:rounded [&_input:not([type=checkbox])]:border [&_input:not([type=checkbox])]:border-[var(--border-subtle)] [&_input:not([type=checkbox])]:p-1" onSubmit={e => {
                       e.preventDefault();
                       const data = new FormData(e.currentTarget);
                       const title = String(data.get('title')).trim();
@@ -543,13 +549,18 @@ export const PlannerView: React.FC = () => {
                       const startHour = hour + minute / 60;
                       const durationHours = Number(data.get('duration')) / 60;
                       const fields = readCalendarBlockFields(data);
-                      const series = /^legacy-series-(\d+)-/.exec(selectedSession.id);
-                      if (series && data.get('scope') === 'series' && updateRecurringSeries) {
+                      if (selectedSeries && editingSeries && updateRecurringSeries) {
                         if (data.get('date') !== selectedSession.date) {
                           pushToast('Choose This occurrence to move it to a different date.');
                           return;
                         }
-                        updateRecurringSeries(Number(series[1]), title, startHour, durationHours, fields, String(data.get('subject') ?? ''));
+                        const weekdays = data.getAll('repeat-day').map(Number);
+                        if (!weekdays.length) {
+                          pushToast('Choose at least one weekday.');
+                          return;
+                        }
+                        updateRecurringSeries(Number(selectedSeriesId), title, startHour, durationHours, fields, String(data.get('subject') ?? ''), weekdays);
+                        setEditScope({ id: null, series: false });
                       } else {
                         const date = String(data.get('date'));
                         const dayIndex = (new Date(date + 'T12:00:00').getDay() + 6) % 7;
@@ -557,12 +568,16 @@ export const PlannerView: React.FC = () => {
                       }
                       pushToast('Calendar changes saved');
                     }}>
-                      <label>Title <input name="title" required defaultValue={selectedSession.title} /></label>
-                      <label>Date <input name="date" type="date" required defaultValue={selectedSession.date} /></label>
-                      <label>Starts <input name="start" type="time" required defaultValue={new Date(Math.round(selectedSession.startHour * 60) * 60000).toISOString().slice(11,16)} /></label>
-                      <label>Duration in minutes <input name="duration" type="number" min="1" max="1440" required defaultValue={Math.round(selectedSession.durationHours * 60)} /></label>
-                      <CalendarBlockFields session={selectedSession} subjects={subjects} />
-                      {selectedSession.id.startsWith('legacy-series-') && <label>Apply to <select name="scope"><option value="one">This occurrence</option><option value="series">Entire series</option></select></label>}
+                      {selectedSeries && updateRecurringSeries && <label>Apply to <select name="scope" value={editingSeries ? 'series' : 'one'}
+                        onChange={event => setEditScope({ id: selectedSessionId, series: event.target.value === 'series' })}>
+                        <option value="one">This occurrence</option><option value="series">Entire series</option>
+                      </select></label>}
+                      <label>Title <input name="title" required defaultValue={formSession.title} /></label>
+                      <label>Date <input name="date" type="date" required defaultValue={formSession.date} /></label>
+                      <label>Starts <input name="start" type="time" required defaultValue={new Date(Math.round(formSession.startHour * 60) * 60000).toISOString().slice(11,16)} /></label>
+                      <label>Duration in minutes <input name="duration" type="number" min="1" max="1440" required defaultValue={Math.round(formSession.durationHours * 60)} /></label>
+                      <CalendarBlockFields session={formSession} subjects={subjects} />
+                      {selectedSeries && editingSeries && <RepeatWeekdays selected={recurringWeekdays(selectedSeries)} />}
                       <button type="submit" className="rounded bg-[var(--accent)] p-2 text-white">Save event</button>
                     </form>
                     {/* Resize / Status Controls */}

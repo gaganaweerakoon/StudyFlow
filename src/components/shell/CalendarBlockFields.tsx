@@ -75,3 +75,17 @@ export function CalendarBlockFields({ session, subjects }: {
     </fieldset>
   );
 }
+
+
+export function RepeatWeekdays({ selected = [] }: { selected?: number[] }) {
+  return (
+    <fieldset className="flex flex-wrap gap-3 text-xs">
+      <legend className="mb-2">Repeat each week on</legend>
+      {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => (
+        <label className="flex items-center gap-1" key={day}>
+          <input type="checkbox" name="repeat-day" value={index} defaultChecked={selected.includes(index)} /> {day}
+        </label>
+      ))}
+    </fieldset>
+  );
+}

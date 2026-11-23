@@ -11,6 +11,10 @@ const number = (row: Row, key: string) => typeof row[key] === 'number' ? row[key
 const subjectId = (row: Row, key = 'subject_id') => row[key] == null ? '' : `legacy-subject-${row[key]}`;
 const hour = (value: string) => Number(value.slice(0, 2)) + Number(value.slice(3, 5)) / 60;
 
+export function recurringWeekdays(row: Row) {
+  return [...new Set((text(row, 'weekdays').match(/[0-6]/g) ?? []).map(Number))];
+}
+
 export async function chooseLegacyBackup() {
   const picker = document.createElement('input');
   picker.type = 'file';
@@ -40,17 +44,21 @@ function session(row: Row, id: string, date: string, from: string, to: string, r
   };
 }
 
+export function recurringSeriesTemplate(row: Row, occurrence: StudySession) {
+  return session(row, occurrence.id, occurrence.date, text(row, 'start_time'), text(row, 'end_time'), true);
+}
+
 export function legacyOccurrences(archive: LegacyArchive, dates: string[]) {
   const occurrences: StudySession[] = [];
   const dateSet = new Set(dates);
   for (const row of archive.recurring_events) {
-    const weekdays = new Set(text(row, 'weekdays').match(/[0-6]/g) ?? []);
+    const weekdays = new Set(recurringWeekdays(row));
     const exceptions = new Set(archive.recurrence_exceptions.filter(item => item.series_id === row.id).map(item => text(item, 'date')));
     const overrides = new Map(archive.recurrence_overrides.filter(item => item.series_id === row.id).map(item => [text(item, 'occurrence_date'), item]));
     for (const date of dates) {
       const day = (new Date(date + 'T12:00:00').getDay() + 6) % 7;
       if (date < text(row, 'valid_from') || (text(row, 'valid_until') && date > text(row, 'valid_until')) ||
-          !weekdays.has(String(day)) || exceptions.has(date) || overrides.has(date)) continue;
+          !weekdays.has(day) || exceptions.has(date) || overrides.has(date)) continue;
       occurrences.push(session(row, `legacy-series-${row.id}-${date}`, date, text(row, 'start_time'), text(row, 'end_time'), true));
     }
     for (const [date, change] of overrides) {

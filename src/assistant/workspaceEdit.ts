@@ -215,12 +215,17 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       const duration = edit.durationHours ?? ((priorEnd - priorStart + 24) % 24 || 24);
       if (typeof start !== 'number' || !Number.isFinite(start) || start < 0 || start >= 24 ||
           typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0 || duration > 24) return;
+      const weekdays = edit.weekdays;
+      if (weekdays !== undefined && (!Array.isArray(weekdays) || !weekdays.length || weekdays.length > 7 ||
+          weekdays.some(day => !Number.isInteger(day) || day < 0 || day > 6) || new Set(weekdays).size !== weekdays.length)) return;
       const name = title ?? series.title;
+      const days = weekdays?.map(day => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][day]).join(', ');
       return {
-        title: `Update entire series “${series.title}” to “${name}” · start hour ${start}, duration ${duration}h (existing exceptions and overrides stay in place)`,
+        confirmation: true,
+        title: `Update entire series “${series.title}” to “${name}” · start hour ${start}, duration ${duration}h${days ? ` · ${days}` : ''}`,
         apply: current => {
           if (!current.updateRecurringSeries || current.recurringSeries.find(row => row.id === seriesId) !== series) return false;
-          current.updateRecurringSeries(seriesId, name, start, duration);
+          current.updateRecurringSeries(seriesId, name, start, duration, undefined, undefined, weekdays);
           return true;
         },
       };
