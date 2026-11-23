@@ -12,6 +12,9 @@ import java.net.NetworkInterface
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.Socket
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.security.MessageDigest
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
@@ -28,6 +31,9 @@ internal object LocalCompanion {
     private const val TCP_CONNECT_TIMEOUT_MS = 5_000
     private const val TLS_HANDSHAKE_TIMEOUT_MS = 6_000
     private const val CALENDAR_RESPONSE_TIMEOUT_MS = 8_000
+    private const val DISCOVERY_BUDGET_MS = 8_000L
+    private const val DISCOVERY_PROBE_TIMEOUT_MS = 250
+    private const val DISCOVERY_WORKERS = 24
     private fun localAddress(value: String): Boolean {
         val pieces = value.split('.').map { it.toIntOrNull() ?: return false }
         if (pieces.size != 4 || pieces.any { it !in 0..255 }) return false
@@ -50,6 +56,68 @@ internal object LocalCompanion {
         }
         return (0 until hosts.length()).map { hosts.getString(it) }
             .filter(::localAddress).distinct().sortedByDescending(::matches)
+    }
+
+
+    /**
+     * Hotspot phones often cannot reach the address advertised by a PC's VPN or virtual adapter.
+     * Look only on directly attached Wi-Fi/hotspot/Ethernet interfaces, not cellular or VPN.
+     * Limit discovery to two local /24 ranges; the TLS certificate pin below is still mandatory.
+     */
+    private fun localLanCandidates(): List<String> {
+        val interfaces = runCatching { NetworkInterface.getNetworkInterfaces()?.toList().orEmpty() }
+            .getOrDefault(emptyList())
+        val active = interfaces.filter { nic ->
+            val name = nic.name.lowercase()
+            runCatching { nic.isUp && !nic.isLoopback }.getOrDefault(false) &&
+                listOf("wlan", "swlan", "ap", "softap", "eth", "rndis", "usb", "br", "tether")
+                    .any(name::startsWith)
+        }
+        val addresses = active.flatMap { nic ->
+            nic.interfaceAddresses.mapNotNull { entry ->
+                val ip = entry.address
+                val value = ip.hostAddress
+                if (ip !is Inet4Address || value == null ||
+                    !localAddress(value) || entry.networkPrefixLength !in 20..30
+                ) null else value
+            }
+        }.distinct()
+        val prefixes = addresses.map { it.substringBeforeLast('.') }.distinct().take(2)
+        return prefixes.flatMap { prefix ->
+            (1..254).map { "$prefix.$it" }
+        }.filterNot(addresses::contains)
+    }
+
+    /** Only TCP-probe nearby addresses; never send pairing secrets until TLS pin verification. */
+    private fun discoverListeners(excluded: Set<String>, deadline: Long): List<String> {
+        val candidates = localLanCandidates().filterNot(excluded::contains)
+        if (candidates.isEmpty()) return emptyList()
+        val until = minOf(deadline, SystemClock.elapsedRealtime() + DISCOVERY_BUDGET_MS)
+        val found = ConcurrentLinkedQueue<String>()
+        val workers = Executors.newFixedThreadPool(DISCOVERY_WORKERS)
+        try {
+            for (host in candidates) {
+                workers.execute {
+                    val timeout = minOf(
+                        DISCOVERY_PROBE_TIMEOUT_MS.toLong(),
+                        until - SystemClock.elapsedRealtime()
+                    ).toInt()
+                    if (timeout <= 0 || Thread.currentThread().isInterrupted) return@execute
+                    try {
+                        Socket().use { it.connect(InetSocketAddress(host, 8475), timeout) }
+                        found.add(host)
+                    } catch (_: Exception) {
+                        // An unreachable address is expected on a local subnet.
+                    }
+                }
+            }
+            workers.shutdown()
+            val budget = (until - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+            if (budget > 0) workers.awaitTermination(budget, TimeUnit.MILLISECONDS)
+        } finally {
+            workers.shutdownNow()
+        }
+        return found.distinct().take(8)
     }
 
     fun request(raw: String, token: String?): JSONObject {
@@ -83,11 +151,11 @@ internal object LocalCompanion {
         val deadline = started + CONNECTION_DEADLINE_MS
         val attempts = mutableListOf<String>()
         fun remaining(limit: Int): Int = (deadline - SystemClock.elapsedRealtime()).coerceIn(1L, limit.toLong()).toInt()
-        for (host in hosts) {
-            if (SystemClock.elapsedRealtime() >= deadline) break
+        fun connectTo(host: String, discovered: Boolean): JSONObject? {
+            if (SystemClock.elapsedRealtime() >= deadline) return null
             var stage = "TCP"
-            try {
-                return Socket().use { transport ->
+            return try {
+                Socket().use { transport ->
                     transport.connect(InetSocketAddress(host, port), remaining(TCP_CONNECT_TIMEOUT_MS))
                     transport.soTimeout = remaining(TLS_HANDSHAKE_TIMEOUT_MS)
                     (context.socketFactory.createSocket(transport, host, port, true) as SSLSocket).use { socket ->
@@ -106,7 +174,10 @@ internal object LocalCompanion {
                         val reply = ByteArray(size)
                         input.readFully(reply)
                         JSONObject(String(reply, Charsets.UTF_8)).also {
-                            it.put("diagnostic", "$host:$port • ${if (it.has("error")) "PC rejected request" else "connected"} • ${SystemClock.elapsedRealtime() - started} ms")
+                            val source = if (discovered) "found on local hotspot/Wi-Fi" else "from PC QR code"
+                            it.put("diagnostic", "$host:$port • $source • " +
+                                "${if (it.has("error")) "PC rejected request" else "connected"} • " +
+                                "${SystemClock.elapsedRealtime() - started} ms")
                         }
                     }
                 }
@@ -118,13 +189,25 @@ internal object LocalCompanion {
                     else -> "failed"
                 }
                 attempts.add("$host:$port $stage $result")
+                null
             }
+        }
+        for (host in hosts) {
+            connectTo(host, false)?.let { return it }
+        }
+        // The QR can contain a VPN/virtual-adapter address. Search local LAN as fallback.
+        val discovered = discoverListeners(hosts.toSet(), deadline)
+        for (host in discovered) {
+            connectTo(host, true)?.let { return it }
+        }
+        if (discovered.isEmpty()) {
+            attempts.add("No additional PC listener found on the phone's local Wi-Fi/hotspot subnet")
         }
         val error = when {
             attempts.any { it.contains("TLS verification") } -> "Could not verify this PC’s identity. Open StudyFlow on Windows and scan a fresh code."
             attempts.any { it.contains("calendar") } -> "The PC answered, but the calendar transfer failed. Tap Sync calendar or retry the pairing."
             attempts.any { it.contains("TCP refused") } -> "The PC address refused the connection. Open StudyFlow on Windows and run Test connection under Mobile companion."
-            else -> "Could not reach the PC on this network. Check that both devices are on the same Wi-Fi. If Windows prompts for access, allow StudyFlow on private networks."
+            else -> "Could not reach the StudyFlow PC from this phone. The QR may advertise a VPN address, or Windows Firewall/hotspot isolation may block port 8475. Check your laptop Wi-Fi IPv4 address and allow StudyFlow TCP 8475 on private networks."
         }
         return JSONObject().put("error", error)
             .put("diagnostic", attempts.joinToString("\n") + "\nElapsed: ${SystemClock.elapsedRealtime() - started} ms")
