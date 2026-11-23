@@ -49,7 +49,7 @@ export const DashboardView: React.FC = () => {
     exams,
     notes,
     focusTimer,
-    toggleFocusRunning,
+    toggleFocusRunning, setFocusContext,
     setRoute,
     setSelectedSubjectId,
     setSelectedNoteId,
@@ -372,14 +372,16 @@ export const DashboardView: React.FC = () => {
         );
 
       case 'quick_focus': {
-        const sub = subjects.find((s) => s.id === focusTimer.subjectId);
+        const idle = !focusTimer.running && !focusTimer.elapsedSeconds && focusTimer.phase === 'focus' && focusTimer.secondsLeft === focusTimer.totalSeconds;
+        const current = idle ? todaySessions.find(block => block.from <= hour)?.session : undefined;
+        const sub = subjects.find(s => s.id === (current?.subjectId ?? focusTimer.subjectId));
         const timeStr =
           focusTimer.mode === 'Stopwatch'
             ? formatTimerSeconds(focusTimer.elapsedSeconds)
             : formatTimerSeconds(focusTimer.secondsLeft);
 
         return (
-          <section key={id} className="rounded-xl p-4 flex flex-col justify-between" style={surfaceStyle}>
+          <section key={id} className="rounded-xl p-4 self-start" style={surfaceStyle}>
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="font-display text-[14.5px] font-semibold text-[var(--text-primary)]">
@@ -405,12 +407,15 @@ export const DashboardView: React.FC = () => {
                   {timeStr}
                 </div>
                 <div className="text-[12px] text-[var(--text-secondary)] mt-1.5 truncate max-w-[230px]">
-                  {focusTimer.taskTitle}
+                  {current?.title || focusTimer.taskTitle || 'Manual focus'}
                 </div>
               </div>
               <button
                 type="button"
-                onClick={toggleFocusRunning}
+                onClick={() => {
+                  if (current) setFocusContext(current.subjectId, current.title);
+                  toggleFocusRunning();
+                }}
                 aria-label={focusTimer.running ? 'Pause quick focus timer' : 'Start quick focus timer'}
                 className="h-10 px-4 rounded-xl inline-flex items-center gap-2 text-[13px] font-medium shrink-0 transition-opacity hover:opacity-90"
                 style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
@@ -599,7 +604,7 @@ export const DashboardView: React.FC = () => {
         return (
           <section
             key={id}
-            className="rounded-xl p-4 flex flex-col justify-between"
+            className="rounded-xl p-4 self-start"
             style={{
               backgroundColor: 'var(--bg-surface)',
               border: '1px solid var(--accent-border)',
