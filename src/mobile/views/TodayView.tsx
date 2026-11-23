@@ -27,6 +27,7 @@ export const TodayView: React.FC = () => {
   const {
     nowAbsMin,
     liveMode,
+    profileName,
     blocks,
     subjects,
     focus,
@@ -95,7 +96,7 @@ export const TodayView: React.FC = () => {
             {formatDayLabel(dayIndex)}
           </p>
           <h1 className="font-display text-[calc(20px*var(--sf-font-scale,1))] font-semibold tracking-tight text-[var(--text-primary)] leading-snug">
-            {liveMode ? greeting : `${greeting}, Maya`}
+            {liveMode ? `${greeting}${profileName ? ', ' + profileName.split(/\s+/)[0] : ''}` : `${greeting}, Maya`}
           </h1>
         </div>
 
