@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { THEME_OPTIONS } from '../data/mockData';
 import { CompanionProvider, useCompanion } from './CompanionContext';
+import type { LiveCompanionData } from './CompanionContext';
 import { formatMinutes12h, fromAbsMin } from './companionLogic';
 import {
   FullScreenAlarmOverlay,
@@ -51,6 +52,7 @@ const BOTTOM_TABS: { id: MobileTabId; label: string; Icon: React.ComponentType<{
 interface CompanionAppProps {
   onBackToDesktop?: () => void;
   installed?: boolean;
+  live?: LiveCompanionData;
 }
 
 const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, installed = false }) => {
@@ -355,10 +357,10 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
 };
 
 export const MobileCompanionApp: React.FC<CompanionAppProps> = ({
-  onBackToDesktop, installed,
+  onBackToDesktop, installed, live,
 }) => {
   return (
-    <CompanionProvider>
+    <CompanionProvider live={live}>
       <AndroidDeviceShell onBackToDesktop={onBackToDesktop} installed={installed} />
     </CompanionProvider>
   );
