@@ -27,8 +27,9 @@ import javax.net.ssl.X509TrustManager
 internal object LocalCompanion {
     // Hotspot and Wi-Fi connections can take longer to establish than a local loopback test.
     // Keep the overall deadline bounded while allowing slower candidate interfaces to respond.
-    private const val CONNECTION_DEADLINE_MS = 30_000L
-    private const val TCP_CONNECT_TIMEOUT_MS = 5_000
+    private const val CONNECTION_DEADLINE_MS = 60_000L
+    private const val TCP_CONNECT_TIMEOUT_MS = 25_000
+    private const val OFF_SUBNET_CONNECT_TIMEOUT_MS = 1_500
     private const val TLS_HANDSHAKE_TIMEOUT_MS = 6_000
     private const val CALENDAR_RESPONSE_TIMEOUT_MS = 8_000
     private const val DISCOVERY_BUDGET_MS = 8_000L
@@ -151,12 +152,12 @@ internal object LocalCompanion {
         val deadline = started + CONNECTION_DEADLINE_MS
         val attempts = mutableListOf<String>()
         fun remaining(limit: Int): Int = (deadline - SystemClock.elapsedRealtime()).coerceIn(1L, limit.toLong()).toInt()
-        fun connectTo(host: String, discovered: Boolean): JSONObject? {
+        fun connectTo(host: String, discovered: Boolean, tcpTimeoutMs: Int = TCP_CONNECT_TIMEOUT_MS): JSONObject? {
             if (SystemClock.elapsedRealtime() >= deadline) return null
             var stage = "TCP"
             return try {
                 Socket().use { transport ->
-                    transport.connect(InetSocketAddress(host, port), remaining(TCP_CONNECT_TIMEOUT_MS))
+                    transport.connect(InetSocketAddress(host, port), remaining(tcpTimeoutMs))
                     transport.soTimeout = remaining(TLS_HANDSHAKE_TIMEOUT_MS)
                     (context.socketFactory.createSocket(transport, host, port, true) as SSLSocket).use { socket ->
                         stage = "TLS"
@@ -192,8 +193,15 @@ internal object LocalCompanion {
                 null
             }
         }
+        // A QR may advertise a VPN or virtual adapter. Do not spend 25 seconds waiting
+        // for a host outside the phone's active Wi-Fi / hotspot subnet.
+        // Save the longer timeout for plausible local hosts and discovered listeners.
+        val localPrefixes = localLanCandidates().asSequence()
+            .map { it.substringBeforeLast('.') }.toSet()
         for (host in hosts) {
-            connectTo(host, false)?.let { return it }
+            val localSubnet = host.substringBeforeLast('.') in localPrefixes
+            val limit = if (localSubnet) TCP_CONNECT_TIMEOUT_MS else OFF_SUBNET_CONNECT_TIMEOUT_MS
+            connectTo(host, false, limit)?.let { return it }
         }
         // The QR can contain a VPN/virtual-adapter address. Search local LAN as fallback.
         val discovered = discoverListeners(hosts.toSet(), deadline)
