@@ -1,0 +1,47 @@
+plugins {
+    id("com.android.application") version "8.9.2"
+    id("org.jetbrains.kotlin.android") version "2.1.20"
+}
+
+android {
+    namespace = "io.github.gaganaweerakoon.studyflow"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "io.github.gaganaweerakoon.studyflow"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = "2.0.0-alpha.4"
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-preview"
+        }
+    }
+
+    sourceSets.main.assets.srcDir(rootProject.layout.buildDirectory.dir("web"))
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+kotlin {
+    jvmToolchain(17)
+}
+
+dependencies {
+    implementation("androidx.webkit:webkit:1.13.0")
+}
+
+tasks.named("preBuild") {
+    doFirst {
+        if (!rootProject.layout.buildDirectory.file("web/index.html").get().asFile.isFile()) {
+            throw new GradleException("Build the Android web assets with vite.android.config.ts before assembling the app.")
+        }
+    }
+}

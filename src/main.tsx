@@ -10,6 +10,13 @@ import './index.css';
 const root = createRoot(document.getElementById('root')!);
 
 async function start() {
+  const path = window.location.pathname.replace(/\/$/, '');
+  if (path === '/mobile' || window.location.hash === '#/mobile') {
+    const { MobileCompanionApp } = await import('./mobile/MobileCompanionApp');
+    root.render(<MobileCompanionApp />);
+    return;
+  }
+
   if (!isTauri()) {
     root.render(<App />);
     return;
