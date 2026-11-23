@@ -63,6 +63,7 @@ pub async fn local_companion(
     app: tauri::AppHandle,
     action: String,
     events: Option<Value>,
+    focus: Option<Value>,
 ) -> Result<Value, String> {
     use tauri::Manager;
     tauri::async_runtime::spawn_blocking(move || {
@@ -83,8 +84,10 @@ pub async fn local_companion(
         match action.as_str() {
             "publish" => {
                 companion.publish(events.ok_or("Missing calendar.")?)?;
+                if let Some(focus) = focus { companion.publish_focus(focus)?; }
                 Ok(Value::Null)
             }
+            "focus_commands" => companion.drain_focus_commands(),
             "invite" => {
                 companion.publish(events.ok_or("Missing calendar.")?)?;
                 companion.invite()
