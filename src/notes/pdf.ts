@@ -1,3 +1,11 @@
+import { pageMarkdown, type PdfFigure, type PdfTextRun } from './pdfMarkdown';
+
+interface PdfViewport {
+  width: number;
+  height: number;
+  convertToViewportPoint(x: number, y: number): number[];
+}
+
 export interface PdfMark {
   page: number;
   kind: 'ink' | 'highlight' | 'text';
@@ -8,13 +16,13 @@ export interface PdfSource {
   name: string;
   data: string;
   marks: PdfMark[];
-  pages?: { text: string; image?: string }[];
+  pages?: { text: string; image?: string; figures?: PdfFigure[]; structured?: boolean; hasText?: boolean }[];
 }
 interface PdfPage {
-  getViewport(options: {scale: number}): {width:number; height:number};
+  getViewport(options: {scale: number}): PdfViewport;
   render(options: object): {promise: Promise<void>; cancel(): void};
-  getTextContent(): Promise<{items: {str?: string; hasEOL?: boolean}[]}>;
-  getOperatorList(): Promise<{fnArray: number[]}>;
+  getTextContent(): Promise<{items: PdfTextRun[]}>;
+  getOperatorList(): Promise<{fnArray: number[]; argsArray: (number[] | [number[] | null, unknown] | null)[]}>;
 }
 export interface PdfDocument {
   numPages: number;
@@ -33,23 +41,72 @@ export async function readFileData(file: File) {
   return btoa(binary);
 }
 
+async function extractFigures(page: PdfPage, canvas: HTMLCanvasElement, viewport: PdfViewport, scale: number) {
+  const { OPS } = await import('../vendor/pdf.min.mjs');
+  const { fnArray, argsArray } = await page.getOperatorList();
+  let matrix = new DOMMatrix();
+  const saved: DOMMatrix[] = [];
+  const figures: PdfFigure[] = [];
+  for (const [index, operation] of fnArray.entries()) {
+    if (figures.length >= 24) break;
+    const args = argsArray[index];
+    if (operation === OPS.save || operation === OPS.paintFormXObjectBegin) {
+      saved.push(matrix);
+      if (operation === OPS.paintFormXObjectBegin && Array.isArray(args?.[0])) {
+        matrix = matrix.multiply(new DOMMatrix(args[0]));
+      }
+    } else if (operation === OPS.restore || operation === OPS.paintFormXObjectEnd) {
+      matrix = saved.pop() ?? new DOMMatrix();
+    } else if (operation === OPS.transform && args?.length === 6) {
+      matrix = matrix.multiply(new DOMMatrix(args as number[]));
+    } else if (operation === OPS.paintImageXObject || operation === OPS.paintInlineImageXObject) {
+      const corners = [[0, 0], [0, 1], [1, 0], [1, 1]].map(([x, y]) => {
+        const point = matrix.transformPoint(new DOMPoint(x, y));
+        return viewport.convertToViewportPoint(point.x, point.y);
+      });
+      const left = Math.max(0, Math.floor(Math.min(...corners.map(point => point[0]))));
+      const top = Math.max(0, Math.floor(Math.min(...corners.map(point => point[1]))));
+      const right = Math.min(canvas.width, Math.ceil(Math.max(...corners.map(point => point[0]))));
+      const bottom = Math.min(canvas.height, Math.ceil(Math.max(...corners.map(point => point[1]))));
+      const width = right - left;
+      const height = bottom - top;
+      if (width < 24 * scale || height < 24 * scale || width * height >= canvas.width * canvas.height * 0.9) continue;
+      if (figures.some(figure => figure.id === `figure-${left}-${top}-${width}-${height}`)) continue;
+      const crop = document.createElement('canvas');
+      crop.width = width;
+      crop.height = height;
+      crop.getContext('2d')?.drawImage(canvas, left, top, width, height, 0, 0, width, height);
+      figures.push({
+        id: `figure-${left}-${top}-${width}-${height}`,
+        image: crop.toDataURL('image/webp', 0.85),
+        top: top / scale,
+      });
+    }
+  }
+  return figures;
+}
+
 export async function preparePages(doc: PdfDocument, previews = true) {
   const pages: NonNullable<PdfSource['pages']> = [];
   for (let n = 1; n <= doc.numPages; n++) {
     const page = await doc.getPage(n);
     const {items} = await page.getTextContent();
-    const text = items.map(item => (item.str ?? '') + (item.hasEOL ? '\n' : ' ')).join('').trim();
+    const originalViewport = page.getViewport({ scale: 1 });
+    let figures: PdfFigure[] = [];
     let image: string | undefined;
     if (previews) {
-      const width = page.getViewport({scale:1}).width;
-      const viewport = page.getViewport({scale:Math.min(1.5,900/width)});
+      const scale = Math.min(1.5, 900 / originalViewport.width);
+      const viewport = page.getViewport({ scale });
       const canvas = document.createElement('canvas');
       canvas.width=Math.ceil(viewport.width); canvas.height=Math.ceil(viewport.height);
       await page.render({canvas,viewport}).promise;
       image=canvas.toDataURL('image/webp',0.8);
+      figures = await extractFigures(page, canvas, viewport, scale);
       canvas.width=canvas.height=0;
     }
-    pages.push({text,image});
+    const hasText = items.some(item => item.str?.trim());
+    const text = hasText ? pageMarkdown(items, originalViewport, figures) : '';
+    pages.push({ text, image, figures, structured: true, hasText });
   }
   return pages;
 }

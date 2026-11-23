@@ -1,3 +1,5 @@
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {useEffect, useRef, useState} from 'react';
 import {openPdf, preparePages, readFileData, type PdfDocument, type PdfSource, type PdfMark} from './pdf';
 
@@ -70,10 +72,24 @@ export function PdfPanel({source, save}: {source?:PdfSource; save:(next:PdfSourc
         ? <text key={i} x={m.points[0][0]} y={m.points[0][1]} fill="#273998" fontSize="14">{m.text}</text>
         : <polyline key={i} points={m.points.map(p=>p.join(',')).join(' ')} fill="none" stroke={m.kind==='ink'?'#2843ac':'#ffd025'} opacity={m.kind==='ink'?1:0.45} strokeWidth={m.kind==='ink'?2:15} strokeLinecap="round"/>)}
     </svg></div>
-    {!source.pages && <button disabled={working || !doc} onClick={async()=>{
+    {(!source.pages || source.pages.some(page => !page.structured)) && <button disabled={working || !doc} onClick={async()=>{
       if(!doc)return;setWorking(true);try {const pages=await preparePages(doc); save({...latest.current!,pages});}
       catch(err){setError(String(err));}finally{setWorking(false);}
-    }}>{working?'Preparing…':'Prepare Markdown'}</button>}
-    {source.pages && <details><summary>Markdown and images</summary>{source.pages.map((p,i)=><section key={i} className="my-3"><strong>Page {i+1}</strong><pre className="whitespace-pre-wrap">{p.text || 'Image-only page. No selectable text.'}</pre>{p.image && <img src={p.image} alt={'Original page '+(i+1)}/>}</section>)}</details>}</>}
+    }}>{working?'Preparing…':source.pages?'Rebuild Markdown':'Prepare Markdown'}</button>}
+    {source.pages && <details><summary>Markdown and images</summary>{source.pages.map((p,i)=>(
+      <section key={i} className="my-3 space-y-2">
+        <strong>Page {i+1}</strong>
+        {p.text ? <div className="space-y-2 overflow-x-auto [&_td]:border [&_td]:p-1 [&_th]:border [&_th]:p-1">
+          <Markdown remarkPlugins={[remarkGfm]} components={{
+            img: ({src,alt}) => {
+              const figure = p.figures?.find(item => item.id === src);
+              return figure ? <img src={figure.image} alt={alt ?? 'PDF figure'} /> : null;
+            },
+          }}>{p.text}</Markdown>
+        </div> : <p>Image-only page. No selectable text.</p>}
+        {p.image && <details><summary>Original page image</summary><img src={p.image} alt={'Original page '+(i+1)}/></details>}
+      </section>
+    ))}</details>}</>}
+
   </div>;
 }
