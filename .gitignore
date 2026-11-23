@@ -8,3 +8,5 @@ coverage/
 
 /src-tauri/target/
 /src-tauri/gen/schemas/
+
+/studyflow-companion.sqlite*
