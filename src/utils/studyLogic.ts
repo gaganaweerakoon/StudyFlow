@@ -64,7 +64,8 @@ export function calculateSubjectProgress(chapters: ChapterItem[]): {
  */
 export function gradePracticeTest(
   questions: QuizQuestion[],
-  answers: Record<string, string>
+  answers: Record<string, string>,
+  shortMarks: Record<string, boolean> = {}
 ): {
   correctCount: number;
   totalCount: number;
@@ -78,7 +79,7 @@ export function gradePracticeTest(
   for (const q of questions) {
     const raw = (answers[q.id] ?? '').trim().toLowerCase();
     const expected = q.correctAnswer.trim().toLowerCase();
-    const isCorrect = raw.length > 0 && raw === expected;
+    const isCorrect = raw.length > 0 && (q.type === "short" ? shortMarks[q.id] ?? raw === expected : raw === expected);
 
     if (isCorrect) correctCount += 1;
     const entry = topicMap.get(q.topic) ?? { correct: 0, total: 0 };

@@ -25,16 +25,16 @@ export function StudyGeneration({quiz=false}:{quiz?:boolean}) {
     <button disabled={!sections[index] || (!quiz && !deck) || !Number.isInteger(count) || count<1 || count>30} onClick={async()=>{
       setBusy(true);setError('');try {
         if(quiz && note) {
-          const result=await generate('Generate '+count+' '+kind+' questions based only on this section. Return JSON array with type (mcq, multi, short), prompt, options (array for choice questions), answer (exact option or array of exact options for multi, exact short term for short), and explanation including evidence. For short ask for a single unambiguous term.',sections[index]);
+          const result=await generate('Generate '+count+' '+kind+' questions based only on this section. Return JSON array with type (mcq, multi, short), prompt, options (array for choice questions), answer (exact option or array of exact options for multi, exact short term for short), and explanation including evidence. For short allow a concise explanation and include a rubric string with clear criteria for full credit.',sections[index]);
           if(!Array.isArray(result) || result.length!==count) throw new Error('Incomplete test from provider.');
           const questions=result.map(q=>{
             if(!q || !['mcq','multi','short'].includes(q.type) || (kind!=='mixed' && kind!==q.type) || ![q.prompt,q.explanation].every(v=>typeof v==='string' && v.trim())) throw new Error('Invalid question from provider.');
             const choices=q.options;
             if(q.type!=='short' && (!Array.isArray(choices) || choices.length<2 || !choices.every(v=>typeof v==='string' && v.trim()))) throw new Error('Missing answer choices.');
             if(q.type==='multi' ? !Array.isArray(q.answer) || !q.answer.length || !q.answer.every((v:string)=>choices.includes(v)) : typeof q.answer!=='string' || !q.answer.trim() || q.type==='mcq' && !choices.includes(q.answer)) throw new Error('Invalid answer key.');
-            return {id:crypto.randomUUID(),type:q.type,prompt:q.prompt,options:choices,topic:note.title,correctAnswer:q.type==='multi'?q.answer.sort().join('\n'):q.answer,explanation:q.explanation};
+            return {id:crypto.randomUUID(),type:q.type,prompt:q.prompt,options:choices,topic:note.title,correctAnswer:q.type==='multi'?q.answer.sort().join('\n'):q.answer,explanation:q.explanation,rubric:q.type==="short" && typeof q.rubric==="string"?q.rubric:undefined};
           });
-          addQuiz({id:crypto.randomUUID(),title:note.title+' practice',subjectId:note.subjectId,durationMinutes:Math.max(5,count*2),difficulty:'Standard',questions,sourceNoteId:note.id});
+          addQuiz({id:crypto.randomUUID(),title:note.title+' practice',subjectId:note.subjectId,durationMinutes:Math.max(5,count*2),difficulty:'Standard',questions,sourceNoteId:note.id,sourceSection:sections[index].split('\n')[0].slice(0,120)});
           pushToast('Practice test ready');return;
         }
         const result=await generate('Generate '+count+' flashcards strictly grounded in the selected section. Return JSON array of objects with front and back strings.',sections[index]);

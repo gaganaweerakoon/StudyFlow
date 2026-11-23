@@ -180,11 +180,13 @@ export interface QuizQuestion {
   prompt: string;
   options?: string[];
   correctAnswer: string;
+  rubric?: string;
   explanation: string;
 }
 
 export interface PracticeQuiz {
   sourceNoteId?: string;
+  sourceSection?: string;
   attempts?: {at:string;score:number}[];
   id: string;
   title: string;
