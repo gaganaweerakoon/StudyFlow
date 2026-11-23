@@ -17,6 +17,7 @@ import { formatCountdownMMSS } from '../companionLogic';
 export const FocusView: React.FC = () => {
   const {
     focus,
+    liveMode,
     subjects,
     connection,
     startFocusForBlock,
@@ -349,7 +350,7 @@ export const FocusView: React.FC = () => {
               type="button"
               onClick={() => {
                 setPermission('usageAccess', true);
-                setScreenTimeMode('measured');
+                if (!liveMode) setScreenTimeMode('measured');
               }}
               className="w-full min-h-[48px] rounded-xl text-[calc(13.5px*var(--sf-font-scale,1))] font-semibold transition-opacity hover:opacity-90"
               style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
@@ -357,7 +358,7 @@ export const FocusView: React.FC = () => {
               Allow usage access
             </button>
           </div>
-        ) : screenTimeMode === 'zero' && screenTimeTab === 'session' ? (
+        ) : (screenTimeMode === 'zero' || (liveMode && appsList.length === 0)) ? (
           /* State 2: Measured Zero Usage */
           <div
             className="rounded-xl p-3.5 space-y-1.5"
@@ -379,11 +380,11 @@ export const FocusView: React.FC = () => {
             <div>
               <p className="text-[calc(14px*var(--sf-font-scale,1))] font-semibold text-[var(--text-primary)] leading-snug">
                 {screenTimeTab === 'session'
-                  ? `${totalScreenMin} min of phone use during ${focus.intervalMinutes} min of focus.`
-                  : `${totalScreenMin} min of phone use across today’s active focus blocks.`}
+                  ? `${totalScreenMin.toFixed(1)} min of phone use since this focus interval started.`
+                  : `${totalScreenMin.toFixed(1)} min of phone use on your phone today.`}
               </p>
               <p className="text-[calc(11.5px*var(--sf-font-scale,1))] text-[var(--text-muted)] mt-0.5">
-                Counts active focus intervals only · excludes pauses and breaks
+                {liveMode ? 'Measured by Android usage access · excludes StudyFlow itself' : 'Counts active focus intervals only · excludes pauses and breaks'}
               </p>
             </div>
 
