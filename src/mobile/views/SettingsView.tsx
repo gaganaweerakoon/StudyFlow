@@ -22,7 +22,6 @@ export const SettingsView: React.FC = () => {
     snoozedWakeUp,
     connection,
     permissions,
-    liveMode,
     settings,
     updateSettings,
     setPermission,
