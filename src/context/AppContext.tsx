@@ -125,6 +125,7 @@ interface AppContextValue {
 
   // Core Data
   subjects: Subject[];
+  appendChapters: (id:string, chapters:Subject["chapters"]) => void;
   addSubject: (s: Omit<Subject, 'id' | 'chapters'>) => void;
   toggleTopicCompletion: (subjectId: string, chapterId: string, topicId: string) => void;
   updateTopicConfidence: (subjectId: string, chapterId: string, topicId: string, confidence: number) => void;
@@ -901,6 +902,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         moveDashboardWidget,
         resetDashboardWidgets,
         subjects,
+        appendChapters: (id, chapters) => setSubjects(prev=>prev.map(s=>s.id===id ? {...s, chapters:[...s.chapters,...chapters]} : s)),
         addSubject,
         toggleTopicCompletion,
         updateTopicConfidence,

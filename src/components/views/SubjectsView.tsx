@@ -1,3 +1,4 @@
+import { SyllabusImport } from '../../notes/SyllabusImport';
 import { studyChart } from '../../utils/workspaceMetrics';
 import React, { useState } from 'react';
 import {
@@ -231,7 +232,8 @@ export const SubjectsView: React.FC = () => {
                   </button>
                 </div>
                 <div className="space-y-3">
-                  {activeSubject.chapters.map((ch) => {
+                  <SyllabusImport key={activeSubject.id} subject={activeSubject.id}/>
+            {activeSubject.chapters.map((ch) => {
                     const done = ch.topics.filter((t) => t.completed).length;
                     const pct = Math.round((done / ch.topics.length) * 100);
                     return (

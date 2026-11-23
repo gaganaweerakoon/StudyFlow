@@ -196,6 +196,33 @@ function useAssistantController(desktopUsage?: DesktopUsage) {
     }
   }
 
+  async function generate(prompt: string, source: string): Promise<unknown> {
+    const provider = settings.provider;
+    const key = keys.current[provider];
+    if (!key) throw new Error('Add your '+PROVIDERS[provider].label+' API key in Settings.');
+    if (!source.trim()) throw new Error('Select a section containing text.');
+    if (source.length > CHAT_LIMITS.context) throw new Error('Choose a shorter section for this request.');
+    let body = '';
+    let complete = false;
+    let tokens: TokenUsage | undefined;
+    const control = new AbortController();
+    try {
+      for await (const event of sendChat({provider, model, prompt, context:source, history:[], maxOutput:16384},key,control.signal)) {
+        if (event.type==='text') body+=event.text;
+        if (event.type==='error') throw new Error(event.message);
+        if (event.type==='usage') tokens=event.usage;
+        if (event.type==='done') complete=!event.truncated;
+      }
+      if (!complete) throw new Error('Incomplete provider response. Try a shorter selection.');
+      return JSON.parse(body.trim().replace(/^```(?:json)?\s*|\s*```$/gi,''));
+    } finally {
+      const entry: UsageEntry = {id:createId(), at:Date.now(), day:localDay(), provider,model,tokens,status:complete?'complete':'error'};
+      const records=mergeUsage(usage,[entry]);
+      if (desktopUsage) {await desktopUsage.save(records); setUsage(records);}
+      else setUsage(writeUsage(records));
+    }
+  }
+
   return {
     applyEdit(message: ChatMessage) {
       if (!message.edit) return;
@@ -205,7 +232,7 @@ function useAssistantController(desktopUsage?: DesktopUsage) {
         ...chat, messages: chat.messages.map(item => item.id === message.id ? { ...item, edit: undefined } : item),
       })));
     },
-    available, settings, updateSettings, usage, configured, setKey, model,
+    generate, available, settings, updateSettings, usage, configured, setKey, model,
     active, activeId, conversations, switchChat, newChat,
     petOpen, setPetOpen, settingsRequested, setSettingsRequested,
     openSettings, openFullChat: () => app.setRoute('assistant'), context, includeContext, setIncludeContext, draft, setDraft, attachment,
