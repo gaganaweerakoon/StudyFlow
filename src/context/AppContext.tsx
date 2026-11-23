@@ -165,6 +165,8 @@ interface AppContextValue {
   reviewFlashcard: (cardId: string, rating: ReviewRating) => void;
 
   exams: ExamItem[];
+  updateExam: (id: string, patch: Partial<Omit<ExamItem, 'id' | 'mockHistory'>>) => void;
+  deleteExam: (id: string) => void;
   addExam: (exam: Omit<ExamItem, 'id' | 'mockHistory'>) => void;
 
   quizzes: PracticeQuiz[];
@@ -826,6 +828,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     [pushToast]
   );
 
+  const updateExam = useCallback((id: string, patch: Partial<Omit<ExamItem, 'id' | 'mockHistory'>>) => {
+    setExams(previous => previous.map(exam => exam.id === id ? { ...exam, ...patch } : exam));
+    pushToast('Exam updated');
+  }, [pushToast]);
+
+  const deleteExam = useCallback((id: string) => {
+    setExams(previous => previous.filter(exam => exam.id !== id));
+    pushToast('Exam deleted');
+  }, [pushToast]);
+
   const recordQuizScore = useCallback((quizId: string, attempt: PracticeAttempt) => {
     setQuizzes(previous => previous.map(quiz => {
       if (quiz.id !== quizId) return quiz;
@@ -961,7 +973,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         addFlashcard,
         reviewFlashcard,
         exams,
-        addExam,
+        addExam, updateExam, deleteExam,
         quizzes,
         addQuiz: quiz=>setQuizzes(prev=>[quiz,...prev]),
         recordQuizScore,

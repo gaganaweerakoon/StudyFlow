@@ -3,8 +3,10 @@ import { Plus, Calendar, MapPin, Target, ArrowRight } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 export const ExamsView: React.FC = () => {
-  const { exams, subjects, setActiveModal, setRoute } = useApp();
+  const { exams, subjects, setActiveModal, setRoute, updateExam, deleteExam } = useApp();
   const [selectedExamId, setSelectedExamId] = useState<string>(exams[0]?.id ?? '');
+
+  const [editingId, setEditingId] = useState<string>();
 
   const selectedExam = exams.find((e) => e.id === selectedExamId) ?? exams[0];
   const surfaceStyle: React.CSSProperties = {
@@ -143,6 +145,49 @@ export const ExamsView: React.FC = () => {
                 {selectedExam.room}
               </span>
             </div>
+
+            <div className="flex flex-wrap gap-2 text-sm">
+              <button type="button" className="rounded-lg border border-[var(--border-subtle)] px-3 py-2" onClick={() => setEditingId(selectedExam.id)}>Edit exam</button>
+              <button type="button" className="rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-red-500" onClick={() => {
+                if (window.confirm(`Delete “${selectedExam.title}” and its mock exam history?`)) {
+                  deleteExam(selectedExam.id);
+                  setEditingId(undefined);
+                }
+              }}>Delete exam</button>
+            </div>
+            {editingId === selectedExam.id && (
+              <form key={selectedExam.id} className="grid gap-3 sm:grid-cols-2 [&_label]:grid [&_label]:gap-1 [&_label]:text-sm [&_input]:rounded-lg [&_input]:border [&_input]:border-[var(--border-subtle)] [&_input]:p-2" onSubmit={event => {
+                event.preventDefault();
+                const values = new FormData(event.currentTarget);
+                const title = String(values.get('title')).trim();
+                if (!title) return;
+                updateExam(selectedExam.id, {
+                  title,
+                  subjectId: String(values.get('subject')),
+                  date: String(values.get('date')),
+                  time: String(values.get('time')),
+                  room: String(values.get('room')).trim(),
+                  targetGrade: String(values.get('grade')).trim(),
+                  weightPercent: Number(values.get('weight')),
+                });
+                setEditingId(undefined);
+              }}>
+                <label>Title <input name="title" defaultValue={selectedExam.title} required autoFocus /></label>
+                <label>Subject <select name="subject" className="rounded-lg border border-[var(--border-subtle)] p-2" defaultValue={selectedExam.subjectId}>
+                  <option value="">Unassigned</option>
+                  {subjects.map(subject => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+                </select></label>
+                <label>Date <input name="date" type="date" defaultValue={selectedExam.date} required /></label>
+                <label>Time <input name="time" type="time" defaultValue={selectedExam.time} /></label>
+                <label>Room <input name="room" defaultValue={selectedExam.room} /></label>
+                <label>Target grade <input name="grade" defaultValue={selectedExam.targetGrade} /></label>
+                <label>Grade weight (%) <input name="weight" type="number" min="0" max="100" step="any" defaultValue={selectedExam.weightPercent} required /></label>
+                <div className="flex items-end justify-end gap-2">
+                  <button type="button" onClick={() => setEditingId(undefined)} className="px-3 py-2">Cancel</button>
+                  <button type="submit" className="rounded-lg bg-[var(--accent)] px-3 py-2 text-[var(--accent-fg)]">Save exam</button>
+                </div>
+              </form>
+            )}
 
             {/* Syllabus Coverage */}
             <div className="pt-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
