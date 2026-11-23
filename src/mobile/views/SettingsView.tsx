@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  AlarmClock,
   AlertTriangle,
   Bell,
   CheckCircle2,
@@ -11,6 +10,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { ADVANCE_NOTICE_CHOICES, useCompanion } from '../CompanionContext';
+import { THEME_OPTIONS, ACCENT_PRESETS } from '../../data/mockData';
 import { getWakeUpReadiness } from '../companionLogic';
 
 export const SettingsView: React.FC = () => {
@@ -24,10 +24,10 @@ export const SettingsView: React.FC = () => {
     permissions,
     settings,
     updateSettings,
+    setTheme,
     setPermission,
     setConnectionSheetOpen,
     setPairingOpen,
-    triggerTestAlarm,
     showPhoneToast,
   } = useCompanion();
 
@@ -220,6 +220,43 @@ export const SettingsView: React.FC = () => {
         </div>
       </section>
 
+      <section aria-label="Appearance" className="space-y-2">
+        <h2 className="font-display text-[calc(13px*var(--sf-font-scale,1))] font-semibold text-[var(--text-secondary)] px-0.5">
+          Appearance
+        </h2>
+        <div className="rounded-xl p-4 space-y-4" style={sectionCardStyle}>
+          <div className="grid grid-cols-2 gap-2">
+            {THEME_OPTIONS.map(theme => (
+              <button type="button" key={theme.id} aria-pressed={settings.theme === theme.id}
+                onClick={() => setTheme(theme.id)}
+                className="min-h-[70px] rounded-xl p-3 flex flex-col items-start gap-2 text-left"
+                style={{ border: settings.theme === theme.id ? '2px solid var(--accent)' : '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-surface-subtle)' }}>
+                <span className="flex gap-1">
+                  {theme.swatches.map((color,index) => (
+                    <span key={index} className="h-4 w-6 rounded border border-black/10" style={{ backgroundColor: color }} />
+                  ))}
+                </span>
+                <span className="text-[12px] font-semibold text-[var(--text-primary)]">{theme.name}{settings.theme === theme.id ? ' ✓' : ''}</span>
+              </button>
+            ))}
+          </div>
+          <div>
+            <p className="text-xs font-medium text-[var(--text-secondary)] mb-2">Accent color</p>
+            <div className="flex flex-wrap gap-2">
+              {ACCENT_PRESETS.map(accent => <button key={accent.name} type="button"
+                title={accent.name} aria-label={accent.name + ' accent'}
+                aria-pressed={settings.accentColor === accent.hex}
+                onClick={() => updateSettings({ accentColor: accent.hex })}
+                className="h-10 w-10 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: accent.hex, border: settings.accentColor === accent.hex ? '3px solid var(--text-primary)' : '2px solid var(--bg-surface)' }}>
+                {settings.accentColor === accent.hex && <span className="text-white font-bold">✓</span>}
+              </button>)}
+            </div>
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">Theme choices are saved on this phone. The Windows theme is not changed.</p>
+        </div>
+      </section>
+
       {/* 3. Sleep and Wake-Up */}
       <section aria-label="Sleep and wake-up" className="space-y-2">
         <h2 className="font-display text-[calc(13px*var(--sf-font-scale,1))] font-semibold text-[var(--text-secondary)] px-0.5">
@@ -274,19 +311,6 @@ export const SettingsView: React.FC = () => {
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={triggerTestAlarm}
-            className="w-full min-h-[48px] rounded-xl inline-flex items-center justify-center gap-2 text-[calc(13.5px*var(--sf-font-scale,1))] font-semibold transition-colors hover:bg-[var(--bg-surface-hover)]"
-            style={{
-              backgroundColor: 'var(--bg-surface-subtle)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-primary)',
-            }}
-          >
-            <AlarmClock className="w-4 h-4" style={{ color: 'var(--accent)' }} />
-            Test alarm
-          </button>
         </div>
       </section>
 
