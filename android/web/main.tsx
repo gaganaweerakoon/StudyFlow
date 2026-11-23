@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { relayRequest, type CompanionCalendar } from '../../src/companion/client';
+import { MobileCompanionApp } from '../../src/mobile/MobileCompanionApp';
 import { deviceAlerts } from '../../src/companion/alarms';
 import { QrCode, Home, CalendarDays, Timer, Settings, RefreshCw, Play, Pause } from 'lucide-react';
 import logo from '../../src-tauri/icons/icon.png';
@@ -525,25 +526,24 @@ ${diagnostic}`).then(
   }
 
   return (
-    <CompanionWorkspace
-      pair={pair}
-      busy={busy}
-      lastSync={lastSync}
-      alarmStatus={alarmStatus}
-      armed={armed}
-      status={status}
-      diagnosticPanel={diagnostics}
-      onSync={() => void pull()}
-      onReconnect={() => window.StudyFlowPairing?.scan()}
-      onPair={() => setOffline(false)}
-      onForget={() => {
+    <MobileCompanionApp installed live={{
+      isPaired: Boolean(pair),
+      pcName: pair?.pc ?? 'StudyFlow PC',
+      calendar: pair?.calendar,
+      lastSync,
+      busy,
+      onSync: () => void pull(),
+      onReconnect: () => window.StudyFlowPairing?.scan(),
+      onPair: () => setOffline(false),
+      onForget: () => {
         save(null);
         setLastSync(0);
         setDiagnostic('');
-        setOffline(false);
         setStatus('');
-      }}
-    />
+        setOffline(false);
+      },
+      alarmStatus,
+    }} />
   );
 }
 
