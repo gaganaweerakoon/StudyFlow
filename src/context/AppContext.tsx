@@ -147,6 +147,7 @@ interface AppContextValue {
 
   folders: NoteFolder[];
   notes: NoteItem[];
+  deleteNote: (id: string) => void;
   updateNote: (id: string, patch: Partial<NoteItem>) => void;
   createNote: (subjectId: string, folderId: string) => string;
 
@@ -724,13 +725,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       const id = `note-${Date.now()}`;
       const newNote: NoteItem = {
         id,
-        folderId: folderId === 'fld-all' ? 'fld-cs' : folderId,
+        folderId: folderId === 'fld-all' ? folders[0]?.id ?? 'notes' : folderId,
         subjectId,
         title: 'Untitled Study Note',
         updatedAt: 'Just now',
         pinned: false,
         tags: ['Draft'],
-        content: '# Untitled Study Note\n\nStart capturing concepts, proofs, or key lecture takeaways...\n\n- [ ] Review lecture recording\n- [ ] Add practice problems',
+        content: '',
         linkedResources: [],
         attachments: [],
         pdfHighlights: [],
@@ -740,7 +741,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       pushToast('New note created');
       return id;
     },
-    [pushToast]
+    [pushToast, folders]
   );
 
   // Flashcards mutations
@@ -918,6 +919,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         updateGoal,
         folders,
         notes,
+        deleteNote: id => setNotes(prev => prev.filter(note => note.id !== id)),
         updateNote,
         createNote,
         decks,
