@@ -382,32 +382,32 @@ export const DashboardView: React.FC = () => {
             : formatTimerSeconds(focusTimer.secondsLeft);
 
         return (
-          <section key={id} className="rounded-xl p-4 self-start" style={surfaceStyle}>
-            <div className="flex items-center justify-between">
-              <div>
+          <section key={id} className="grid min-w-0 grid-rows-[auto_1fr_auto] gap-4 rounded-xl p-4" style={surfaceStyle}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
                 <h2 className="font-display text-[14.5px] font-semibold text-[var(--text-primary)]">
                   Quick-Start Focus
                 </h2>
-                <p className="text-[12px] text-[var(--text-muted)] truncate max-w-[220px]">
-                  {sub?.code} · {focusTimer.mode}
+                <p className="text-[12px] text-[var(--text-muted)] truncate">
+                  {sub ? sub.code + ' · ' : ''}{focusTimer.mode}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setRoute('focus')}
-                className="text-[12px] font-medium hover:underline"
+                className="shrink-0 whitespace-nowrap text-[12px] font-medium hover:underline"
                 style={{ color: 'var(--accent)' }}
               >
                 Open timer
               </button>
             </div>
 
-            <div className="my-4 flex items-center justify-between gap-4">
-              <div>
+            <div className="flex items-center justify-between gap-4 self-center">
+              <div className="min-w-0">
                 <div className="font-mono-num text-[32px] font-semibold tracking-tight text-[var(--text-primary)] leading-none">
                   {timeStr}
                 </div>
-                <div className="text-[12px] text-[var(--text-secondary)] mt-1.5 truncate max-w-[230px]">
+                <div className="text-[12px] text-[var(--text-secondary)] mt-2 break-words">
                   {current?.title || (!idle && focusTimer.taskTitle) || 'Manual focus'}
                 </div>
               </div>
@@ -426,7 +426,7 @@ export const DashboardView: React.FC = () => {
               </button>
             </div>
 
-            <div className="pt-2.5 flex items-center justify-between text-[11.5px] text-[var(--text-muted)]" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-2.5 text-[11.5px] text-[var(--text-muted)]" style={{ borderTop: '1px solid var(--border-subtle)' }}>
               <span className="flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5" /> Cycle {focusTimer.cycleCount} of 4
               </span>
