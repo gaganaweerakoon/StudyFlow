@@ -40,6 +40,7 @@ export const QuickModals: React.FC = () => {
   const [subColor, setSubColor] = useState(SUBJECT_SWATCHES[0]);
   const [subTarget, setSubTarget] = useState(6);
 
+  const [countsTowardStudy, setCountsTowardStudy] = useState(true);
   // Session form
   const [sesTitle, setSesTitle] = useState('');
   const [sesSubject, setSesSubject] = useState(subjects[0]?.id ?? '');
@@ -147,10 +148,11 @@ export const QuickModals: React.FC = () => {
       startHour: sesHour,
       durationHours: sesDuration,
       status: 'upcoming',
-      recurring: sesRecurring,
+      recurring: sesRecurring, countsTowardStudy,
       location: 'Study Workspace',
     });
     setSesTitle('');
+    setCountsTowardStudy(true);
     closeModal();
   };
 
@@ -521,6 +523,8 @@ export const QuickModals: React.FC = () => {
                   </div>
                 </div>
                 <label className="flex items-center gap-2 text-[12.5px] text-[var(--text-secondary)] cursor-pointer">
+                  <input type="checkbox" checked={countsTowardStudy} onChange={e => setCountsTowardStudy(e.target.checked)} /> Counts toward study time
+                </label><label className="flex items-center gap-2 text-xs">
                   <input type="checkbox" checked={sesRecurring} onChange={(e) => setSesRecurring(e.target.checked)} />
                   Repeat weekly on this slot
                 </label>

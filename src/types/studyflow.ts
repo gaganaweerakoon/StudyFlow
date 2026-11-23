@@ -82,6 +82,7 @@ export interface StudySession {
   startHour: number; // e.g. 9.5 for 09:30
   durationHours: number; // e.g. 1.5
   status: SessionStatus;
+  countsTowardStudy?: boolean;
   recurring?: boolean;
   notes?: string;
   location?: string;

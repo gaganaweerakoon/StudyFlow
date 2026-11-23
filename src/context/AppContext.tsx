@@ -87,7 +87,7 @@ export interface UserPreferences {
 
 interface AppContextValue {
   recurringSeries: LegacyArchive[string];
-  updateRecurringSeries?: (id: number, title: string, startHour: number, durationHours: number) => void;
+  updateRecurringSeries?: (id: number, title: string, startHour: number, durationHours: number, countsTowardStudy?: boolean) => void;
   wipeData?: (section: WipeSection) => Promise<void>;
   importLegacyBackup?: () => Promise<void>;
   legacyCalendar: boolean;
@@ -670,7 +670,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     });
   }, [sessions]);
 
-  const updateRecurringSeries = archive && ((id: number, title: string, startHour: number, durationHours: number) => {
+  const updateRecurringSeries = archive && ((id: number, title: string, startHour: number, durationHours: number, countsTowardStudy?: boolean) => {
     const clock = (hours: number) => {
       const minutes = Math.round(hours * 60) % 1440;
       return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
@@ -678,7 +678,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     setArchive(previous => previous && ({
       ...previous,
       recurring_events: previous.recurring_events.map(row => row.id === id
-        ? { ...row, title, start_time: clock(startHour), end_time: clock(startHour + durationHours) }
+        ? { ...row, title, countsTowardStudy: countsTowardStudy ?? row.countsTowardStudy, start_time: clock(startHour), end_time: clock(startHour + durationHours) }
         : row),
     }));
   });

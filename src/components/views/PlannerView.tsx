@@ -39,7 +39,7 @@ export const PlannerView: React.FC = () => {
     sessions,
     legacyCalendar,
     subjects,
-    updateSession,
+    updateSession, updateRecurringSeries,
     deleteSession,
     setActiveModal,
     pushToast,
@@ -58,7 +58,7 @@ export const PlannerView: React.FC = () => {
   const monthDays = legacyCalendar ? new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate() : 28;
   const [viewMode, setViewMode] = useState<PlannerMode>('week');
   const [activeDayIdx, setActiveDayIdx] = useState<number>(legacyCalendar ? weekday : 6);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(sessions[1]?.id ?? null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [dragSessionId, setDragSessionId] = useState<string | null>(null);
   const [showRescheduleApplied, setShowRescheduleApplied] = useState(false);
 
@@ -66,6 +66,7 @@ export const PlannerView: React.FC = () => {
 
   const blocksByDate = new Map(DAYS.map(day => [day.date, layoutCalendarDay(sessions, day.date)]));
   const getWorkloadForDay = (dayIdx: number) => (blocksByDate.get(DAYS[dayIdx].date) ?? [])
+    .filter(block => block.session.countsTowardStudy !== false)
     .reduce((total, block) => total + block.to - block.from, 0);
 
   const handleDropOnCell = (dayIdx: number, hour: number) => {
@@ -382,7 +383,7 @@ export const PlannerView: React.FC = () => {
                         </span>
                         {dayEvents.length > 0 && (
                           <span className="text-[10px] text-[var(--text-muted)]">
-                            {dayEvents.reduce((a, b) => a + b.durationHours, 0)}h
+                            {Number(layoutCalendarDay(sessions, dateIso).filter(b => b.session.countsTowardStudy !== false).reduce((sum, b) => sum + b.to - b.from, 0).toFixed(2))}h
                           </span>
                         )}
                       </div>
@@ -527,6 +528,30 @@ export const PlannerView: React.FC = () => {
                       </p>
                     )}
 
+                    <form key={selectedSession.id} className="grid gap-2 text-xs" onSubmit={e => {
+                      e.preventDefault();
+                      const data = new FormData(e.currentTarget);
+                      const title = String(data.get('title')).trim();
+                      if (!title) return;
+                      const [hour, minute] = String(data.get('start')).split(':').map(Number);
+                      const startHour = hour + minute / 60;
+                      const durationHours = Number(data.get('duration')) / 60;
+                      const countsTowardStudy = data.has('counted');
+                      const series = /^legacy-series-(\d+)-/.exec(selectedSession.id);
+                      if (series && data.get('scope') === 'series' && updateRecurringSeries) {
+                        updateRecurringSeries(Number(series[1]), title, startHour, durationHours, countsTowardStudy);
+                      } else {
+                        updateSession(selectedSession.id, { title, startHour, durationHours, countsTowardStudy });
+                      }
+                      pushToast('Calendar changes saved');
+                    }}>
+                      <label>Title <input name="title" required defaultValue={selectedSession.title} /></label>
+                      <label>Starts <input name="start" type="time" required defaultValue={new Date(Math.round(selectedSession.startHour * 60) * 60000).toISOString().slice(11,16)} /></label>
+                      <label>Duration in minutes <input name="duration" type="number" min="1" max="1440" required defaultValue={Math.round(selectedSession.durationHours * 60)} /></label>
+                      <label><input type="checkbox" name="counted" defaultChecked={selectedSession.countsTowardStudy !== false} /> Counts toward study time</label>
+                      {selectedSession.id.startsWith('legacy-series-') && <label>Apply to <select name="scope"><option value="one">This occurrence</option><option value="series">Entire series</option></select></label>}
+                      <button type="submit" className="rounded bg-[var(--accent)] p-2 text-white">Save event</button>
+                    </form>
                     {/* Resize / Status Controls */}
                     <div className="pt-2 space-y-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                       <div className="flex items-center justify-between text-[12px]">

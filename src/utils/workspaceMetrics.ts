@@ -1,6 +1,8 @@
 import { localDay } from '../assistant/workspaceContext';
 import type { FocusHistoryItem, StudySession } from '../types/studyflow';
 
+import { layoutCalendarDay } from './calendarLayout';
+
 export type StudyRange = 'daily' | 'weekly' | 'monthly';
 
 export function studyChart(range: StudyRange, sessions: StudySession[], history: FocusHistoryItem[]) {
@@ -19,7 +21,14 @@ export function studyChart(range: StudyRange, sessions: StudySession[], history:
     const until = range === 'monthly' && date.getMonth() !== today.getMonth()
       ? localDay(new Date(today.getFullYear(), today.getMonth() + 1, 1)) : localDay(date);
     const inRange = (day: string) => day >= from && day < until;
-    const planned = sessions.filter(item => inRange(item.date)).reduce((sum, item) => sum + item.durationHours, 0);
+    let planned = 0;
+    const cursor = new Date(from + 'T12:00:00');
+    while (localDay(cursor) < until) {
+      for (const block of layoutCalendarDay(sessions, localDay(cursor))) {
+        if (block.session.countsTowardStudy !== false) planned += block.to - block.from;
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
     const actual = history.filter(item => inRange(item.completedAt.slice(0, 10)))
       .reduce((sum, item) => sum + item.durationMinutes / 60, 0);
     return { label, planned: +planned.toFixed(2), actual: +actual.toFixed(2) };
