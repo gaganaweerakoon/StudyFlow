@@ -11,6 +11,7 @@ use std::{fmt, path::Path, time::Duration};
 pub enum Document {
     Workspace,
     AssistantUsage,
+    AssistantHistory,
 }
 
 impl Document {
@@ -18,6 +19,7 @@ impl Document {
         match self {
             Self::Workspace => "workspace",
             Self::AssistantUsage => "assistant_usage",
+            Self::AssistantHistory => "assistant_history",
         }
     }
 }

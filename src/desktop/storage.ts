@@ -1,6 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
-type Document = 'workspace' | 'assistant_usage';
+type Document = 'workspace' | 'assistant_usage' | 'assistant_history';
 export { isTauri };
 
 export interface StoredSnapshot<T> {

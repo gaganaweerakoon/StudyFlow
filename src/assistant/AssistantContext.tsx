@@ -19,25 +19,44 @@ interface ChatMessage extends ChatTurn {
   state?: 'streaming' | 'complete' | 'stopped' | 'error';
 }
 
-interface Conversation {
+export interface Conversation {
   id: string;
   title: string;
   messages: ChatMessage[];
+}
+
+export interface DesktopHistory {
+  conversations: Conversation[];
+  save: (conversations: Conversation[]) => Promise<void>;
+}
+
+const historyKey = 'studyflow.assistant.conversations.v1';
+const historyLimit = 20;
+
+function browserHistory(): Conversation[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(historyKey) ?? '[]');
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
 }
 
 const imagePrompt = 'Explain what is shown in this image.';
 const initial: Conversation = { id: 'first', title: 'New chat', messages: [] };
 const createId = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-function useAssistantController(desktopUsage?: DesktopUsage) {
+function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: DesktopHistory) {
   const app = useApp();
   const currentApp = useRef(app);
   currentApp.current = app;
   const [settings, setSettings] = useState(readSettings);
   const [usage, setUsage] = useState(() => mergeUsage(desktopUsage?.records ?? readUsage()));
   const [configured, setConfigured] = useState<Provider[]>([]);
-  const [conversations, setConversations] = useState([initial]);
-  const [activeId, setActiveId] = useState(initial.id);
+  const [conversations, setConversations] = useState(() => [
+    { ...initial, id: createId() }, ...(desktopHistory?.conversations ?? browserHistory()),
+  ].slice(0, historyLimit + 1));
+  const [activeId, setActiveId] = useState(conversations[0].id);
   const [petOpen, setPetOpen] = useState(false);
   const [settingsRequested, setSettingsRequested] = useState(false);
   const [includeContext, setIncludeContext] = useState(true);
@@ -65,6 +84,26 @@ function useAssistantController(desktopUsage?: DesktopUsage) {
       activeRequest.current?.abort();
     };
   }, [desktopUsage]);
+
+  useEffect(() => {
+    if (busy) return;
+    const saved = conversations.filter(chat => chat.messages.length).slice(0, historyLimit).map(chat => ({
+      ...chat,
+      // Workspace edit callbacks and images only belong to the current session.
+      messages: chat.messages.map(({ edit: _edit, ...message }) => ({
+        ...message, state: message.state === 'streaming' ? 'stopped' as const : message.state,
+      })),
+    }));
+    async function save() {
+      try {
+        if (desktopHistory) await desktopHistory.save(saved);
+        else localStorage.setItem(historyKey, JSON.stringify(saved));
+      } catch {
+        setNotice('Pip could not save the conversation history on this device.');
+      }
+    }
+    if (saved.length) void save();
+  }, [busy, conversations, desktopHistory]);
 
   const active = conversations.find(chat => chat.id === activeId) ?? conversations[0];
   const model = settings.models[settings.provider] ?? PROVIDERS[settings.provider].model;
@@ -103,7 +142,7 @@ function useAssistantController(desktopUsage?: DesktopUsage) {
     if (busy) return;
     if (!active.messages.length) return;
     const id = createId();
-    setConversations(items => [{ ...initial, id }, ...items].slice(0, 20));
+    setConversations(items => [{ ...initial, id }, ...items].slice(0, historyLimit + 1));
     switchChat(id);
   }
 
@@ -244,8 +283,12 @@ function useAssistantController(desktopUsage?: DesktopUsage) {
 type UsageEntryStatus = 'complete' | 'stopped' | 'error';
 const AssistantContext = createContext<ReturnType<typeof useAssistantController> | null>(null);
 
-export function AssistantProvider({ children, desktopUsage }: { children: ReactNode; desktopUsage?: DesktopUsage }) {
-  const assistant = useAssistantController(desktopUsage);
+export function AssistantProvider({ children, desktopUsage, desktopHistory }: {
+  children: ReactNode;
+  desktopUsage?: DesktopUsage;
+  desktopHistory?: DesktopHistory;
+}) {
+  const assistant = useAssistantController(desktopUsage, desktopHistory);
   return <AssistantContext.Provider value={assistant}>{children}</AssistantContext.Provider>;
 }
 
