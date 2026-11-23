@@ -121,7 +121,7 @@ internal object LocalCompanion {
         return found.distinct().take(8)
     }
 
-    fun request(raw: String, token: String?): JSONObject {
+    fun request(raw: String, token: String?, command: String? = null, sessionId: String? = null): JSONObject {
         val endpoint = JSONObject(raw)
         val hosts = nearbyHosts(endpoint)
         val port = endpoint.getInt("port")
@@ -142,7 +142,17 @@ internal object LocalCompanion {
             }
         }
         val context = SSLContext.getInstance("TLS").apply { init(null, arrayOf<TrustManager>(manager), null) }
-        val request = JSONObject().put("action", if (token == null) "claim" else "sync").put("key", key)
+        require(command == null || (token != null &&
+            command in listOf("start", "pause", "resume", "reset", "complete"))) {
+            "Invalid focus command."
+        }
+        val request = JSONObject()
+            .put("action", if (command != null) "focus_control" else if (token == null) "claim" else "sync")
+            .put("key", key)
+        if (command != null) {
+            request.put("command", command)
+            request.put("sessionId", sessionId?.take(128) ?: "")
+        }
         if (token == null) {
             request.put("phone", listOf(Build.MANUFACTURER, Build.MODEL).distinct().joinToString(" ").take(48))
             request.put("token", endpoint.optString("token"))
