@@ -79,6 +79,7 @@ export interface CompanionFocusState {
   sessionTitle: string;
   phase: FocusPhase;
   origin: FocusOrigin;
+  pcMode?: 'Pomodoro' | 'Countdown' | 'Stopwatch' | 'Custom';
   intervalMinutes: number;
   breakMinutes: number;
   totalSeconds: number;
