@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { relayRequest, type CompanionCalendar } from '../../src/companion/client';
+import { relayRequest, type CompanionCalendar, type CompanionFocusUpdate, type CompanionFocusSnapshot, type CompanionFocusCommand } from '../../src/companion/client';
 import { MobileCompanionApp } from '../../src/mobile/MobileCompanionApp';
 import { deviceAlerts } from '../../src/companion/alarms';
 import { QrCode } from 'lucide-react';
@@ -14,6 +14,7 @@ declare global {
     StudyFlowPairing?: {
       scan(): void;
       request(id: string, endpoint: string, token: string | null): void;
+      control(id: string, endpoint: string, token: string, command: CompanionFocusCommand, sessionId: string): void;
     };
     StudyFlowAlarms?: {
       status(): string;
@@ -29,9 +30,13 @@ const pendingKey = 'studyflow.companion.pending';
 type PhonePair = { token: string; calendar?: CompanionCalendar } & (
   { origin: string; endpoint?: never; pc?: never } | { origin?: never; endpoint: string; pc: string }
 );
-interface LocalReply { id: string; diagnostic?: string; error?: string; token?: string; calendar?: CompanionCalendar }
+interface LocalReply {
+  id: string; diagnostic?: string; error?: string;
+  token?: string; calendar?: CompanionCalendar; accepted?: boolean;
+  focus?: CompanionFocusSnapshot | null; serverNowMs?: number;
+}
 
-function localRequest(endpoint: string, token: string | null): Promise<LocalReply> {
+function localRequest(endpoint: string, token: string | null, command?: CompanionFocusCommand, sessionId = ''): Promise<LocalReply> {
   const bridge = window.StudyFlowPairing;
   if (!bridge) return Promise.reject(new Error('Open the installed StudyFlow app to pair.'));
   return new Promise((resolve, reject) => {
@@ -46,13 +51,14 @@ function localRequest(endpoint: string, token: string | null): Promise<LocalRepl
     const timer = window.setTimeout(() => {
       cleanup();
       reject(new Error('The PC did not respond. Check the Wi-Fi connection and try again.'));
-    }, 40_000);
+    }, 75_000);
     function cleanup() {
       window.clearTimeout(timer);
       window.removeEventListener('studyflow-pairing-result', result);
     }
     window.addEventListener('studyflow-pairing-result', result);
-    bridge.request(id, endpoint, token);
+    if (command && token) bridge.control(id, endpoint, token, command, sessionId);
+    else bridge.request(id, endpoint, token);
   });
 }
 
@@ -68,7 +74,13 @@ function AndroidCompanion() {
   const [attemptedPc, setAttemptedPc] = useState('');
   const [lastScannedCode, setLastScannedCode] = useState('');
   const [manualAddress, setManualAddress] = useState('');
-  const [lastSync, setLastSync] = useState(pair?.calendar ? undefined : 0);
+  const [lastSync, setLastSync] = useState<number | undefined>(pair?.calendar ? undefined : 0);
+  const [pcFocus, setPcFocus] = useState<CompanionFocusUpdate | undefined>();
+  const [autoSync, setAutoSync] = useState(() => localStorage.getItem('studyflow.phone.autosync') !== 'false');
+  const [syncIntervalSeconds, setSyncIntervalSeconds] = useState(() => {
+    const stored = Number(localStorage.getItem('studyflow.phone.sync.interval'));
+    return [2, 5, 15, 30].includes(stored) ? stored : 2;
+  });
   const latestPair = useRef(pair);
   const syncing = useRef(false);
 
@@ -95,6 +107,42 @@ function AndroidCompanion() {
     setArmed(bridge.replace(JSON.stringify(alerts)));
   }, [pair, alarmStatus?.exact]);
 
+  function captureFocus(reply: LocalReply) {
+    if (reply.serverNowMs && Object.prototype.hasOwnProperty.call(reply, 'focus')) {
+      setPcFocus({
+        focus: reply.focus ?? null, serverNowMs: reply.serverNowMs, receivedAtMs: Date.now(),
+      });
+    }
+  }
+
+  function updateAutoSync(enabled: boolean) {
+    setAutoSync(enabled);
+    localStorage.setItem('studyflow.phone.autosync', String(enabled));
+  }
+  function updateSyncInterval(seconds: number) {
+    if (![2, 5, 15, 30].includes(seconds)) return;
+    setSyncIntervalSeconds(seconds);
+    localStorage.setItem('studyflow.phone.sync.interval', String(seconds));
+  }
+
+  async function sendFocusCommand(command: CompanionFocusCommand, sessionId = '') {
+    const credentials = latestPair.current;
+    if (!credentials?.endpoint) {
+      setStatus('Connect your Windows PC before controlling its focus timer.');
+      return;
+    }
+    try {
+      const result = await localRequest(credentials.endpoint, credentials.token, command, sessionId);
+      if (!result.accepted) throw new Error('PC did not accept the focus command.');
+      captureFocus(result);
+      setStatus('Focus command sent. Waiting for Windows to confirm…');
+      // PC processes the command on its next 1-second check.
+      window.setTimeout(() => void pull(true), 1200);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   function save(next: PhonePair | null) {
     if (next) localStorage.setItem(storageKey, JSON.stringify(next));
     else localStorage.removeItem(storageKey);
@@ -102,11 +150,11 @@ function AndroidCompanion() {
     setPair(next);
   }
 
-  async function pull() {
+  async function pull(silent = false) {
     const credentials = latestPair.current;
     if (!credentials || syncing.current) return;
     syncing.current = true;
-    setBusy(true);
+    if (!silent) setBusy(true);
     try {
       const result = credentials.endpoint ? await localRequest(credentials.endpoint, credentials.token) : undefined;
       const calendar = result?.calendar ?? (credentials.origin
@@ -115,17 +163,18 @@ function AndroidCompanion() {
       if (!calendar) throw new Error('The PC did not return a calendar.');
       if (latestPair.current?.token !== credentials.token) return;
       if (JSON.stringify(calendar.events) !== JSON.stringify(credentials.calendar?.events)) save({ ...credentials, calendar });
+      if (result) captureFocus(result);
       setDiagnostic(result?.diagnostic ?? '');
       setLastSync(Date.now());
-      setStatus('Calendar synced.');
+      if (!silent) setStatus('Calendar and focus synced.');
     } catch (error) {
       if (latestPair.current?.token === credentials.token) {
-        setStatus(error instanceof Error ? error.message : String(error));
+        if (!silent) setStatus(error instanceof Error ? error.message : String(error));
         setDiagnostic((error as { diagnostic?: string })?.diagnostic ?? '');
       }
     } finally {
       syncing.current = false;
-      setBusy(false);
+      if (!silent) setBusy(false);
     }
   }
 
@@ -169,9 +218,10 @@ function AndroidCompanion() {
             save({ endpoint, pc: payload.pc, token: result.token, calendar: result.calendar });
             localStorage.removeItem(pendingKey);
           }
+          captureFocus(result);
           setDiagnostic(result.diagnostic ?? '');
           setLastSync(Date.now());
-          setStatus('Calendar synced.');
+          setStatus('Calendar and focus synced.');
         } catch (failure) {
           setStatus(failure instanceof Error ? failure.message : String(failure));
           setDiagnostic((failure as { diagnostic?: string })?.diagnostic ?? '');
@@ -188,20 +238,20 @@ function AndroidCompanion() {
   useEffect(() => {
     if (!pair?.token) return;
     const refresh = () => {
-      if (document.visibilityState === 'visible') void pull();
+      if (document.visibilityState === 'visible') void pull(true);
     };
     refresh();
-    const timer = window.setInterval(refresh, 10_000);
+    const timer = autoSync ? window.setInterval(refresh, syncIntervalSeconds * 1000) : undefined;
     window.addEventListener('focus', refresh);
     window.addEventListener('online', refresh);
     document.addEventListener('visibilitychange', refresh);
     return () => {
-      window.clearInterval(timer);
+      if (timer) window.clearInterval(timer);
       window.removeEventListener('focus', refresh);
       window.removeEventListener('online', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [pair?.token]);
+  }, [pair?.token, autoSync, syncIntervalSeconds]);
 
   function retryWithPcIp() {
     const input = manualAddress.trim();
@@ -283,11 +333,18 @@ ${diagnostic}`).then(
       lastSync,
       busy,
       onSync: () => void pull(),
+      pcFocus,
+      onFocusCommand: (action, sessionId) => void sendFocusCommand(action, sessionId),
+      autoSync,
+      syncIntervalSeconds,
+      setAutoSync: updateAutoSync,
+      setSyncIntervalSeconds: updateSyncInterval,
       onReconnect: () => window.StudyFlowPairing?.scan(),
       onPair: () => setOffline(false),
       onForget: () => {
         save(null);
         setLastSync(0);
+        setPcFocus(undefined);
         setDiagnostic('');
         setStatus('');
         setOffline(false);
