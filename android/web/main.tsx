@@ -11,6 +11,7 @@ interface AlarmStatus { exact: boolean; notifications: boolean }
 
 declare global {
   interface Window {
+    StudyFlowWidget?: { update(snapshot: string): void };
     StudyFlowPairing?: {
       scan(): void;
       request(id: string, endpoint: string, token: string | null): void;
@@ -82,6 +83,15 @@ function AndroidCompanion() {
     return [2, 5, 15, 30].includes(stored) ? stored : 2;
   });
   const latestPair = useRef(pair);
+
+  useEffect(() => {
+    window.StudyFlowWidget?.update(JSON.stringify({
+      focus: pcFocus?.focus ?? null,
+      serverNowMs: pcFocus?.serverNowMs ?? 0,
+      receivedAtMs: pcFocus?.receivedAtMs ?? Date.now(),
+      pcName: pair?.pc ?? 'StudyFlow PC',
+    }));
+  }, [pcFocus, pair?.pc]);
   const syncing = useRef(false);
 
   const [alarmStatus, setAlarmStatus] = useState<AlarmStatus | null>(null);
