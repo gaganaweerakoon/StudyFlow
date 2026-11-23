@@ -2,6 +2,8 @@ package io.github.gaganaweerakoon.studyflow
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.webkit.JavascriptInterface
 import com.google.zxing.integration.android.IntentIntegrator
 import org.json.JSONObject
@@ -22,6 +24,26 @@ class MainActivity : Activity() {
         runOnUiThread {
             if (!isDestroyed) {
                 webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('$type', {detail:$detail}))", null)
+            }
+        }
+    }
+
+    private inner class UsageBridge {
+        @JavascriptInterface
+        fun status(): String = CompanionUsage.status(this@MainActivity).toString()
+
+        @JavascriptInterface
+        fun snapshot(sessionStartMs: Long): String =
+            CompanionUsage.snapshot(this@MainActivity, sessionStartMs).toString()
+
+        @JavascriptInterface
+        fun request() = runOnUiThread {
+            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS,
+                Uri.parse("package:" + packageName))
+            try {
+                startActivity(intent)
+            } catch (_: Exception) {
+                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
             }
         }
     }
@@ -79,6 +101,7 @@ class MainActivity : Activity() {
             settings.allowContentAccess = false
             addJavascriptInterface(PairingBridge(), "StudyFlowPairing")
             addJavascriptInterface(AlarmBridge(this@MainActivity), "StudyFlowAlarms")
+            addJavascriptInterface(UsageBridge(), "StudyFlowUsage")
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = true
 
