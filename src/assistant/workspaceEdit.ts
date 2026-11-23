@@ -171,6 +171,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       return {
         title: `Add task “${title}”${date ? ` due ${date}` : ''}`,
         apply: current => {
+          if (current.tasks.some(task => task.title === title && (task.dueDate ?? '') === date && task.status !== 'done')) return true;
           current.addTask({ title, dueDate: date, dueLabel: date, subjectId: '', priority: 'medium',
             status: 'todo', estimatedMinutes: 0, description: '', subtasks: [] });
           return true;
@@ -264,6 +265,20 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
           const event: Omit<StudySession, 'id'> = { ...patch, subjectId: '', status: 'upcoming' };
           event.blockType = blockType ?? 'study';
           event.countsTowardStudy = event.blockType === 'study';
+          const minute = (hour: number) => Math.round(hour * 60);
+          if (!weekdays.length && current.sessions.some(item => !item.recurring &&
+              item.title === event.title && item.date === event.date && minute(item.startHour) === minute(event.startHour) &&
+              minute(item.durationHours) === minute(event.durationHours) && (item.blockType ?? 'study') === event.blockType)) return true;
+          if (weekdays.length && current.recurringSeries.some(row => {
+            const toClock = (value: number) => {
+              const minutes = minute(value) % 1440;
+              return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+            };
+            const priorDays = String(row.weekdays).match(/[0-6]/g) ?? [];
+            return row.title === event.title && row.valid_from === event.date &&
+              row.start_time === toClock(event.startHour) && row.end_time === toClock(event.startHour + event.durationHours) &&
+              (row.blockType ?? 'study') === event.blockType && [...new Set(priorDays)].sort().join(',') === [...weekdays].sort().join(',');
+          })) return true;
           current.addSession(event, weekdays);
         }
         return true;

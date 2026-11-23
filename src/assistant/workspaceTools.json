@@ -1,0 +1,207 @@
+[
+  {
+    "name": "create_event",
+    "description": "Schedule a new event. Ask for missing date, time, or duration.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The title as the user wants it saved"
+        },
+        "date": {
+          "type": "string",
+          "description": "Local calendar date in YYYY-MM-DD"
+        },
+        "startHour": {
+          "type": "number",
+          "description": "Start hour on a 24-hour clock, e.g. 19.5 for 7:30 PM"
+        },
+        "durationHours": {
+          "type": "number",
+          "description": "Duration in hours, e.g. 0.75 for 45 minutes"
+        },
+        "blockType": {
+          "type": "string",
+          "enum": [
+            "study",
+            "sleep",
+            "free"
+          ]
+        },
+        "weekdays": {
+          "type": "array",
+          "description": "Repeating weekdays from Monday=0 through Sunday=6",
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "required": [
+        "title",
+        "date",
+        "startHour",
+        "durationHours"
+      ]
+    }
+  },
+  {
+    "name": "update_event",
+    "description": "Modify an existing calendar event. Ask which event or recurrence scope if unclear.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Exact existing record ID from the workspace reference"
+        },
+        "title": {
+          "type": "string",
+          "description": "The title as the user wants it saved"
+        },
+        "date": {
+          "type": "string",
+          "description": "Local calendar date in YYYY-MM-DD"
+        },
+        "startHour": {
+          "type": "number",
+          "description": "Start hour on a 24-hour clock, e.g. 19.5 for 7:30 PM"
+        },
+        "durationHours": {
+          "type": "number",
+          "description": "Duration in hours, e.g. 0.75 for 45 minutes"
+        },
+        "scope": {
+          "type": "string",
+          "description": "For a recurrence, ask the user which scope they want",
+          "enum": [
+            "occurrence",
+            "series"
+          ]
+        },
+        "weekdays": {
+          "type": "array",
+          "description": "Repeating weekdays from Monday=0 through Sunday=6",
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "delete_event",
+    "description": "Prepare a calendar deletion for user confirmation. For recurring events only one occurrence is supported.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Exact existing record ID from the workspace reference"
+        },
+        "scope": {
+          "type": "string",
+          "description": "For a recurrence, ask the user which scope they want",
+          "enum": [
+            "occurrence",
+            "series"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "create_task",
+    "description": "Create one task.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The title as the user wants it saved"
+        },
+        "date": {
+          "type": "string",
+          "description": "Local calendar date in YYYY-MM-DD"
+        }
+      },
+      "required": [
+        "title"
+      ]
+    }
+  },
+  {
+    "name": "update_task",
+    "description": "Change an existing task. Set status to done only when asked to complete it.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Exact existing record ID from the workspace reference"
+        },
+        "title": {
+          "type": "string",
+          "description": "The title as the user wants it saved"
+        },
+        "date": {
+          "type": "string",
+          "description": "Local calendar date in YYYY-MM-DD"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "done"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "delete_tasks",
+    "description": "Prepare deletion of one or more tasks for user confirmation.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "type": "array",
+          "description": "Exact IDs from the workspace reference",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "ids"
+      ]
+    }
+  },
+  {
+    "name": "complete_tasks",
+    "description": "Prepare completion of multiple tasks for user confirmation.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "type": "array",
+          "description": "Exact IDs from the workspace reference",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "ids"
+      ]
+    }
+  }
+]

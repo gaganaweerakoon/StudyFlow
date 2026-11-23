@@ -38,6 +38,8 @@ pub struct ChatRequest {
     context: String,
     client_context: Option<String>,
     study_generation: Option<String>,
+    #[serde(default)]
+    workspace_actions: bool,
     history: Vec<Turn>,
     image: Option<Image>,
     max_output: u32,
@@ -112,6 +114,10 @@ fn make_request(client: &Client, request: &ChatRequest, key: &str) -> RequestBui
         system.push('\n');
         system.push_str(extra);
     }
+    let tools_enabled = matches!(request.provider, Provider::Gemini) && request.workspace_actions && schema.is_none();
+    if tools_enabled {
+        system.push_str("\nFor an explicitly requested calendar or task change, call one provided function. Ask a question if information is missing. Keep function arguments out of chat text.");
+    }
     let prompt = if request.context.is_empty() {
         request.prompt.clone()
     } else {
@@ -152,9 +158,15 @@ fn make_request(client: &Client, request: &ChatRequest, key: &str) -> RequestBui
                 config["responseMimeType"] = json!("application/json");
                 config["responseJsonSchema"] = schema;
             }
+            let mut body = json!({"systemInstruction":{"parts":[{"text":system}]},"generationConfig":config,"contents":input});
+            if tools_enabled {
+                let declarations: Value = serde_json::from_str(include_str!("../../../src/assistant/workspaceTools.json"))
+                    .expect("bundled workspace tool definitions are valid JSON");
+                body["tools"] = json!([{"functionDeclarations":declarations}]);
+            }
             client.post(format!("https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse"))
                 .header("x-goog-api-key", key)
-                .json(&json!({"systemInstruction":{"parts":[{"text":system}]},"generationConfig":config,"contents":input}))
+                .json(&body)
         }
         Provider::Claude => {
             input.push(json!({"role":"user","content":parts}));
@@ -380,6 +392,19 @@ pub async fn stream(
         }
         let event: Value = serde_json::from_str(&frame.data)
             .map_err(|_| "The provider returned an invalid response.".to_string())?;
+        if matches!(request.provider, Provider::Gemini) && request.workspace_actions && request.study_generation.is_none() {
+            for part in event["candidates"][0]["content"]["parts"].as_array().into_iter().flatten() {
+                let call = &part["functionCall"];
+                let name = call["name"].as_str().unwrap_or("");
+                if part["thought"] != true && call["args"].is_object() && matches!(name,
+                    "create_event" | "update_event" | "delete_event" | "create_task" |
+                    "update_task" | "delete_tasks" | "complete_tasks"
+                ) {
+                    reply.text = true;
+                    emit(json!({"type":"action","action":name,"arguments":call["args"]}))?;
+                }
+            }
+        }
         let delta = reply.consume(request.provider, &event)?;
         if !delta.is_empty() {
             emit(json!({"type":"text","text":delta}))?;

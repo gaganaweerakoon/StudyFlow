@@ -43,6 +43,7 @@ export interface ChatRequest {
   context: string;
   clientContext?: string;
   studyGeneration?: StudyGenerationKind;
+  workspaceActions?: boolean;
   history: ChatTurn[];
   image?: ChatImage;
   generateImage?: boolean;
@@ -58,6 +59,7 @@ export interface TokenUsage {
 
 export type ChatEvent =
   | { type: 'text'; text: string }
+  | { type: 'action'; action: string; arguments: Record<string, unknown> }
   | { type: 'image'; mime: 'image/png' | 'image/jpeg' | 'image/webp'; base64: string }
   | { type: 'usage'; usage: TokenUsage }
   | { type: 'done'; truncated?: boolean }

@@ -217,9 +217,15 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     if (generateImage && (!typed || attachment || provider === 'claude')) return;
     const prompt = typed || imagePrompt;
     const clock = requestClock(settings.timezone);
+    const actionLanguage = [typed, active.messages.filter(message => message.role === 'user').at(-1)?.text ?? ''].join(' ');
+    const mayEdit = includeContext && !generateImage && (
+      /\b(add|create|schedule|reschedule|book|edit|move|change|delete|remove|complete|update|rename|generate|save|mark|set up)\b/i.test(actionLanguage)
+      || /එකතු|සාදන්න|සකස්|වෙනස්|ඉවත්/.test(actionLanguage)
+    );
     const request: ChatRequest = {
       prompt, provider, model, maxOutput: 16384,
       generateImage,
+      workspaceActions: mayEdit && provider === 'gemini',
       context: includeContext && !generateImage ? workspaceContext(currentApp.current, currentPage, prompt, clock).text : '',
       clientContext: generateImage ? undefined : `Current local date and time: ${clock.label}. Resolve relative dates and times using this clock. Default response language: ${settings.language ?? 'match the user’s message'}.`,
       image: attachment?.image,
@@ -252,6 +258,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     }));
 
     let responseText = '';
+    const actionCalls = new Set<string>();
     let proposedEdit: WorkspaceEdit | undefined;
     let tokens: TokenUsage | undefined;
     let status: UsageEntryStatus = 'error';
@@ -259,7 +266,11 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       for await (const event of sendChat(request, key, control.signal)) {
         if (event.type === 'text') {
           responseText += event.text;
-          updateMessage(message => ({ ...message, text: splitWorkspaceResponse(responseText).text }));
+          if (!actionCalls.size) updateMessage(message => ({ ...message, text: splitWorkspaceResponse(responseText).text }));
+        }
+        if (event.type === 'action') {
+          actionCalls.add(JSON.stringify({ ...event.arguments, action: event.action }));
+          updateMessage(message => ({ ...message, text: '' }));
         }
         if (event.type === 'image' && generateImage) {
           responseText = 'Generated image. Download it to keep a copy.';
@@ -269,11 +280,17 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         if (event.type === 'error') throw new Error(event.message);
         if (event.type === 'done') {
           status = 'complete';
-          const { text, command } = splitWorkspaceResponse(responseText, true);
+          const { text, command: legacyCommand } = splitWorkspaceResponse(responseText, true);
+          if (actionCalls.size > 1) {
+            updateMessage(message => ({ ...message, text: 'Pip received more than one change. Ask for one change at a time.' }));
+            continue;
+          }
+          const command = [...actionCalls][0] ?? legacyCommand;
           if (command === undefined) {
-            updateMessage(message => ({ ...message, text }));
+            const rawRecord = mayEdit && (/^\s*[{[]/.test(text) || /```(?:json|sql)[ \t]*\n/i.test(text));
+            updateMessage(message => ({ ...message, text: rawRecord ? 'Pip received data without a valid action. Try asking for one specific change.' : text }));
           } else if (!event.truncated) {
-            const edit = includeContext ? parseWorkspaceEdit(command, currentApp.current) : undefined;
+            const edit = mayEdit ? parseWorkspaceEdit(command, currentApp.current) : undefined;
             if (!edit) {
               updateMessage(message => ({ ...message, text: 'I couldn’t apply that change. Check the target and try again.' }));
             } else if (edit.confirmation) {

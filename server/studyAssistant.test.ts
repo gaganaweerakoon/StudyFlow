@@ -52,7 +52,12 @@ test('the localhost assistant streams images, context, and normalized usage thro
     if (url.startsWith(origin)) return realFetch(url, init);
     calls.push({ url, headers: new Headers(init.headers), body: JSON.parse(String(init.body)) });
     if (url.startsWith('https://api.openai.com/')) return sse(openaiEvents);
-    if (url.startsWith('https://generativelanguage.googleapis.com/')) return sse(geminiEvents);
+    if (url.startsWith('https://generativelanguage.googleapis.com/')) {
+      if (calls.at(-1)?.body.tools) return sse([
+        { candidates: [{ content: { parts: [{ functionCall: { name: 'create_event', args: { title: 'Chemistry', date: '2026-11-24', startHour: 7, durationHours: 1 } } }] }, finishReason: 'STOP' }] },
+      ]);
+      return sse(geminiEvents);
+    }
     if (url.startsWith('https://api.anthropic.com/')) return sse(claudeEvents);
     throw new Error('Unexpected upstream');
   });
@@ -123,6 +128,13 @@ test('the localhost assistant streams images, context, and normalized usage thro
   assert.match(generation.systemInstruction.parts[0].text, /Do not greet/);
   assert.doesNotMatch(generation.systemInstruction.parts[0].text, /pip-edit/);
   assert.match(generation.contents[0].parts[0].text, /Selected source text/);
+  const action = await call('gemini', { workspaceActions: true, image: undefined });
+  const events = (await action.text()).trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(events, [
+    { type: 'action', action: 'create_event', arguments: { title: 'Chemistry', date: '2026-11-24', startHour: 7, durationHours: 1 } },
+    { type: 'done', truncated: false },
+  ]);
+  assert.ok(calls.at(-1)?.body.tools[0].functionDeclarations.some((tool: { name: string }) => tool.name === 'create_event'));
   assert.equal((await call('gemini', { studyGeneration: 'bogus' })).status, 400);
 
 });
