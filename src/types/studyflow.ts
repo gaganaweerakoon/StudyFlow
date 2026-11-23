@@ -175,7 +175,7 @@ export interface ExamItem {
 
 export interface QuizQuestion {
   id: string;
-  type: 'mcq' | 'short';
+  type: 'mcq' | 'multi' | 'short';
   topic: string;
   prompt: string;
   options?: string[];
@@ -184,6 +184,8 @@ export interface QuizQuestion {
 }
 
 export interface PracticeQuiz {
+  sourceNoteId?: string;
+  attempts?: {at:string;score:number}[];
   id: string;
   title: string;
   subjectId: string;

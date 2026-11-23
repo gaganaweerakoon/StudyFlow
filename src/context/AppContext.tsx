@@ -161,6 +161,7 @@ interface AppContextValue {
   addExam: (exam: Omit<ExamItem, 'id' | 'mockHistory'>) => void;
 
   quizzes: PracticeQuiz[];
+  addQuiz: (quiz:PracticeQuiz) => void;
   recordQuizScore: (quizId: string, score: number) => void;
 
   focusTimer: FocusTimerState;
@@ -797,7 +798,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   );
 
   const recordQuizScore = useCallback((quizId: string, score: number) => {
-    setQuizzes((prev) => prev.map((q) => (q.id === quizId ? { ...q, lastScore: score } : q)));
+    setQuizzes((prev) => prev.map((q) => (q.id === quizId ? { ...q, lastScore: score, attempts:[...(q.attempts ?? []),{at:new Date().toISOString(),score}] } : q)));
     setXpPoints((x) => x + 80);
   }, []);
 
@@ -931,6 +932,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         exams,
         addExam,
         quizzes,
+        addQuiz: quiz=>setQuizzes(prev=>[quiz,...prev]),
         recordQuizScore,
         focusTimer,
         setFocusMode,

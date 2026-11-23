@@ -1,3 +1,4 @@
+import {StudyGeneration} from '../../notes/StudyGeneration';
 import React, { useState, useEffect } from 'react';
 import {
   ResponsiveContainer,
@@ -146,12 +147,7 @@ export const PracticeTestsView: React.FC = () => {
         <div className="rounded-xl divide-y divide-[var(--border-subtle)]" style={surfaceStyle}>
           {activeQuiz.questions.map((q, idx) => {
             const given = (answers[q.id] ?? '').trim();
-            const isCorrect =
-              q.type === 'mcq'
-                ? given.toLowerCase() === q.correctAnswer.toLowerCase()
-                : given.length > 0 &&
-                  (given.toLowerCase().includes(q.correctAnswer.toLowerCase()) ||
-                    q.correctAnswer.toLowerCase().includes(given.toLowerCase()));
+            const isCorrect = gradePracticeTest([q],answers).correctCount === 1;
 
             return (
               <div key={q.id} className="p-4 space-y-1.5">
@@ -240,15 +236,16 @@ export const PracticeTestsView: React.FC = () => {
               {q.prompt}
             </h2>
 
-            {q.type === 'mcq' && q.options ? (
+            {q.type !== 'short' && q.options ? (
               <div className="space-y-2.5">
                 {q.options.map((opt, idx) => {
-                  const selected = answers[q.id] === opt;
+                  const chosen = (answers[q.id] ?? '').split('\n').filter(Boolean);
+                  const selected = chosen.includes(opt);
                   return (
                     <button
                       key={opt}
                       type="button"
-                      onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: opt }))}
+                      onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: q.type === "multi" ? (selected ? chosen.filter(v=>v!==opt) : [...chosen,opt]).sort().join("\n") : opt }))}
                       className="w-full p-3.5 rounded-xl text-left flex items-center gap-3 transition-colors"
                       style={{
                         backgroundColor: selected ? 'var(--accent-soft)' : 'var(--bg-surface-subtle)',
@@ -407,6 +404,7 @@ export const PracticeTestsView: React.FC = () => {
 
   return (
     <div className="space-y-4 pb-6">
+      <StudyGeneration quiz/>
       <div>
         <h1 className="font-display text-[19px] font-semibold text-[var(--text-primary)]">
           Practice Tests

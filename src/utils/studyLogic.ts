@@ -78,10 +78,7 @@ export function gradePracticeTest(
   for (const q of questions) {
     const raw = (answers[q.id] ?? '').trim().toLowerCase();
     const expected = q.correctAnswer.trim().toLowerCase();
-    const isCorrect =
-      q.type === 'mcq'
-        ? raw === expected
-        : raw.length > 0 && (raw.includes(expected) || expected.includes(raw));
+    const isCorrect = raw.length > 0 && raw === expected;
 
     if (isCorrect) correctCount += 1;
     const entry = topicMap.get(q.topic) ?? { correct: 0, total: 0 };

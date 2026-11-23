@@ -3,8 +3,8 @@ import {useApp} from '../context/AppContext';
 import {useAssistant} from '../assistant/AssistantContext';
 
 type Card = {front:string;back:string};
-export function StudyGeneration() {
-  const {notes,decks,addFlashcard,pushToast}=useApp();
+export function StudyGeneration({quiz=false}:{quiz?:boolean}) {
+  const {notes,decks,addQuiz,addFlashcard,pushToast}=useApp();
   const {generate}=useAssistant();
   const [noteId,setNoteId]=useState(notes[0]?.id ?? '');
   const [index,setIndex]=useState(0);
@@ -12,17 +12,31 @@ export function StudyGeneration() {
   const sections=[...(note?.content.split(/(?=^#{1,6} )/m).filter(s=>s.trim()) ?? []),...(note?.pdf?.pages ?? []).filter(p=>p.text).map(p=>'Page '+((note?.pdf?.pages?.indexOf(p) ?? 0)+1)+'\n'+p.text)];
   const [deck,setDeck]=useState(decks[0]?.id ?? '');
   const [count,setCount]=useState(5);
+  const [kind,setKind]=useState("mixed");
   const [cards,setCards]=useState<Card[]>([]);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
-  return <details className="rounded-xl border border-[var(--border-subtle)] p-3 text-sm"><summary>Generate flashcards from notes</summary>
+  return <details className="rounded-xl border border-[var(--border-subtle)] p-3 text-sm"><summary>{quiz?'Generate practice test':'Generate flashcards'} from notes</summary>
     <fieldset disabled={busy} className="grid gap-2 mt-3">
     <label>Note <select value={noteId} onChange={e=>{setNoteId(e.target.value);setIndex(0);setCards([]);}}>{notes.map(n=><option key={n.id} value={n.id}>{n.title}</option>)}</select></label>
     <label>Section <select value={index} onChange={e=>{setIndex(Number(e.target.value));setCards([]);}}>{sections.map((s,i)=><option key={i} value={i}>{s.split('\n')[0].slice(0,90)}</option>)}</select></label>
-    <label>Deck <select value={deck} onChange={e=>setDeck(e.target.value)}>{decks.map(d=><option key={d.id} value={d.id}>{d.title}</option>)}</select></label>
-    <label>Number of cards <input type="number" min={1} max={30} value={count} onChange={e=>setCount(Number(e.target.value))}/></label>
-    <button disabled={!sections[index] || !deck || !Number.isInteger(count) || count<1 || count>30} onClick={async()=>{
+    {quiz ? <label>Questions <select value={kind} onChange={e=>setKind(e.target.value)}>{["mixed","mcq","multi","short"].map(k=><option key={k}>{k}</option>)}</select></label> : <label>Deck <select value={deck} onChange={e=>setDeck(e.target.value)}>{decks.map(d=><option key={d.id} value={d.id}>{d.title}</option>)}</select></label>}
+    <label>Number of items <input type="number" min={1} max={30} value={count} onChange={e=>setCount(Number(e.target.value))}/></label>
+    <button disabled={!sections[index] || (!quiz && !deck) || !Number.isInteger(count) || count<1 || count>30} onClick={async()=>{
       setBusy(true);setError('');try {
+        if(quiz && note) {
+          const result=await generate('Generate '+count+' '+kind+' questions based only on this section. Return JSON array with type (mcq, multi, short), prompt, options (array for choice questions), answer (exact option or array of exact options for multi, exact short term for short), and explanation including evidence. For short ask for a single unambiguous term.',sections[index]);
+          if(!Array.isArray(result) || result.length!==count) throw new Error('Incomplete test from provider.');
+          const questions=result.map(q=>{
+            if(!q || !['mcq','multi','short'].includes(q.type) || (kind!=='mixed' && kind!==q.type) || ![q.prompt,q.explanation].every(v=>typeof v==='string' && v.trim())) throw new Error('Invalid question from provider.');
+            const choices=q.options;
+            if(q.type!=='short' && (!Array.isArray(choices) || choices.length<2 || !choices.every(v=>typeof v==='string' && v.trim()))) throw new Error('Missing answer choices.');
+            if(q.type==='multi' ? !Array.isArray(q.answer) || !q.answer.length || !q.answer.every((v:string)=>choices.includes(v)) : typeof q.answer!=='string' || !q.answer.trim() || q.type==='mcq' && !choices.includes(q.answer)) throw new Error('Invalid answer key.');
+            return {id:crypto.randomUUID(),type:q.type,prompt:q.prompt,options:choices,topic:note.title,correctAnswer:q.type==='multi'?q.answer.sort().join('\n'):q.answer,explanation:q.explanation};
+          });
+          addQuiz({id:crypto.randomUUID(),title:note.title+' practice',subjectId:note.subjectId,durationMinutes:Math.max(5,count*2),difficulty:'Standard',questions,sourceNoteId:note.id});
+          pushToast('Practice test ready');return;
+        }
         const result=await generate('Generate '+count+' flashcards strictly grounded in the selected section. Return JSON array of objects with front and back strings.',sections[index]);
         if(!Array.isArray(result) || result.length!==count || !result.every(c=>typeof c?.front==='string' && c.front.trim() && typeof c.back==='string' && c.back.trim())) throw new Error('Incomplete flashcard set. Try again.');
         setCards(result);
