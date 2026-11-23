@@ -17,6 +17,7 @@ export interface PdfSource {
   name: string;
   data: string;
   marks: PdfMark[];
+  viewer?: { page: number; zoom: number; rotation: number };
   pages?: { text: string; image?: string; figures?: PdfFigure[]; structured?: boolean; hasText?: boolean; ocrComplete?: boolean }[];
 }
 interface PdfPage {
