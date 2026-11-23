@@ -60,7 +60,7 @@ export const PlannerView: React.FC = () => {
   const [activeDayIdx, setActiveDayIdx] = useState<number>(legacyCalendar ? weekday : 6);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [dragSessionId, setDragSessionId] = useState<string | null>(null);
-  const [showRescheduleApplied, setShowRescheduleApplied] = useState(false);
+
 
   const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? null;
 
@@ -87,18 +87,22 @@ export const PlannerView: React.FC = () => {
     updateSession(ses.id, { durationHours: next });
   };
 
-  const applySmartReschedule = () => {
-    const missed = sessions.find((s) => s.status === 'missed');
-    if (missed) {
-      updateSession(missed.id, {
-        dayIndex: legacyCalendar ? weekday : 6,
-        date: legacyCalendar ? localDay(today) : '2026-11-22',
-        startHour: 18,
-        status: 'upcoming',
-      });
+  const missed = sessions.find(s => s.status === 'missed' && s.countsTowardStudy !== false && s.date <= localDay(today));
+  function findSlot() {
+    if (!missed) return;
+    for (const day of DAYS.filter(day => day.date >= localDay(today))) {
+      const blocks = blocksByDate.get(day.date) ?? [];
+      for (let start = 8; start + missed.durationHours <= 22; start += 0.5) {
+        if (day.date === localDay(today) && start <= today.getHours() + today.getMinutes() / 60) continue;
+        if (blocks.every(block => start >= block.to || start + missed.durationHours <= block.from)) return { day, start };
+      }
     }
-    setShowRescheduleApplied(true);
-    pushToast(legacyCalendar ? (missed ? 'Rescheduled missed study block' : 'No missed study blocks') : 'Smart reschedule applied — moved deferred ECON 205 lab');
+  }
+  const slot = findSlot();
+  const applySmartReschedule = () => {
+    if (!missed || !slot) return;
+    updateSession(missed.id, { date: slot.day.date, dayIndex: DAYS.indexOf(slot.day), startHour: slot.start, status: 'upcoming' });
+    pushToast('Study block rescheduled');
   };
 
   const renderSessionBlock = ({ session: ses, from, to, continued, column, columns }: ReturnType<typeof layoutCalendarDay>[number]) => {
@@ -621,7 +625,7 @@ export const PlannerView: React.FC = () => {
           </div>
 
           {/* Smart Rescheduling Suggestion Panel */}
-          <div
+          {missed && slot && <div
             className="rounded-xl p-4 space-y-2.5"
             style={{
               backgroundColor: 'var(--bg-surface)',
@@ -633,18 +637,18 @@ export const PlannerView: React.FC = () => {
               Smart Rescheduling
             </div>
 
-            {!showRescheduleApplied ? (
+            {(
               <>
                 <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed">
-                  1 missed session detected: <strong className="text-[var(--text-primary)]">ECON 205 Lab Walkthrough</strong> (Thu 3:00 PM).
+                  1 missed session detected: <strong className="text-[var(--text-primary)]">{missed.title}</strong> ({missed.date} · {formatHourLabel(missed.startHour)}).
                 </p>
                 <div className="p-2.5 rounded-lg text-[12px]" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
                   <div className="flex items-center gap-1.5 font-medium text-[var(--text-primary)]">
                     <GripVertical className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-                    Suggested Slot: Sun 6:00 PM
+                    Suggested Slot: {slot.day.short} {formatHourLabel(slot.start)}
                   </div>
                   <div className="text-[11.5px] text-[var(--text-muted)] mt-0.5">
-                    Preserves 4.5h weekday load balance before Midterm III.
+                    {Math.round(missed.durationHours * 60)} min available on {slot.day.date}.
                   </div>
                 </div>
                 <button
@@ -656,13 +660,8 @@ export const PlannerView: React.FC = () => {
                   Apply Suggestion <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </>
-            ) : (
-              <div className="text-[12.5px] text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                All deferred blocks rebalanced into open slots.
-              </div>
             )}
-          </div>
+          </div>}
         </div>
       </div>
     </div>
