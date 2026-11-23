@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { localDay } from '../../assistant/workspaceContext';
+import { layoutCalendarDay } from '../../utils/calendarLayout';
 import { studyChart } from '../../utils/workspaceMetrics';
 import { DASHBOARD_CHART_DATA } from '../../data/mockData';
 import {
@@ -67,10 +68,14 @@ export const DashboardView: React.FC = () => {
 
   const completedTasks = tasks.filter((t) => t.status === 'done').length;
   const pendingTasks = tasks.length - completedTasks;
-  const todaySessions = sessions
-    .filter((s) => s.date === (legacyCalendar ? localDay() : '2026-11-22'))
-    .sort((a, b) => a.startHour - b.startHour);
-
+  const [now, setNow] = useState(() => new Date());
+  React.useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 15000);
+    return () => window.clearInterval(interval);
+  }, []);
+  const hour = now.getHours() + now.getMinutes() / 60;
+  const todaySessions = layoutCalendarDay(sessions, localDay(now))
+    .filter(block => block.to > hour && block.session.status === 'upcoming' && block.session.countsTowardStudy !== false);
   const dailyStudyHours = legacyCalendar ? studyChart('daily', sessions, focusHistory)[0].actual : 3.4;
   const weeklyHours = legacyCalendar ? studyChart('weekly', sessions, focusHistory).reduce((sum, day) => sum + day.actual, 0) : 28.6;
   const dailyGoalPct = Math.min(100, Math.round((dailyStudyHours / preferences.dailyGoalHours) * 100));
@@ -314,7 +319,7 @@ export const DashboardView: React.FC = () => {
                   Today&apos;s Study Schedule
                 </h2>
                 <p className="text-[12px] text-[var(--text-muted)]">
-                  {legacyCalendar ? new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }) : 'Sunday, Nov 22'} · {todaySessions.length} blocks scheduled
+                  {now.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })} · {todaySessions.length} sessions remaining
                 </p>
               </div>
               <button
@@ -328,7 +333,8 @@ export const DashboardView: React.FC = () => {
             </div>
 
             <div className="divide-y divide-[var(--border-subtle)]">
-              {todaySessions.map((ses) => {
+              {todaySessions.length === 0 && <p className="py-3 text-sm">No more study sessions today.</p>}
+              {todaySessions.map(({session: ses, from}) => {
                 const sub = subjects.find((s) => s.id === ses.subjectId);
                 return (
                   <div key={ses.id} className="py-2.5 flex items-center justify-between gap-3">
@@ -345,7 +351,7 @@ export const DashboardView: React.FC = () => {
                           {ses.title}
                         </div>
                         <div className="text-[11.5px] text-[var(--text-muted)] truncate">
-                          {sub?.code} · {ses.durationHours}h · {ses.location ?? 'Workspace'}
+                          {sub?.code} · {Math.round(ses.durationHours * 60)} min · {ses.location ?? 'Workspace'}
                         </div>
                       </div>
                     </div>
@@ -356,7 +362,7 @@ export const DashboardView: React.FC = () => {
                           : 'text-[var(--text-muted)]'
                       }`}
                     >
-                      {ses.status === 'completed' ? 'Completed' : 'Upcoming'}
+                      {from <= hour ? 'In progress' : 'Upcoming'}
                     </span>
                   </div>
                 );
