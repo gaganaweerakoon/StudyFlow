@@ -96,12 +96,12 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
         </div>
       </header>
       {assistant.conversations.length > 1 && (
-        <div className="pip-conversations">
+        <details className="pip-conversations"><summary>Chat history</summary>
           <label htmlFor="pip-chat-thread">Conversation</label>
           <select id="pip-chat-thread" value={assistant.activeId} disabled={assistant.busy} onChange={event => assistant.switchChat(event.target.value)}>
             {assistant.conversations.map(chat => <option key={chat.id} value={chat.id}>{chat.title}</option>)}
           </select>
-        </div>
+        </details>
       )}
 
       <div className="pip-messages" ref={scroller} onScroll={event => {

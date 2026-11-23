@@ -172,7 +172,7 @@ export function AssistantSettings() {
         </select>
       </label>
       <ProviderSettings key={settings.provider} />
-      <UsageViewer usage={assistant.usage} />
+      <details><summary>View usage</summary><UsageViewer usage={assistant.usage} /></details>
     </section>
   );
 }
