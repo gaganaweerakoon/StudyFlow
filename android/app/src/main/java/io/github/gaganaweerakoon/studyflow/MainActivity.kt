@@ -28,6 +28,26 @@ class MainActivity : Activity() {
         }
     }
 
+    private inner class WidgetBridge {
+        @JavascriptInterface
+        fun update(snapshot: String) {
+            StudyFlowFocusWidget.storeAndUpdate(this@MainActivity, snapshot)
+        }
+    }
+
+    private fun openFocusFromWidget() {
+        if (intent?.getBooleanExtra("studyflow_open_focus", false) == true && ::webView.isInitialized) {
+            intent.removeExtra("studyflow_open_focus")
+            webView.evaluateJavascript("window.dispatchEvent(new Event('studyflow-open-focus'))", null)
+        }
+    }
+
+    override fun onNewIntent(nextIntent: Intent) {
+        super.onNewIntent(nextIntent)
+        setIntent(nextIntent)
+        openFocusFromWidget()
+    }
+
     private inner class UsageBridge {
         @JavascriptInterface
         fun status(): String = CompanionUsage.status(this@MainActivity).toString()
@@ -117,7 +137,13 @@ class MainActivity : Activity() {
             addJavascriptInterface(PairingBridge(), "StudyFlowPairing")
             addJavascriptInterface(AlarmBridge(this@MainActivity), "StudyFlowAlarms")
             addJavascriptInterface(UsageBridge(), "StudyFlowUsage")
+            addJavascriptInterface(WidgetBridge(), "StudyFlowWidget")
             webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView, url: String) {
+                    super.onPageFinished(view, url)
+                    openFocusFromWidget()
+                }
+
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = true
 
                 override fun shouldInterceptRequest(
