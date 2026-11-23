@@ -24,7 +24,7 @@ function calendarEvents(sessions: StudySession[]): CompanionEvent[] {
 }
 
 export function PublishCompanionCalendar() {
-  const { sessions, focusClock, applyPhoneFocusAction } = useApp();
+  const { sessions, focusClock, preferences, applyPhoneFocusAction } = useApp();
 
   // The desktop timer is authoritative. Publish immediately when its phase,
   // running state, subject, or time anchor changes, not just once a minute.
@@ -33,12 +33,12 @@ export function PublishCompanionCalendar() {
     const publish = () => void invoke('local_companion', {
       action: 'publish',
       events: calendarEvents(sessions),
-      focus: focusClock,
+      focus: { ...focusClock, profileName: preferences.name },
     }).catch(() => {});
     publish();
     const interval = window.setInterval(publish, 30_000);
     return () => window.clearInterval(interval);
-  }, [sessions, focusClock]);
+  }, [sessions, focusClock, preferences.name]);
 
   // Phone commands are authenticated and queued by the TLS companion service.
   // Drain them on the desktop UI thread so the real React timer state changes.
@@ -71,7 +71,7 @@ interface LinkStatus { pc: string; phone: string | null; lastSync: number | null
 interface Invitation { qr: string; seconds: number }
 
 export function DesktopPairing() {
-  const { sessions, focusClock } = useApp();
+  const { sessions, focusClock, preferences } = useApp();
   const [link, setLink] = useState<LinkStatus>();
   const [qr, setQr] = useState<Invitation>();
   const [busy, setBusy] = useState(false);
@@ -102,7 +102,7 @@ export function DesktopPairing() {
     setStatus('');
     try {
       if (action === 'invite') {
-        setQr(await invoke<Invitation>('local_companion', { action, events: calendarEvents(sessions), focus: focusClock }));
+        setQr(await invoke<Invitation>('local_companion', { action, events: calendarEvents(sessions), focus: { ...focusClock, profileName: preferences.name } }));
       } else if (action === 'test') {
         const result = await invoke<{ pc: string; addresses: string[]; port: number }>('local_companion', { action });
         setStatus(`${result.pc} is listening on TCP ${result.port}. Local addresses: ${result.addresses.join(', ') || 'none found'}. The phone must be able to reach one of these addresses.`);
