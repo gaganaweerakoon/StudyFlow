@@ -71,7 +71,7 @@ interface LinkStatus { pc: string; phone: string | null; lastSync: number | null
 interface Invitation { qr: string; seconds: number }
 
 export function DesktopPairing() {
-  const { sessions } = useApp();
+  const { sessions, focusClock } = useApp();
   const [link, setLink] = useState<LinkStatus>();
   const [qr, setQr] = useState<Invitation>();
   const [busy, setBusy] = useState(false);
@@ -102,7 +102,7 @@ export function DesktopPairing() {
     setStatus('');
     try {
       if (action === 'invite') {
-        setQr(await invoke<Invitation>('local_companion', { action, events: calendarEvents(sessions) }));
+        setQr(await invoke<Invitation>('local_companion', { action, events: calendarEvents(sessions), focus: focusClock }));
       } else if (action === 'test') {
         const result = await invoke<{ pc: string; addresses: string[]; port: number }>('local_companion', { action });
         setStatus(`${result.pc} is listening on TCP ${result.port}. Local addresses: ${result.addresses.join(', ') || 'none found'}. The phone must be able to reach one of these addresses.`);
