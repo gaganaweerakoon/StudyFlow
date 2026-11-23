@@ -48,7 +48,12 @@ const BOTTOM_TABS: { id: MobileTabId; label: string; Icon: React.ComponentType<{
   { id: 'settings', label: 'Settings', Icon: Settings },
 ];
 
-const AndroidDeviceShell: React.FC<{ onBackToDesktop?: () => void }> = ({ onBackToDesktop }) => {
+interface CompanionAppProps {
+  onBackToDesktop?: () => void;
+  installed?: boolean;
+}
+
+const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, installed = false }) => {
   const {
     activeTab,
     setActiveTab,
@@ -100,23 +105,23 @@ const AndroidDeviceShell: React.FC<{ onBackToDesktop?: () => void }> = ({ onBack
   const isTimerRunning = focus.phase === 'focus' || focus.phase === 'break';
 
   const phoneStyle = {
-    width: `${viewport.widthDp}px`,
-    height: '844px',
+    width: installed ? '100%' : `${viewport.widthDp}px`,
+    height: installed ? '100dvh' : '844px',
     maxWidth: '100%',
     backgroundColor: 'var(--bg-canvas)',
     color: 'var(--text-primary)',
-    border: '1px solid var(--border-strong)',
-    boxShadow: 'var(--shadow-floating)',
+    border: installed ? undefined : '1px solid var(--border-strong)',
+    boxShadow: installed ? undefined : 'var(--shadow-floating)',
     ['--sf-font-scale' as string]: String(viewport.fontScale),
   } as React.CSSProperties;
 
   return (
     <div
-      className="min-h-screen w-full flex flex-col items-center justify-center p-3 sm:p-6"
+      className={installed ? "w-full" : "min-h-screen w-full flex flex-col items-center justify-center p-3 sm:p-6"}
       style={{ backgroundColor: 'var(--bg-sidebar)', color: 'var(--text-primary)' }}
     >
       {/* Narrow-viewport toggle for Reviewer Workbench drawer */}
-      <div className="lg:hidden w-full max-w-[420px] flex items-center justify-between gap-2 mb-3">
+      {!installed && <div className="lg:hidden w-full max-w-[420px] flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
           <span
             className="w-6 h-6 rounded-md flex items-center justify-center text-[12px] font-bold"
@@ -139,18 +144,18 @@ const AndroidDeviceShell: React.FC<{ onBackToDesktop?: () => void }> = ({ onBack
           <SlidersHorizontal className="w-3.5 h-3.5" />
           Workbench
         </button>
-      </div>
+      </div>}
 
       {/* Main Side-by-Side Layout: Android Phone Frame + Reviewer Workbench */}
-      <div className="w-full max-w-[1160px] flex flex-col lg:flex-row items-center lg:items-start justify-center gap-6 xl:gap-8">
+      <div className={installed ? "w-full" : "w-full max-w-[1160px] flex flex-col lg:flex-row items-center lg:items-start justify-center gap-6 xl:gap-8"}>
         {/* Android Device Viewport (390 × 844 dp or 360 × 844 dp) */}
-        <div className="flex flex-col items-center shrink-0">
+        <div className={installed ? "w-full" : "flex flex-col items-center shrink-0"}>
           <div
             data-testid="android-phone-frame"
             data-theme={settings.theme}
-            data-width-dp={viewport.widthDp}
+            data-width-dp={installed ? undefined : viewport.widthDp}
             data-font-scale={viewport.fontScale}
-            className="relative rounded-[32px] overflow-hidden flex flex-col select-none transition-[width] duration-200"
+            className={`relative overflow-hidden flex flex-col select-none ${installed ? "" : "rounded-[32px] transition-[width] duration-200"}`}
             style={phoneStyle}
           >
             {/* Android Status Bar (Safe Area Top) */}
@@ -287,7 +292,7 @@ const AndroidDeviceShell: React.FC<{ onBackToDesktop?: () => void }> = ({ onBack
                 aria-hidden="true"
               />
               <span className="w-10 text-right font-mono-num text-[10px] text-[var(--text-muted)]">
-                {viewport.widthDp}dp
+                {!installed && `${viewport.widthDp}dp`}
               </span>
             </div>
 
@@ -303,9 +308,9 @@ const AndroidDeviceShell: React.FC<{ onBackToDesktop?: () => void }> = ({ onBack
         </div>
 
         {/* Desktop Side-by-Side Reviewer Workbench */}
-        <div className="hidden lg:block">
+        {!installed && <div className="hidden lg:block">
           <ReviewerWorkbench onBackToDesktop={onBackToDesktop} />
-        </div>
+        </div>}
       </div>
 
       {/* Mobile Drawer for Reviewer Workbench on Narrow Screens */}
@@ -349,12 +354,12 @@ const AndroidDeviceShell: React.FC<{ onBackToDesktop?: () => void }> = ({ onBack
   );
 };
 
-export const MobileCompanionApp: React.FC<{ onBackToDesktop?: () => void }> = ({
-  onBackToDesktop,
+export const MobileCompanionApp: React.FC<CompanionAppProps> = ({
+  onBackToDesktop, installed,
 }) => {
   return (
     <CompanionProvider>
-      <AndroidDeviceShell onBackToDesktop={onBackToDesktop} />
+      <AndroidDeviceShell onBackToDesktop={onBackToDesktop} installed={installed} />
     </CompanionProvider>
   );
 };

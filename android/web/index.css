@@ -1,2 +1,4 @@
 @import '../../src/index.css';
 @source '../../src/mobile';
+
+@source './main.tsx';
