@@ -1,17 +1,42 @@
-# StudyFlow V1
+# StudyFlow
 
-StudyFlow is a study workspace for planning sessions, tracking academic goals, and reviewing material. V1 is a browser app built with React, TypeScript, Vite, and Tailwind CSS.
+StudyFlow brings your study calendar, focus timer, notes, and exam preparation into one workspace. The Windows desktop app uses Tauri and Rust with a React interface and local SQLite storage.
 
-## Features
+![StudyFlow dashboard showing study time, a weekly study chart, upcoming sessions, and Quick-Start Focus](docs/screenshots/dashboard.jpg)
 
-- Schedule study sessions, manage tasks and goals, and track progress by subject.
-- Run focus sessions with a floating timer.
-- Organize notes, review flashcards with spaced repetition, and take practice quizzes.
-- Track exams and review study activity through dashboards and analytics.
-- Customize the workspace with themes, accent colors, and display density.
-- Chat with Pip using planner context, selected notes, and attached screenshots.
+The screenshots show the current interface with example study data and an example Pip conversation.
 
-V1 opens with sample data, and workspace edits reset when the page reloads. The planner, timer, and other study tools work without an API key.
+## Plan your week
+
+Schedule and edit study blocks in day, week, month, or agenda view. Keep personal blocks visible on the calendar by switching off **Counts toward study time**. The dashboard surfaces current and upcoming sessions, and subject cards compare completed hours with scheduled study time. Use the task board and goals to track work, and add exams with or without a subject.
+
+![Weekly StudyFlow planner with color-coded blocks and a session editor](docs/screenshots/planner.jpg)
+
+## Focus on the current session
+
+Start from the active calendar block with **Quick-Start Focus**, or choose Pomodoro, countdown, stopwatch, or a custom timer. Keep time visible with a floating mini-timer. Study sessions and reviews earn progress toward achievements and unlock focus backgrounds and music.
+
+![StudyFlow focus timer with Pomodoro controls and background and music settings](docs/screenshots/focus.jpg)
+
+## Work with notes and PDFs
+
+Search notes, assign them to subjects, and attach PDFs. Draw, highlight, and type annotations directly on pages. **Prepare Markdown** extracts selectable text locally and can place aligned tables and embedded figures inline. The original page image stays available for reference, including for scanned pages.
+
+![StudyFlow Notes with a Markdown editor, PDF annotator, and extracted table](docs/screenshots/notes.jpg)
+
+## Practice and review
+
+Generate flashcards from a selected note section, review the draft, and add the cards to a spaced-repetition deck. Generate timed practice tests with multiple-choice, multiple-select, or short-answer questions. Open a saved attempt to see the original answers, marks, and feedback.
+
+![StudyFlow practice test with multiple-choice answers, a timer, and question navigation](docs/screenshots/practice.jpg)
+
+## Study with Pip
+
+Open **AI Assistant** or the floating Pip button. Pip can use selected workspace context, read screenshots, draft syllabus outlines from PDF or Word files, and propose calendar or task edits for you to review. Open **Chat history** to resume a previous conversation.
+
+Choose OpenAI, Gemini, or Claude and enter your own API key under **Settings → AI Usage**. Keys stay in memory for the current app session. Your chosen provider receives the messages, enabled workspace context, and images you send. Expand **View usage** for provider-reported token counts.
+
+![Pip answering a study-planning question using the example calendar](docs/screenshots/pip.jpg)
 
 ## Run locally
 
@@ -22,41 +47,22 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-Open [localhost:3000](http://localhost:3000).
+Open [localhost:3000](http://localhost:3000). The local dev server also provides the browser preview's Pip backend.
 
-## Windows desktop development
+For desktop development on Windows, install the stable Rust MSVC toolchain, Microsoft C++ Build Tools, and Edge WebView2, then run `bun run tauri dev`. The Windows installer workflow runs on manual dispatch.
 
-The desktop shell uses Tauri and bundles the existing StudyFlow frontend.
-On Windows, install the stable Rust MSVC toolchain, Microsoft C++ Build Tools, and Edge WebView2 alongside the web development prerequisites.
+## Desktop workspace and sign-in
 
-```sh
-bun install --frozen-lockfile
-bun run tauri dev
-bun run tauri build --target x86_64-pc-windows-msvc -- --locked
-```
+On first launch, create a local study profile or use Google sign-in. Google sign-in opens your default browser and requires the publisher to configure the desktop OAuth client through `STUDYFLOW_GOOGLE_CLIENT_ID` and `STUDYFLOW_GOOGLE_CLIENT_SECRET`. Study records and desktop chat history stay in the local SQLite database.
 
-The Windows setup executable is written to `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`.
-The desktop app saves study records, focus timer state, and AI usage in its local SQLite database. Go to **Settings → Data & Backup → Import** to inspect and migrate a schema 17 backup. The importer retains the source records in the workspace archive. **Settings → Data & Backup → Export Workspace JSON** writes a copy of the current workspace.
+In **Settings → Data & Backup**, use **Import** to migrate a schema 17 SQLite backup, **Export Workspace JSON** to save a copy of your workspace, or **Reset workspace data** to choose which sections to clear.
 
-### Google sign-in
-
-Under **Settings → Profile**, select **Sign in with Google** and choose the OAuth JSON for a Google Cloud client of type **Desktop app**. Sign in using your default browser. StudyFlow remembers the verified profile locally. The OAuth configuration and access token are used in memory, and study records stay on the device.
-
-## Pip study assistant
-
-Open the floating pet or the AI Assistant screen. In **Settings → AI Usage**, choose OpenAI, Gemini, or Claude and enter your own provider API key. The suggested models support images. If you enter a different model, check that it accepts image input before attaching a screenshot.
-
-- The packaged desktop app sends provider requests through Rust. In the browser, the assistant runs through the local server started by `bun run dev` or `bun run preview`. Open the displayed localhost address. Static hosting of `dist/` serves the study workspace without the chat backend.
-- Keys and chat sessions stay in memory and reset when you reload. Provider preferences and reported token totals stay in this browser. Messages, any enabled workspace excerpt, and images you send are passed to your chosen provider.
-- Preview or turn off workspace context before sending. Paste or attach a PNG, JPEG, or WebP. Choose **Fine text** before attaching a screenshot with small print. Use **Reuse image** if a follow-up needs the image again.
-- **AI Usage** shows reported counts when available. Stopped or failed requests may still count on your provider account even if StudyFlow receives no final usage report.
-
-## Build and test
+## Checks
 
 ```sh
-bun run build
 bun run lint
-node --import tsx --test src/utils/studyLogic.test.ts server/studyAssistant.test.ts
+bun run build
+node --import tsx --test src/utils/*.test.ts server/studyAssistant.test.ts
 ```
 
-The production build goes to `dist/`. Run `bun run preview` to try it locally.
+Run `bun run preview` to open the production web build locally.
