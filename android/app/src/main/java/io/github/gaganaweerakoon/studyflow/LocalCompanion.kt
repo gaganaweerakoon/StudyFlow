@@ -22,6 +22,12 @@ import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
 internal object LocalCompanion {
+    // Hotspot and Wi-Fi connections can take longer to establish than a local loopback test.
+    // Keep the overall deadline bounded while allowing slower candidate interfaces to respond.
+    private const val CONNECTION_DEADLINE_MS = 30_000L
+    private const val TCP_CONNECT_TIMEOUT_MS = 5_000
+    private const val TLS_HANDSHAKE_TIMEOUT_MS = 6_000
+    private const val CALENDAR_RESPONSE_TIMEOUT_MS = 8_000
     private fun localAddress(value: String): Boolean {
         val pieces = value.split('.').map { it.toIntOrNull() ?: return false }
         if (pieces.size != 4 || pieces.any { it !in 0..255 }) return false
@@ -74,7 +80,7 @@ internal object LocalCompanion {
         }
         val bytes = request.toString().toByteArray(Charsets.UTF_8)
         val started = SystemClock.elapsedRealtime()
-        val deadline = started + 12_000
+        val deadline = started + CONNECTION_DEADLINE_MS
         val attempts = mutableListOf<String>()
         fun remaining(limit: Int): Int = (deadline - SystemClock.elapsedRealtime()).coerceIn(1L, limit.toLong()).toInt()
         for (host in hosts) {
@@ -82,13 +88,14 @@ internal object LocalCompanion {
             var stage = "TCP"
             try {
                 return Socket().use { transport ->
-                    transport.connect(InetSocketAddress(host, port), remaining(900))
-                    transport.soTimeout = remaining(2500)
+                    transport.connect(InetSocketAddress(host, port), remaining(TCP_CONNECT_TIMEOUT_MS))
+                    transport.soTimeout = remaining(TLS_HANDSHAKE_TIMEOUT_MS)
                     (context.socketFactory.createSocket(transport, host, port, true) as SSLSocket).use { socket ->
                         stage = "TLS"
+                        socket.soTimeout = remaining(TLS_HANDSHAKE_TIMEOUT_MS)
                         socket.startHandshake()
                         stage = "calendar"
-                        socket.soTimeout = remaining(3500)
+                        socket.soTimeout = remaining(CALENDAR_RESPONSE_TIMEOUT_MS)
                         val output = DataOutputStream(socket.getOutputStream())
                         output.writeInt(bytes.size)
                         output.write(bytes)
