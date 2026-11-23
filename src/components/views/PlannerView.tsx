@@ -1,3 +1,4 @@
+import { readSessionTimeFields, SessionTimeFields } from '../shell/SessionTimeFields';
 import React, { useState } from 'react';
 import {
   Repeat,
@@ -66,6 +67,13 @@ export const PlannerView: React.FC = () => {
 
 
   const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? null;
+  const editor = React.useRef<HTMLDialogElement>(null);
+  React.useEffect(() => {
+    const dialog = editor.current;
+    if (!dialog) return;
+    if (selectedSession && !dialog.open) dialog.showModal();
+    if (!selectedSession && dialog.open) dialog.close();
+  }, [selectedSession]);
   const selectedSeriesId = /^legacy-series-(\d+)-/.exec(selectedSession?.id ?? '')?.[1];
   const selectedSeries = recurringSeries.find(row => row.id === Number(selectedSeriesId));
   const [editScope, setEditScope] = useState<{ id: string | null; series: boolean }>({ id: null, series: false });
@@ -231,11 +239,11 @@ export const PlannerView: React.FC = () => {
         >
           {/* Week or Day Time-Grid */}
           {(viewMode === 'week' || viewMode === 'day') && (
-            <div className="overflow-x-auto">
+            <div className="h-[clamp(320px,65vh,760px)] overflow-auto">
               <div className={viewMode === 'week' ? 'min-w-[680px]' : 'min-w-[340px]'}>
                 {/* Day Headers + Daily Workload Indicator */}
                 <div
-                  className="grid"
+                  className="sticky top-0 z-20 grid"
                   style={{
                     gridTemplateColumns:
                       viewMode === 'week' ? '56px repeat(7, minmax(0, 1fr))' : '56px 1fr',
@@ -477,17 +485,12 @@ export const PlannerView: React.FC = () => {
 
         {/* Right Column: Session Detail Side Panel + Smart Rescheduling Panel */}
         <div className="xl:col-span-3 space-y-4">
-          {/* Session Detail Inspector */}
-          <div
-            className="rounded-xl p-4"
-            style={{
-              backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--border-subtle)',
-            }}
-          >
+          <dialog ref={editor} aria-labelledby="session-editor-title" onClose={() => setSelectedSessionId(null)}
+            className="m-auto max-h-[90dvh] w-[min(460px,calc(100vw-2rem))] overflow-auto rounded-xl border border-[var(--border-subtle)] p-5 text-[var(--text-primary)] backdrop:bg-black/45"
+            style={{ backgroundColor: 'var(--bg-surface)' }}>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-display text-[14px] font-semibold text-[var(--text-primary)]">
-                Session Detail
+              <h2 id="session-editor-title" className="font-display text-base font-semibold text-[var(--text-primary)]">
+                Edit session
               </h2>
               {selectedSession && (
                 <button
@@ -545,9 +548,7 @@ export const PlannerView: React.FC = () => {
                       const data = new FormData(e.currentTarget);
                       const title = String(data.get('title')).trim();
                       if (!title) return;
-                      const [hour, minute] = String(data.get('start')).split(':').map(Number);
-                      const startHour = hour + minute / 60;
-                      const durationHours = Number(data.get('duration')) / 60;
+                      const { startHour, durationHours } = readSessionTimeFields(data);
                       const fields = readCalendarBlockFields(data);
                       if (selectedSeries && editingSeries && updateRecurringSeries) {
                         if (data.get('date') !== selectedSession.date) {
@@ -567,6 +568,7 @@ export const PlannerView: React.FC = () => {
                         updateSession(selectedSession.id, { title, date, dayIndex, startHour, durationHours, ...fields, subjectId: String(data.get('subject') ?? '') });
                       }
                       pushToast('Calendar changes saved');
+                      setSelectedSessionId(null);
                     }}>
                       {selectedSeries && updateRecurringSeries && <label>Apply to <select name="scope" value={editingSeries ? 'series' : 'one'}
                         onChange={event => setEditScope({ id: selectedSessionId, series: event.target.value === 'series' })}>
@@ -574,8 +576,7 @@ export const PlannerView: React.FC = () => {
                       </select></label>}
                       <label>Title <input name="title" required defaultValue={formSession.title} /></label>
                       <label>Date <input name="date" type="date" required defaultValue={formSession.date} /></label>
-                      <label>Starts <input name="start" type="time" required defaultValue={new Date(Math.round(formSession.startHour * 60) * 60000).toISOString().slice(11,16)} /></label>
-                      <label>Duration in minutes <input name="duration" type="number" min="1" max="1440" required defaultValue={Math.round(formSession.durationHours * 60)} /></label>
+                      <SessionTimeFields startHour={formSession.startHour} durationHours={formSession.durationHours} />
                       <CalendarBlockFields session={formSession} subjects={subjects} />
                       {selectedSeries && editingSeries && <RepeatWeekdays selected={recurringWeekdays(selectedSeries)} />}
                       <button type="submit" className="rounded bg-[var(--accent)] p-2 text-white">Save event</button>
@@ -641,12 +642,8 @@ export const PlannerView: React.FC = () => {
                   </div>
                 );
               })()
-            ) : (
-              <div className="py-6 text-center text-[12.5px] text-[var(--text-muted)]">
-                Select any study block on the calendar to inspect or edit duration and status.
-              </div>
-            )}
-          </div>
+            ) : null}
+          </dialog>
 
           {/* Smart Rescheduling Suggestion Panel */}
           {missed && slot && <div

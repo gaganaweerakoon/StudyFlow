@@ -1,3 +1,4 @@
+import { readSessionTimeFields, SessionTimeFields } from './SessionTimeFields';
 import React, { useState } from 'react';
 import { X, Star, CheckCircle2 } from 'lucide-react';
 import { localDay } from '../../assistant/workspaceContext';
@@ -44,8 +45,6 @@ export const QuickModals: React.FC = () => {
 
   // Session form
   const [sesTitle, setSesTitle] = useState('');
-  const [sesHour, setSesHour] = useState(15);
-  const [sesDuration, setSesDuration] = useState(1.5);
   const [sesRepeat, setSesRepeat] = useState<'once' | 'daily' | 'weekly'>('once');
 
   // Goal form
@@ -154,8 +153,7 @@ export const QuickModals: React.FC = () => {
       subjectId: fields.blockType === 'study' ? String(data.get('subject') ?? '') : '',
       dayIndex,
       date: sessionDate,
-      startHour: sesHour,
-      durationHours: sesDuration,
+      ...readSessionTimeFields(data),
       status: 'upcoming',
       location: fields.blockType === 'study' ? 'Study Workspace' : undefined,
     }, weekdays);
@@ -491,26 +489,7 @@ export const QuickModals: React.FC = () => {
                   <input type="date" name="date" required defaultValue={legacyCalendar ? localDay() : '2026-11-22'}
                     className="w-full rounded-lg px-2.5 py-1.5 text-[13px]" style={inputStyle} />
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
-                      Start time
-                    </label>
-                    <input type="time" required value={new Date(Math.round(sesHour * 60) * 60000).toISOString().slice(11, 16)}
-                      onChange={event => {
-                        const [hours, minutes] = event.target.value.split(':').map(Number);
-                        if (Number.isFinite(minutes)) setSesHour(hours + minutes / 60);
-                      }} className="w-full px-2.5 py-1.5 rounded-lg text-[13px]" style={inputStyle} />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
-                      Duration (minutes)
-                    </label>
-                    <input type="number" min="1" max="1440" required defaultValue={Math.round(sesDuration * 60)}
-                      onChange={event => setSesDuration(Number(event.target.value) / 60)}
-                      className="w-full px-2.5 py-1.5 rounded-lg text-[13px]" style={inputStyle} />
-                  </div>
-                </div>
+                <SessionTimeFields />
                 <CalendarBlockFields subjects={subjects} />
                 <label className="flex flex-wrap items-center gap-2 text-xs">
                   Repeat
