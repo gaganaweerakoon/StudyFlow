@@ -87,6 +87,7 @@ export const EventDetailSheet: React.FC = () => {
     updateBlock,
     startFocusForBlock,
     showPhoneToast,
+    liveMode,
   } = useCompanion();
 
   const block = blocks.find((b) => b.id === selectedBlockId) ?? null;
@@ -100,6 +101,18 @@ export const EventDetailSheet: React.FC = () => {
   }, [block?.id, block?.startMin, block?.durationMin]);
 
   if (!block) return null;
+
+  if (liveMode) return (
+    <BottomSheetFrame title={block.title} onClose={closeEventSheet}>
+      <div className="rounded-xl p-4 space-y-2" style={{ backgroundColor: 'var(--bg-surface-subtle)', border: '1px solid var(--border-subtle)' }}>
+        <p className="text-[calc(13px*var(--sf-font-scale,1))] text-[var(--text-secondary)]">{formatDayLabel(block.dayIndex)}</p>
+        <p className="font-semibold text-[var(--text-primary)]">{formatMinutes12h(block.startMin)} – {formatMinutes12h(block.startMin + block.durationMin)}</p>
+        <p className="text-sm text-[var(--text-secondary)]">{formatDurationLabel(block.durationMin)} · {block.type === 'study' ? 'Study session' : block.type === 'sleep' ? 'Sleep' : 'Free time'}</p>
+      </div>
+      <p className="text-xs text-[var(--text-muted)]">The calendar is synced from your PC. Edit sessions in the Windows app, then sync again here.</p>
+      {block.type === 'study' && <button type="button" onClick={() => { closeEventSheet(); startFocusForBlock(block.id); }} className="w-full min-h-[48px] rounded-xl font-semibold" style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}>Start focus timer</button>}
+    </BottomSheetFrame>
+  );
 
   const subject = block.subjectId ? subjects.find((s) => s.id === block.subjectId) : undefined;
   const endAbs = getBlockEndAbs(block);
@@ -491,6 +504,7 @@ export const ConnectionSheet: React.FC = () => {
     connectionSheetOpen,
     setConnectionSheetOpen,
     connection,
+    liveMode,
     setConnectionMode,
     triggerSyncNow,
     stagePcCalendarEdit,
@@ -498,6 +512,19 @@ export const ConnectionSheet: React.FC = () => {
   } = useCompanion();
 
   if (!connectionSheetOpen) return null;
+
+  if (liveMode) return (
+    <BottomSheetFrame title="PC connection & sync" onClose={() => setConnectionSheetOpen(false)}>
+      <div className="rounded-xl p-4 space-y-2" style={{ backgroundColor: 'var(--bg-surface-subtle)', border: '1px solid var(--border-subtle)' }}>
+        <p className="font-semibold text-[var(--text-primary)]">{connection.isPaired ? connection.pcName : 'No PC paired'}</p>
+        <p className="text-xs text-[var(--text-secondary)]">{connection.isPaired ? 'Paired over the local Wi-Fi / hotspot connection' : 'Pair your Windows PC to sync the calendar'}</p>
+        <p className="text-xs text-[var(--text-muted)]">Last sync: {connection.lastSyncedLabel}</p>
+      </div>
+      <button type="button" onClick={() => triggerSyncNow('internet')} disabled={connection.mode === 'syncing'} className="w-full min-h-[48px] rounded-xl font-semibold disabled:opacity-60" style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}>{connection.mode === 'syncing' ? 'Syncing…' : 'Sync calendar now'}</button>
+      <button type="button" onClick={() => { setConnectionSheetOpen(false); setPairingOpen(true); }} className="w-full min-h-[48px] rounded-xl border border-[var(--border-subtle)] text-sm font-semibold">Scan pairing QR code</button>
+      <p className="text-xs text-[var(--text-muted)]">Bluetooth and PC calendar editing are not available in this Android build.</p>
+    </BottomSheetFrame>
+  );
 
   const methodSummary =
     connection.mode === 'syncing'
