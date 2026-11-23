@@ -1,3 +1,5 @@
+import { DesktopPairing } from '../../companion/DesktopPairing';
+import { isTauri } from '@tauri-apps/api/core';
 import { WIPE_OPTIONS, type WipeSection } from '../../desktop/wipeWorkspace';
 import { GoogleAccount } from '../../desktop/GoogleAccount';
 import React, { useEffect, useState } from 'react';
@@ -128,6 +130,8 @@ export const SettingsView: React.FC = () => {
           Customize workspace themes, density, study cadence, timer defaults, and shortcuts
         </p>
       </div>
+
+      {isTauri() && <DesktopPairing />}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* Settings Left Navigation */}

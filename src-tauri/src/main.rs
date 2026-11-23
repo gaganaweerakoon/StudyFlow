@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod google;
+mod companion;
 mod ocr;
 
 use serde_json::Value;
@@ -121,6 +122,7 @@ fn main() {
             recognize_pdf_page,
             assistant_chat,
             cancel_assistant_chat,
+            companion::companion_request,
             google::google_sign_in
         ])
         .run(tauri::generate_context!())

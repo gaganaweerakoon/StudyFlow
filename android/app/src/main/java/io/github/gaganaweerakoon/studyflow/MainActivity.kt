@@ -36,10 +36,8 @@ class MainActivity : Activity() {
                         if (url.host == WebViewAssetLoader.DEFAULT_DOMAIN) {
                             return loader.shouldInterceptRequest(url) ?: blockedResponse()
                         }
-                        if (!request.isForMainFrame &&
-                            (url.host == "fonts.googleapis.com" || url.host == "fonts.gstatic.com")) {
-                            return null
-                        }
+                        // The packaged page restricts HTTPS subresources through its CSP.
+                        if (!request.isForMainFrame) return null
                     }
                     return blockedResponse()
                 }
