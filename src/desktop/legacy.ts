@@ -30,7 +30,10 @@ function session(row: Row, id: string, date: string, from: string, to: string, r
   const end = hour(to);
   const duration = end - start;
   return {
-    id, date, recurring, countsTowardStudy: row.countsTowardStudy !== false, title: text(row, 'title'), subjectId: typeof row.studyflowSubjectId === 'string' ? row.studyflowSubjectId : subjectId(row),
+    id, date, recurring,
+    blockType: row.blockType === 'study' || row.blockType === 'sleep' || row.blockType === 'free' ? row.blockType : undefined,
+    alarms: row.alarms && typeof row.alarms === 'object' ? row.alarms as StudySession['alarms'] : undefined,
+    countsTowardStudy: row.countsTowardStudy !== false, title: text(row, 'title'), subjectId: typeof row.studyflowSubjectId === 'string' ? row.studyflowSubjectId : subjectId(row),
     dayIndex: (new Date(date + 'T12:00:00').getDay() + 6) % 7,
     startHour: start, durationHours: duration > 0 ? duration : duration + 24,
     status: 'upcoming', location: text(row, 'location'), notes: text(row, 'notes'),

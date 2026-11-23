@@ -1,10 +1,8 @@
-import type { ThemeId } from '../types/studyflow';
+import type { AdvanceNoticeOption, ScheduleBlockType, ThemeId } from '../types/studyflow';
 
 export type MobileTabId = 'today' | 'calendar' | 'focus' | 'settings';
 
-export type ScheduleBlockType = 'study' | 'sleep' | 'free';
-
-export type AdvanceNoticeOption = 10 | 15 | 0;
+export type { AdvanceNoticeOption, ScheduleBlockType } from '../types/studyflow';
 
 export interface CompanionSubject {
   id: string;

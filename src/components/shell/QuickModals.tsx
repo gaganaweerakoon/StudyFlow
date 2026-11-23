@@ -4,6 +4,8 @@ import { localDay } from '../../assistant/workspaceContext';
 import { useApp } from '../../context/AppContext';
 import type { Priority, GoalItem } from '../../types/studyflow';
 
+import { CalendarBlockFields, readCalendarBlockFields } from './CalendarBlockFields';
+
 const SUBJECT_SWATCHES = ['#4F46E5', '#0D9488', '#D97706', '#E11D48', '#7C3AED', '#2563EB', '#059669'];
 
 export const QuickModals: React.FC = () => {
@@ -40,7 +42,6 @@ export const QuickModals: React.FC = () => {
   const [subColor, setSubColor] = useState(SUBJECT_SWATCHES[0]);
   const [subTarget, setSubTarget] = useState(6);
 
-  const [countsTowardStudy, setCountsTowardStudy] = useState(true);
   // Session form
   const [sesTitle, setSesTitle] = useState('');
   const [sesSubject, setSesSubject] = useState(subjects[0]?.id ?? '');
@@ -132,7 +133,7 @@ export const QuickModals: React.FC = () => {
     closeModal();
   };
 
-  const handleSessionSubmit = (e: React.FormEvent) => {
+  const handleSessionSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!sesTitle.trim()) {
       setFormError('Please enter a study session title.');
@@ -141,7 +142,9 @@ export const QuickModals: React.FC = () => {
     const today = new Date();
     const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (today.getDay() + 6) % 7 + sesDay, 12);
     const sessionDate = legacyCalendar ? localDay(date) : `2026-11-${16 + sesDay}`;
+    const fields = readCalendarBlockFields(new FormData(e.currentTarget));
     addSession({
+      ...fields,
       title: sesTitle.trim(),
       subjectId: subjects.find(item => item.id === sesSubject)?.id ?? subjects[0]?.id ?? '',
       dayIndex: sesDay,
@@ -149,11 +152,10 @@ export const QuickModals: React.FC = () => {
       startHour: sesHour,
       durationHours: sesDuration,
       status: 'upcoming',
-      recurring: sesRecurring, countsTowardStudy,
+      recurring: sesRecurring,
       location: 'Study Workspace',
     });
     setSesTitle('');
-    setCountsTowardStudy(true);
     closeModal();
   };
 
@@ -504,28 +506,25 @@ export const QuickModals: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
-                      Start Hour
+                      Start time
                     </label>
-                    <select value={sesHour} onChange={(e) => setSesHour(Number(e.target.value))} className="w-full px-2.5 py-2 rounded-lg text-[13px]" style={inputStyle}>
-                      {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((h) => (
-                        <option key={h} value={h}>{h > 12 ? `${h - 12}:00 PM` : h === 12 ? '12:00 PM' : `${h}:00 AM`}</option>
-                      ))}
-                    </select>
+                    <input type="time" required value={new Date(Math.round(sesHour * 60) * 60000).toISOString().slice(11, 16)}
+                      onChange={event => {
+                        const [hours, minutes] = event.target.value.split(':').map(Number);
+                        if (Number.isFinite(minutes)) setSesHour(hours + minutes / 60);
+                      }} className="w-full px-2.5 py-1.5 rounded-lg text-[13px]" style={inputStyle} />
                   </div>
                   <div>
                     <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
-                      Duration (hours)
+                      Duration (minutes)
                     </label>
-                    <select value={sesDuration} onChange={(e) => setSesDuration(Number(e.target.value))} className="w-full px-2.5 py-2 rounded-lg text-[13px]" style={inputStyle}>
-                      {[0.5, 1, 1.5, 2, 2.5, 3].map((d) => (
-                        <option key={d} value={d}>{d}h</option>
-                      ))}
-                    </select>
+                    <input type="number" min="1" max="1440" required defaultValue={Math.round(sesDuration * 60)}
+                      onChange={event => setSesDuration(Number(event.target.value) / 60)}
+                      className="w-full px-2.5 py-1.5 rounded-lg text-[13px]" style={inputStyle} />
                   </div>
                 </div>
-                <label className="flex items-center gap-2 text-[12.5px] text-[var(--text-secondary)] cursor-pointer">
-                  <input type="checkbox" checked={countsTowardStudy} onChange={e => setCountsTowardStudy(e.target.checked)} /> Counts toward study time
-                </label><label className="flex items-center gap-2 text-xs">
+                <CalendarBlockFields />
+                <label className="flex items-center gap-2 text-xs">
                   <input type="checkbox" checked={sesRecurring} onChange={(e) => setSesRecurring(e.target.checked)} />
                   Repeat weekly on this slot
                 </label>

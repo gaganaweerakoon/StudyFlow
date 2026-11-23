@@ -73,6 +73,16 @@ export interface Subject {
 
 export type SessionStatus = 'upcoming' | 'completed' | 'missed';
 
+export type ScheduleBlockType = 'study' | 'sleep' | 'free';
+export type AdvanceNoticeOption = 0 | 10 | 15;
+
+export interface CalendarAlarmSettings {
+  advanceNoticeMin: AdvanceNoticeOption;
+  ringAtStart: boolean;
+  remindAtBedtime: boolean;
+  wakeAtEnd: boolean;
+}
+
 export interface StudySession {
   id: string;
   title: string;
@@ -83,6 +93,8 @@ export interface StudySession {
   durationHours: number; // e.g. 1.5
   status: SessionStatus;
   countsTowardStudy?: boolean;
+  blockType?: ScheduleBlockType;
+  alarms?: CalendarAlarmSettings;
   recurring?: boolean;
   notes?: string;
   location?: string;
