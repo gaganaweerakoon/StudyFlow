@@ -6,8 +6,8 @@ import { type UsageEntry } from './usage';
 import './assistant.css';
 
 const MODEL_CHOICES: Record<Provider, string[]> = {
-  openai: ['gpt-4.1-mini', 'gpt-4.1', 'gpt-5-mini', 'gpt-5.4-mini'],
-  gemini: ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro'],
+  openai: ['gpt-4.1-mini', 'gpt-4.1', 'gpt-5-mini', 'gpt-5.4-mini', 'gpt-6.2-sol', 'gpt-6.2-astra'],
+  gemini: ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-4-hydrogen', 'gemini-4-carbon', 'gemini-4-neon', 'gemini-4-argon'],
   claude: ['claude-haiku-5-5', 'claude-haiku-4-5'],
 };
 
