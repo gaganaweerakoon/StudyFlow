@@ -26,6 +26,7 @@ import {
 export const TodayView: React.FC = () => {
   const {
     nowAbsMin,
+    liveMode,
     blocks,
     subjects,
     focus,
@@ -70,7 +71,7 @@ export const TodayView: React.FC = () => {
     : connection.mode === 'syncing'
     ? 'Syncing'
     : connection.mode === 'internet'
-    ? 'PC · Internet'
+    ? (liveMode ? 'PC · Wi-Fi' : 'PC · Internet')
     : connection.mode === 'bluetooth'
     ? 'PC · Nearby'
     : 'PC · Offline';
@@ -94,7 +95,7 @@ export const TodayView: React.FC = () => {
             {formatDayLabel(dayIndex)}
           </p>
           <h1 className="font-display text-[calc(20px*var(--sf-font-scale,1))] font-semibold tracking-tight text-[var(--text-primary)] leading-snug">
-            {greeting}, Maya
+            {liveMode ? greeting : `${greeting}, Maya`}
           </h1>
         </div>
 
