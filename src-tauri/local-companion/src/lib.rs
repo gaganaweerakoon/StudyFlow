@@ -505,6 +505,33 @@ mod tests {
             request(port, &cert, sync.clone()).unwrap()["calendar"]["events"],
             updated
         );
+        // Focus state is returned with calendar sync and commands require the
+        // currently paired phone's token, not the public QR invitation code.
+        companion.publish_focus(json!({
+            "at": 1_795_400_000_000_u64,
+            "timer": { "phase": "focus", "running": true, "secondsLeft": 1200 }
+        })).unwrap();
+        let live = request(port, &cert, sync.clone()).unwrap();
+        assert_eq!(live["focus"]["timer"]["running"], true);
+        assert!(live["serverNowMs"].is_number());
+
+        let control = request(port, &cert, json!({
+            "action": "focus_control", "key": token, "command": "pause"
+        })).unwrap();
+        assert_eq!(control["accepted"], true);
+        assert_eq!(companion.drain_focus_commands().unwrap()[0]["action"], "pause");
+        assert_eq!(companion.drain_focus_commands().unwrap(), json!([]));
+        let invalid = request(port, &cert, json!({
+            "action": "focus_control", "key": secret(), "command": "reset"
+        })).unwrap();
+        assert!(invalid["error"].is_string());
+        assert_eq!(companion.drain_focus_commands().unwrap(), json!([]));
+        let unsupported = request(port, &cert, json!({
+            "action": "focus_control", "key": token, "command": "erase_workspace"
+        })).unwrap();
+        assert!(unsupported["error"].is_string());
+        assert_eq!(companion.drain_focus_commands().unwrap(), json!([]));
+
         let reopened = Companion::open(file.clone()).unwrap();
         assert_eq!(reopened.status().unwrap()["phone"], "Test Android");
         assert_eq!(reopened.state.lock().unwrap().identity.cert, cert);
