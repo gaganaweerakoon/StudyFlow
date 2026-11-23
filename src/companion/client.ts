@@ -36,3 +36,16 @@ export async function relayRequest<T>(origin: string, path: string, method: stri
   if (!response.ok) throw new Error(data.error ?? 'Could not reach your StudyFlow calendar.');
   return data as T;
 }
+
+/** Last authoritative timer snapshot published by StudyFlow on Windows. */
+export interface CompanionFocusSnapshot {
+  at: number;
+  timer: import('../context/AppContext').FocusTimerState;
+}
+export interface CompanionFocusUpdate {
+  focus: CompanionFocusSnapshot | null;
+  /** PC clock on transmission, used to avoid phone/PC time-zone or clock drift. */
+  serverNowMs: number;
+  receivedAtMs: number;
+}
+export type CompanionFocusCommand = 'start' | 'pause' | 'resume' | 'reset' | 'complete';
