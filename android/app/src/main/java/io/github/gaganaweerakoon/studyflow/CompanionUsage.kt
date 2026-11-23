@@ -70,9 +70,8 @@ internal object CompanionUsage {
             context.packageManager.getApplicationLabel(it).toString().trim()
         }.getOrNull() }
         val name = when {
-            fallback != null && (label.isNullOrEmpty() || label.equals(pkg.substringAfterLast('.'), true)) -> fallback.first
-            !label.isNullOrBlank() -> label
             fallback != null -> fallback.first
+            !label.isNullOrBlank() && label != pkg -> label
             else -> pkg.split('.').lastOrNull()?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "Unknown app"
         }
         val kind = fallback?.second ?: application?.let(::category) ?: "Other"
