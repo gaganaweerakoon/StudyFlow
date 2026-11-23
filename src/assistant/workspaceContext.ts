@@ -21,7 +21,8 @@ function clip(text: string, length = 110) {
 }
 
 export function workspaceContext(app: Workspace, page: WorkspacePage, prompt: string) {
-  const { subjects, selectedNoteId, tasks, sessions, exams, focusTimer, notes, decks, goals, focusHistory, flashcards, quizzes } = app;
+  const { subjects, selectedNoteId, tasks, sessions, exams, focusTimer, decks, goals, focusHistory, flashcards, quizzes } = app;
+  const notes = app.notes.map(({pdf,...note}) => ({...note, pdfText: pdf?.pages?.map((p,i)=>'## Page '+(i+1)+'\n'+p.text).join('\n')}));
   const note = page === 'notes' ? notes.find(item => item.id === selectedNoteId) : undefined;
   const terms = prompt.toLocaleLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [];
   const relevance = (row: unknown) => {

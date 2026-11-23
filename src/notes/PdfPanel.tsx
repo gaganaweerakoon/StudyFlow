@@ -1,13 +1,16 @@
 import {useEffect, useRef, useState} from 'react';
-import {openPdf, readFileData, type PdfDocument, type PdfSource, type PdfMark} from './pdf';
+import {openPdf, preparePages, readFileData, type PdfDocument, type PdfSource, type PdfMark} from './pdf';
 
 export function PdfPanel({source, save}: {source?:PdfSource; save:(next:PdfSource)=>void}) {
+  const [prepareOnImport,setPrepareOnImport] = useState(false);
+  const [working,setWorking] = useState(false);
   const [doc,setDoc] = useState<PdfDocument>();
   const [page,setPage] = useState(1);
   const [zoom,setZoom] = useState(1);
   const [tool,setTool] = useState<PdfMark['kind']>('ink');
   const [error,setError] = useState('');
   const [size,setSize] = useState({width:600,height:800});
+  const latest = useRef(source); latest.current=source;
   const canvas = useRef<HTMLCanvasElement>(null);
   const [stroke,setStroke] = useState<number[][]>([]);
   const points = useRef<number[][]>([]);
@@ -41,9 +44,10 @@ export function PdfPanel({source, save}: {source?:PdfSource; save:(next:PdfSourc
   }
   function add(mark:PdfMark) {if(source) save({...source,marks:[...source.marks,mark]});}
   return <div className="overflow-auto p-3 space-y-3 text-xs">
+    {!source && <label className="block"><input type="checkbox" checked={prepareOnImport} onChange={e=>setPrepareOnImport(e.target.checked)}/> Prepare Markdown on import</label>}
     {!source && <label>Attach PDF <input type="file" accept="application/pdf,.pdf" onChange={async e=>{
       const file=e.target.files?.[0]; if(!file)return;
-      try {const data=await readFileData(file); const check=await openPdf(data); await check.destroy(); save({name:file.name,data,marks:[]});}
+      try {const data=await readFileData(file); const check=await openPdf(data); try {save({name:file.name,data,marks:[],pages:prepareOnImport ? await preparePages(check) : undefined});} finally {await check.destroy();}}
       catch(err){setError(String(err));}
     }}/></label>}
     {error && <p role="alert">{error}</p>}
@@ -65,6 +69,11 @@ export function PdfPanel({source, save}: {source?:PdfSource; save:(next:PdfSourc
       {[...source.marks.filter(m=>m.page===page),{page,kind:tool,points:stroke,text:''}].filter(m=>m.points.length).map((m,i)=>m.kind==='text'
         ? <text key={i} x={m.points[0][0]} y={m.points[0][1]} fill="#273998" fontSize="14">{m.text}</text>
         : <polyline key={i} points={m.points.map(p=>p.join(',')).join(' ')} fill="none" stroke={m.kind==='ink'?'#2843ac':'#ffd025'} opacity={m.kind==='ink'?1:0.45} strokeWidth={m.kind==='ink'?2:15} strokeLinecap="round"/>)}
-    </svg></div></>}
+    </svg></div>
+    {!source.pages && <button disabled={working || !doc} onClick={async()=>{
+      if(!doc)return;setWorking(true);try {const pages=await preparePages(doc); save({...latest.current!,pages});}
+      catch(err){setError(String(err));}finally{setWorking(false);}
+    }}>{working?'Preparing…':'Prepare Markdown'}</button>}
+    {source.pages && <details><summary>Markdown and images</summary>{source.pages.map((p,i)=><section key={i} className="my-3"><strong>Page {i+1}</strong><pre className="whitespace-pre-wrap">{p.text || 'Image-only page. No selectable text.'}</pre>{p.image && <img src={p.image} alt={'Original page '+(i+1)}/>}</section>)}</details>}</>}
   </div>;
 }
