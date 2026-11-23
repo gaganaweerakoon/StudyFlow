@@ -44,11 +44,9 @@ export const QuickModals: React.FC = () => {
 
   // Session form
   const [sesTitle, setSesTitle] = useState('');
-  const [sesSubject, setSesSubject] = useState(subjects[0]?.id ?? '');
-  const [sesDay, setSesDay] = useState(6);
   const [sesHour, setSesHour] = useState(15);
   const [sesDuration, setSesDuration] = useState(1.5);
-  const [sesRecurring, setSesRecurring] = useState(false);
+  const [sesRepeat, setSesRepeat] = useState<'once' | 'daily' | 'weekly'>('once');
 
   // Goal form
   const [goalTitle, setGoalTitle] = useState('');
@@ -139,22 +137,29 @@ export const QuickModals: React.FC = () => {
       setFormError('Please enter a study session title.');
       return;
     }
-    const today = new Date();
-    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (today.getDay() + 6) % 7 + sesDay, 12);
-    const sessionDate = legacyCalendar ? localDay(date) : `2026-11-${16 + sesDay}`;
-    const fields = readCalendarBlockFields(new FormData(e.currentTarget));
+    const data = new FormData(e.currentTarget);
+    const sessionDate = String(data.get('date'));
+    const dayIndex = (new Date(sessionDate + 'T12:00:00').getDay() + 6) % 7;
+    const weekdays = sesRepeat === 'daily'
+      ? [0, 1, 2, 3, 4, 5, 6]
+      : sesRepeat === 'weekly' ? data.getAll('repeat-day').map(Number) : [];
+    if (sesRepeat === 'weekly' && !weekdays.length) {
+      setFormError('Choose at least one weekday.');
+      return;
+    }
+    const fields = readCalendarBlockFields(data);
     addSession({
       ...fields,
       title: sesTitle.trim(),
-      subjectId: subjects.find(item => item.id === sesSubject)?.id ?? subjects[0]?.id ?? '',
-      dayIndex: sesDay,
+      subjectId: fields.blockType === 'study' ? String(data.get('subject') ?? '') : '',
+      dayIndex,
       date: sessionDate,
       startHour: sesHour,
       durationHours: sesDuration,
       status: 'upcoming',
-      recurring: sesRecurring,
-      location: 'Study Workspace',
-    });
+      location: fields.blockType === 'study' ? 'Study Workspace' : undefined,
+    }, weekdays);
+    setSesRepeat('once');
     setSesTitle('');
     closeModal();
   };
@@ -481,28 +486,11 @@ export const QuickModals: React.FC = () => {
                     autoFocus
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
-                      Subject
-                    </label>
-                    <select value={sesSubject} onChange={(e) => setSesSubject(e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-[13px]" style={inputStyle}>
-                      {subjects.map((s) => (
-                        <option key={s.id} value={s.id}>{s.code} · {s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
-                      Day of Week
-                    </label>
-                    <select value={sesDay} onChange={(e) => setSesDay(Number(e.target.value))} className="w-full px-2.5 py-2 rounded-lg text-[13px]" style={inputStyle}>
-                      {['Mon Nov 16', 'Tue Nov 17', 'Wed Nov 18', 'Thu Nov 19', 'Fri Nov 20', 'Sat Nov 21', 'Sun Nov 22 (Today)'].map((lbl, idx) => (
-                        <option key={lbl} value={idx}>{lbl}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+                <label className="grid gap-1 text-xs">
+                  Date
+                  <input type="date" name="date" required defaultValue={legacyCalendar ? localDay() : '2026-11-22'}
+                    className="w-full rounded-lg px-2.5 py-1.5 text-[13px]" style={inputStyle} />
+                </label>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
@@ -523,11 +511,26 @@ export const QuickModals: React.FC = () => {
                       className="w-full px-2.5 py-1.5 rounded-lg text-[13px]" style={inputStyle} />
                   </div>
                 </div>
-                <CalendarBlockFields />
-                <label className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" checked={sesRecurring} onChange={(e) => setSesRecurring(e.target.checked)} />
-                  Repeat weekly on this slot
+                <CalendarBlockFields subjects={subjects} />
+                <label className="flex flex-wrap items-center gap-2 text-xs">
+                  Repeat
+                  <select value={sesRepeat} onChange={event => setSesRepeat(event.target.value as typeof sesRepeat)}
+                    className="rounded-lg px-2.5 py-1.5" style={inputStyle}>
+                    <option value="once">Does not repeat</option>
+                    <option value="daily">Every day</option>
+                    <option value="weekly">Selected weekdays</option>
+                  </select>
                 </label>
+                {sesRepeat === 'weekly' && (
+                  <fieldset className="flex flex-wrap gap-3 text-xs">
+                    <legend className="mb-2">Repeat each week on</legend>
+                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => (
+                      <label className="flex items-center gap-1" key={day}>
+                        <input type="checkbox" name="repeat-day" value={index} /> {day}
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
                 <div className="flex justify-end gap-2 pt-2">
                   <button type="button" onClick={closeModal} className="px-3.5 py-1.5 rounded-lg text-[13px] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]">
                     Cancel

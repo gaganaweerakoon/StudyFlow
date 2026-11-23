@@ -143,20 +143,32 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
     const name = title ?? existing?.title;
     if (!name || !validDate(date) || typeof startHour !== 'number' || !Number.isFinite(startHour) || startHour < 0 ||
         startHour >= 24 || typeof durationHours !== 'number' || !Number.isFinite(durationHours) || durationHours <= 0 || durationHours > 24) return;
+    const blockType = edit.blockType ?? existing?.blockType;
+    if (blockType !== undefined && blockType !== 'study' && blockType !== 'sleep' && blockType !== 'free') return;
+    const weekdays = edit.weekdays ?? [];
+    if (!Array.isArray(weekdays) || weekdays.length > 7 || (existing && weekdays.length > 0) ||
+        weekdays.some(day => !Number.isInteger(day) || day < 0 || day > 6) || new Set(weekdays).size !== weekdays.length) return;
     const patch = { title: name, date, startHour, durationHours, dayIndex: (new Date(date + 'T00:00:00Z').getUTCDay() + 6) % 7 };
     const hours = Math.floor(startHour);
     const mins = Math.floor((startHour - hours) * 60 + 0.000001);
     const time = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
     return {
+      success: `${existing ? 'Updated' : 'Scheduled'} “${name}”${weekdays.length === 7 ? ' every day' : weekdays.length ? ' on the selected weekdays' : ''} at ${time} for ${durationHours}h.`,
       title: `${existing ? 'Update' : 'Add'} “${name}” · ${date}, ${time} for ${durationHours}h${existing?.recurring ? ' · this occurrence only' : ''}`,
       apply: current => {
         if (existing) {
           const live = current.sessions.find(item => item.id === existing.id);
           if (JSON.stringify(live) !== JSON.stringify(existing)) return false;
-          current.updateSession(existing.id, patch);
+          current.updateSession(existing.id, {
+            ...patch,
+            ...(blockType && { blockType, countsTowardStudy: blockType === 'study' }),
+            ...(blockType === 'sleep' || blockType === 'free' ? { subjectId: '' } : {}),
+          });
         } else {
           const event: Omit<StudySession, 'id'> = { ...patch, subjectId: '', status: 'upcoming' };
-          current.addSession(event);
+          event.blockType = blockType ?? 'study';
+          event.countsTowardStudy = event.blockType === 'study';
+          current.addSession(event, weekdays);
         }
         return true;
       },

@@ -549,20 +549,19 @@ export const PlannerView: React.FC = () => {
                           pushToast('Choose This occurrence to move it to a different date.');
                           return;
                         }
-                        updateRecurringSeries(Number(series[1]), title, startHour, durationHours, fields, String(data.get('subject')));
+                        updateRecurringSeries(Number(series[1]), title, startHour, durationHours, fields, String(data.get('subject') ?? ''));
                       } else {
                         const date = String(data.get('date'));
                         const dayIndex = (new Date(date + 'T12:00:00').getDay() + 6) % 7;
-                        updateSession(selectedSession.id, { title, date, dayIndex, startHour, durationHours, ...fields, subjectId: String(data.get('subject')) });
+                        updateSession(selectedSession.id, { title, date, dayIndex, startHour, durationHours, ...fields, subjectId: String(data.get('subject') ?? '') });
                       }
                       pushToast('Calendar changes saved');
                     }}>
                       <label>Title <input name="title" required defaultValue={selectedSession.title} /></label>
                       <label>Date <input name="date" type="date" required defaultValue={selectedSession.date} /></label>
-                      <label>Subject <select name="subject" defaultValue={selectedSession.subjectId}><option value="">Unassigned</option>{subjects.map(subject=><option key={subject.id} value={subject.id}>{subject.name}</option>)}</select></label>
                       <label>Starts <input name="start" type="time" required defaultValue={new Date(Math.round(selectedSession.startHour * 60) * 60000).toISOString().slice(11,16)} /></label>
                       <label>Duration in minutes <input name="duration" type="number" min="1" max="1440" required defaultValue={Math.round(selectedSession.durationHours * 60)} /></label>
-                      <CalendarBlockFields session={selectedSession} />
+                      <CalendarBlockFields session={selectedSession} subjects={subjects} />
                       {selectedSession.id.startsWith('legacy-series-') && <label>Apply to <select name="scope"><option value="one">This occurrence</option><option value="series">Entire series</option></select></label>}
                       <button type="submit" className="rounded bg-[var(--accent)] p-2 text-white">Save event</button>
                     </form>

@@ -19,7 +19,10 @@ export function readCalendarBlockFields(data: FormData): BlockFields {
   };
 }
 
-export function CalendarBlockFields({ session }: { session?: StudySession }) {
+export function CalendarBlockFields({ session, subjects }: {
+  session?: StudySession;
+  subjects: { id: string; name: string }[];
+}) {
   const [type, setType] = useState<ScheduleBlockType>(
     session?.blockType ?? (session?.countsTowardStudy === false ? 'free' : 'study'),
   );
@@ -36,6 +39,13 @@ export function CalendarBlockFields({ session }: { session?: StudySession }) {
       </label>
       {type === 'study' && (
         <>
+          <label className="flex flex-wrap items-center gap-2">
+            Subject
+            <select name="subject" defaultValue={session?.subjectId ?? ''}>
+              <option value="">Unassigned</option>
+              {subjects.map(subject => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+            </select>
+          </label>
           <label className="flex flex-wrap items-center gap-2">
             Advance reminder
             <select name="advanceNotice" defaultValue={session?.alarms?.advanceNoticeMin ?? 0}>

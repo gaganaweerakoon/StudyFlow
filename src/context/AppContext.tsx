@@ -145,7 +145,7 @@ interface AppContextValue {
   toggleSubtask: (taskId: string, subtaskId: string) => void;
 
   sessions: StudySession[];
-  addSession: (s: Omit<StudySession, 'id'>) => void;
+  addSession: (s: Omit<StudySession, 'id'>, weekdays?: number[]) => void;
   updateSession: (id: string, patch: Partial<StudySession>) => void;
   deleteSession: (id: string) => void;
 
@@ -335,7 +335,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     if (!archive) return savedSessions;
     const today = new Date(calendarDay + 'T12:00:00');
     const first = new Date(today.getFullYear(), today.getMonth(), -6, 12);
-    const dates = Array.from({ length: 45 }, (_, offset) => {
+    const dates = Array.from({ length: 68 }, (_, offset) => {
       const date = new Date(first);
       date.setDate(first.getDate() + offset);
       return localDay(date);
@@ -667,11 +667,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
 
   // Study Session mutations
   const addSession = useCallback(
-    (s: Omit<StudySession, 'id'>) => {
-      setSessions((prev) => [...prev, { ...s, id: `ses-${Date.now()}` }]);
-      pushToast(`Scheduled: ${s.title}`);
+    (session: Omit<StudySession, 'id'>, weekdays: number[] = []) => {
+      if (weekdays.length) {
+        const clock = (hours: number) => {
+          const minutes = Math.round(hours * 60) % 1440;
+          return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+        };
+        setArchive(previous => {
+          const archive = previous ?? { recurring_events: [], recurrence_exceptions: [], recurrence_overrides: [], tasks: [] };
+          const id = archive.recurring_events.reduce((max, row) => Math.max(max, Number(row.id) || 0), 0) + 1;
+          return {
+            ...archive,
+            recurring_events: [...archive.recurring_events, {
+              id, title: session.title, weekdays: weekdays.join(','), valid_from: session.date,
+              start_time: clock(session.startHour), end_time: clock(session.startHour + session.durationHours),
+              subject_id: null, studyflowSubjectId: session.subjectId, blockType: session.blockType, countsTowardStudy: session.countsTowardStudy,
+              alarms: session.alarms, location: session.location, notes: session.notes,
+            }],
+          };
+        });
+      } else {
+        setSessions(previous => [...previous, { ...session, id: `ses-${crypto.randomUUID()}` }]);
+      }
+      pushToast(`Scheduled: ${session.title}`);
     },
-    [pushToast]
+    [pushToast],
   );
 
   const updateSession = useCallback((id: string, patch: Partial<StudySession>) => {
