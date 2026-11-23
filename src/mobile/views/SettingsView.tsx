@@ -55,11 +55,6 @@ export const SettingsView: React.FC = () => {
         <h2 className="font-display text-[calc(13px*var(--sf-font-scale,1))] font-semibold text-[var(--text-secondary)] px-0.5">
           Paired PC
         </h2>
-        {liveMode && <button type="button" onClick={() => window.dispatchEvent(new Event('studyflow-show-permissions'))}
-          className="w-full min-h-11 rounded-xl text-sm font-semibold"
-          style={{ backgroundColor: 'var(--accent-soft)', border: '1px solid var(--accent-border)', color: 'var(--accent)' }}>
-          Open permission setup
-        </button>}
         <div className="rounded-xl overflow-hidden divide-y" style={sectionCardStyle}>
           <button
             type="button"
@@ -335,6 +330,11 @@ export const SettingsView: React.FC = () => {
         <h2 className="font-display text-[calc(13px*var(--sf-font-scale,1))] font-semibold text-[var(--text-secondary)] px-0.5">
           Permissions
         </h2>
+        {liveMode && <button type="button" onClick={() => window.dispatchEvent(new Event('studyflow-show-permissions'))}
+          className="w-full min-h-11 rounded-xl text-sm font-semibold"
+          style={{ backgroundColor: 'var(--accent-soft)', border: '1px solid var(--accent-border)', color: 'var(--accent)' }}>
+          Open permission setup
+        </button>}
         <div className="rounded-xl overflow-hidden divide-y" style={sectionCardStyle}>
           {(
             [
