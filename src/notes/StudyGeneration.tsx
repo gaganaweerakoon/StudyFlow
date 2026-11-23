@@ -2,7 +2,7 @@ import {useState} from 'react';
 import {useApp} from '../context/AppContext';
 import {useAssistant} from '../assistant/AssistantContext';
 
-type Card = {front:string;back:string};
+import { readGeneratedCards, readGeneratedQuestions, type GeneratedCard } from './generatedStudyItems';
 export function StudyGeneration({quiz=false}:{quiz?:boolean}) {
   const {notes,decks,addQuiz,addFlashcard,pushToast}=useApp();
   const {generate}=useAssistant();
@@ -13,7 +13,7 @@ export function StudyGeneration({quiz=false}:{quiz?:boolean}) {
   const [deck,setDeck]=useState(decks[0]?.id ?? '');
   const [count,setCount]=useState(5);
   const [kind,setKind]=useState("mixed");
-  const [cards,setCards]=useState<Card[]>([]);
+  const [cards,setCards]=useState<GeneratedCard[]>([]);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   return <details className="rounded-xl border border-[var(--border-subtle)] p-3 text-sm"><summary>{quiz?'Generate practice test':'Generate flashcards'} from notes</summary>
@@ -26,20 +26,12 @@ export function StudyGeneration({quiz=false}:{quiz?:boolean}) {
       setBusy(true);setError('');try {
         if(quiz && note) {
           const result=await generate('Generate '+count+' '+kind+' questions based only on this section. Return JSON array with type (mcq, multi, short), prompt, options (array for choice questions), answer (exact option or array of exact options for multi, exact short term for short), and explanation including evidence. For short allow a concise explanation and include a rubric string with clear criteria for full credit.',sections[index]);
-          if(!Array.isArray(result) || result.length!==count) throw new Error('Incomplete test from provider.');
-          const questions=result.map(q=>{
-            if(!q || !['mcq','multi','short'].includes(q.type) || (kind!=='mixed' && kind!==q.type) || ![q.prompt,q.explanation].every(v=>typeof v==='string' && v.trim())) throw new Error('Invalid question from provider.');
-            const choices=q.options;
-            if(q.type!=='short' && (!Array.isArray(choices) || choices.length<2 || !choices.every(v=>typeof v==='string' && v.trim()))) throw new Error('Missing answer choices.');
-            if(q.type==='multi' ? !Array.isArray(q.answer) || !q.answer.length || !q.answer.every((v:string)=>choices.includes(v)) : typeof q.answer!=='string' || !q.answer.trim() || q.type==='mcq' && !choices.includes(q.answer)) throw new Error('Invalid answer key.');
-            return {id:crypto.randomUUID(),type:q.type,prompt:q.prompt,options:choices,topic:note.title,correctAnswer:q.type==='multi'?q.answer.sort().join('\n'):q.answer,explanation:q.explanation,rubric:q.type==="short" && typeof q.rubric==="string"?q.rubric:undefined};
-          });
+          const questions=readGeneratedQuestions(result,note.title,count,kind);
           addQuiz({id:crypto.randomUUID(),title:note.title+' practice',subjectId:note.subjectId,durationMinutes:Math.max(5,count*2),difficulty:'Standard',questions,sourceNoteId:note.id,sourceSection:sections[index].split('\n')[0].slice(0,120)});
           pushToast('Practice test ready');return;
         }
         const result=await generate('Generate '+count+' flashcards strictly grounded in the selected section. Return JSON array of objects with front and back strings.',sections[index]);
-        if(!Array.isArray(result) || result.length!==count || !result.every(c=>typeof c?.front==='string' && c.front.trim() && typeof c.back==='string' && c.back.trim())) throw new Error('Incomplete flashcard set. Try again.');
-        setCards(result);
+        setCards(readGeneratedCards(result,count));
       }catch(e){setError(String(e));}finally{setBusy(false);}
     }}>{busy?'Generating…':'Generate draft'}</button>
     {cards.map((c,i)=><div key={i} className="grid gap-1">{(['front','back'] as const).map(k=><textarea key={k} aria-label={k} value={c[k]} onChange={e=>setCards(cards.map((v,j)=>j===i?{...v,[k]:e.target.value}:v))}/>)}<button onClick={()=>setCards(cards.filter((_,j)=>i!==j))}>Discard card</button></div>)}

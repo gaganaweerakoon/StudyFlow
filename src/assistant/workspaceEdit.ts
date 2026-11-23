@@ -1,3 +1,4 @@
+import { readGeneratedCards, readGeneratedQuestions } from '../notes/generatedStudyItems';
 import type { useApp } from '../context/AppContext';
 import type { StudySession, TaskItem } from '../types/studyflow';
 
@@ -22,6 +23,45 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
     if (!edit || typeof edit !== 'object' || Array.isArray(edit)) return;
     const title = typeof edit.title === 'string' && edit.title.trim() && edit.title.length <= 200 ? edit.title.trim() : undefined;
     const id = typeof edit.id === 'string' ? edit.id : undefined;
+    if (edit.action === 'create_flashcards' || edit.action === 'create_practice_test') {
+      const note = app.notes.find(item => item.id === edit.noteId);
+      if (!note || (!note.content.trim() && !note.pdf?.pages?.some(page => page.text.trim()))) return;
+      if (edit.action === 'create_flashcards') {
+        const deck = app.decks.find(item => item.id === edit.deckId);
+        if (!deck) return;
+        const cards = readGeneratedCards(edit.cards);
+        return {
+          title: `Save flashcards to “${deck.title}”`,
+          success: `Saved ${cards.length} flashcards to “${deck.title}” in Flashcards.`,
+          apply: current => {
+            if (!current.decks.some(item => item.id === deck.id) || current.notes.find(item => item.id === note.id) !== note) return false;
+            const saved = new Set(current.flashcards.filter(card => card.deckId === deck.id).map(card => JSON.stringify([card.front, card.back])));
+            for (const card of cards) {
+              const key = JSON.stringify([card.front, card.back]);
+              if (saved.has(key)) continue;
+              current.addFlashcard({ ...card, deckId: deck.id, hint: note.title });
+              saved.add(key);
+            }
+            return true;
+          },
+        };
+      }
+      const questions = readGeneratedQuestions(edit.questions, note.title);
+      const name = title ?? `${note.title} practice`;
+      const sourceSection = typeof edit.sourceSection === 'string' ? edit.sourceSection.slice(0, 120) : undefined;
+      return {
+        title: `Create practice test “${name}”`,
+        success: `Saved “${name}” in Practice Tests with ${questions.length} questions.`,
+        apply: current => {
+          if (current.notes.find(item => item.id === note.id) !== note) return false;
+          current.addQuiz({
+            id: crypto.randomUUID(), title: name, subjectId: note.subjectId, difficulty: 'Standard',
+            durationMinutes: Math.max(5, questions.length * 2), questions, sourceNoteId: note.id, sourceSection,
+          });
+          return true;
+        },
+      };
+    }
     if (edit.action === 'create_note' || edit.action === 'update_note') {
       const existing = id && app.notes.find(item => item.id === id);
       const updating = edit.action === 'update_note';
