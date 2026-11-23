@@ -1,3 +1,4 @@
+import {StudyGeneration} from '../../notes/StudyGeneration';
 import React, { useState } from 'react';
 import {
   ResponsiveContainer,
@@ -284,6 +285,7 @@ export const FlashcardsView: React.FC = () => {
 
   return (
     <div className="space-y-4 pb-6">
+      <StudyGeneration/>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-[19px] font-semibold text-[var(--text-primary)]">

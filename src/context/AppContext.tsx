@@ -751,7 +751,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       setFlashcards((prev) => [
         {
           ...card,
-          id: `fc-${Date.now()}`,
+          id: crypto.randomUUID(),
           intervalDays: 1,
           easeFactor: 2.5,
           dueToday: true,
