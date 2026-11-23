@@ -1,0 +1,65 @@
+{
+  "flashcards": {
+    "type": "object",
+    "required": ["items"],
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["front", "back"],
+          "properties": { "front": { "type": "string" }, "back": { "type": "string" } }
+        }
+      }
+    }
+  },
+  "practice": {
+    "type": "object",
+    "required": ["items"],
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["type", "prompt", "answer", "explanation"],
+          "properties": {
+            "type": { "type": "string", "enum": ["mcq", "multi", "short"] },
+            "prompt": { "type": "string" },
+            "options": { "type": "array", "items": { "type": "string" } },
+            "answer": { "anyOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
+            "explanation": { "type": "string" },
+            "rubric": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "syllabus": {
+    "type": "object",
+    "required": ["items"],
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["title", "topics"],
+          "properties": { "title": { "type": "string" }, "topics": { "type": "array", "items": { "type": "string" } } }
+        }
+      }
+    }
+  },
+  "grading": {
+    "type": "object",
+    "required": ["items"],
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["id", "correct", "feedback"],
+          "properties": { "id": { "type": "string" }, "correct": { "type": "boolean" }, "feedback": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

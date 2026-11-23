@@ -25,12 +25,12 @@ export function StudyGeneration({quiz=false}:{quiz?:boolean}) {
     <button disabled={!sections[index] || (!quiz && !deck) || !Number.isInteger(count) || count<1 || count>30} onClick={async()=>{
       setBusy(true);setError('');try {
         if(quiz && note) {
-          const result=await generate('Generate '+count+' '+kind+' questions based only on this section. Return JSON array with type (mcq, multi, short), prompt, options (array for choice questions), answer (exact option or array of exact options for multi, exact short term for short), and explanation including evidence. For short allow a concise explanation and include a rubric string with clear criteria for full credit.',sections[index]);
+          const result=await generate('practice', 'Generate '+count+' '+kind+' questions based only on this section. In the items array, return with type (mcq, multi, short), prompt, options (array for choice questions), answer (exact option or array of exact options for multi, exact short term for short), and explanation including evidence. For short allow a concise explanation and include a rubric string with clear criteria for full credit.',sections[index]);
           const questions=readGeneratedQuestions(result,note.title,count,kind);
           addQuiz({id:crypto.randomUUID(),title:note.title+' practice',subjectId:note.subjectId,durationMinutes:Math.max(5,count*2),difficulty:'Standard',questions,sourceNoteId:note.id,sourceSection:sections[index].split('\n')[0].slice(0,120)});
           pushToast('Practice test ready');return;
         }
-        const result=await generate('Generate '+count+' flashcards strictly grounded in the selected section. Return JSON array of objects with front and back strings.',sections[index]);
+        const result=await generate('flashcards', 'Generate '+count+' flashcards strictly grounded in the selected section. In the items array, return of objects with front and back strings.',sections[index]);
         setCards(readGeneratedCards(result,count));
       }catch(e){setError(String(e));}finally{setBusy(false);}
     }}>{busy?'Generating…':'Generate draft'}</button>

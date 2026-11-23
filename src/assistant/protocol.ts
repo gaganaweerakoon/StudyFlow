@@ -34,12 +34,15 @@ export interface ChatImage {
   detail: 'standard' | 'high';
 }
 
+export type StudyGenerationKind = 'flashcards' | 'practice' | 'syllabus' | 'grading';
+
 export interface ChatRequest {
   provider: Provider;
   model: string;
   prompt: string;
   context: string;
   clientContext?: string;
+  studyGeneration?: StudyGenerationKind;
   history: ChatTurn[];
   image?: ChatImage;
   generateImage?: boolean;

@@ -4,7 +4,7 @@ import { parseWorkspaceEdit, splitWorkspaceResponse, type WorkspaceEdit } from '
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '../context/AppContext';
 import { estimatedTokens, isAssistantAvailable, sendChat, type Attachment } from './chatClient';
-import { CHAT_LIMITS, PROVIDERS, type ChatRequest, type ChatTurn, type Provider, type TokenUsage } from './protocol';
+import { CHAT_LIMITS, PROVIDERS, type ChatRequest, type StudyGenerationKind, type ChatTurn, type Provider, type TokenUsage } from './protocol';
 import { localDay, requestClock, workspaceContext, type WorkspacePage } from './workspaceContext';
 import { mergeUsage, readSettings, readUsage, todayTokens, usageKey, writeSettings, writeUsage, type AssistantSettings, type UsageEntry } from './usage';
 
@@ -312,28 +312,45 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     }
   }
 
-  async function generate(prompt: string, source: string): Promise<unknown> {
+  async function generate(kind: StudyGenerationKind, prompt: string, source: string): Promise<unknown> {
     const provider = settings.provider;
     const key = keys.current[provider];
     if (keyStorage === 'loading') throw new Error('Pip is checking for saved API keys. Try again in a moment.');
     if (!configured.includes(provider) && !keyStorageError) throw new Error('Add your '+PROVIDERS[provider].label+' API key in Settings.');
+    if (activeRequest.current) throw new Error('Pip is already working on a request. Try again when it finishes.');
     if (!source.trim()) throw new Error('Select a section containing text.');
     if (source.length > CHAT_LIMITS.context) throw new Error('Choose a shorter section for this request.');
     let body = '';
     let complete = false;
+    let valid = false;
     let tokens: TokenUsage | undefined;
     const control = new AbortController();
+    activeRequest.current = control;
+    setBusy(true);
     try {
-      for await (const event of sendChat({provider, model, prompt, context:source, history:[], maxOutput:16384},key,control.signal)) {
+      const clock = requestClock(settings.timezone);
+      for await (const event of sendChat({
+        provider, model, prompt, context: source, history: [], maxOutput: 16384, studyGeneration: kind,
+        clientContext: `Current local date and time: ${clock.label}. Default response language: ${settings.language ?? 'match the source'}.`,
+      }, key, control.signal)) {
         if (event.type==='text') body+=event.text;
         if (event.type==='error') throw new Error(event.message);
         if (event.type==='usage') tokens=event.usage;
         if (event.type==='done') complete=!event.truncated;
       }
       if (!complete) throw new Error('Incomplete provider response. Try a shorter selection.');
-      return JSON.parse(body.trim().replace(/^```(?:json)?\s*|\s*```$/gi,''));
+      let result: unknown;
+      try { result = JSON.parse(body.trim().replace(/^```(?:json)?\s*|\s*```$/gi, '')); } catch { /* The provider did not return JSON. */ }
+      const items = Array.isArray(result) ? result : (result as { items?: unknown } | undefined)?.items;
+      if (!Array.isArray(items) || !items.length) {
+        throw new Error('Pip did not receive usable study items. Retry with a shorter section or choose a different model.');
+      }
+      valid = true;
+      return items;
     } finally {
-      const entry: UsageEntry = {id:createId(), at:Date.now(), day:localDay(), provider,model,tokens,status:complete?'complete':'error'};
+      activeRequest.current = null;
+      setBusy(false);
+      const entry: UsageEntry = {id:createId(), at:Date.now(), day:localDay(), provider,model,tokens,status:valid?'complete':'error'};
       const records=mergeUsage(usage,[entry]);
       if (desktopUsage) {await desktopUsage.save(records); setUsage(records);}
       else setUsage(writeUsage(records));

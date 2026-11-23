@@ -109,4 +109,20 @@ test('the localhost assistant streams images, context, and normalized usage thro
   assert.equal((await call('openai', { image: { ...base.image, mime: 'image/jpeg' } })).status, 400);
   assert.equal((await call('gemini', { model: '../wrong-host' })).status, 400);
   assert.equal(calls.length, 3);
+  const structured = await call('gemini', {
+    model: 'gemini-3.1-flash-lite',
+    studyGeneration: 'flashcards',
+    image: undefined,
+    history: [],
+    context: 'Selected source text',
+  });
+  await structured.text();
+  const generation = calls[3].body;
+  assert.equal(generation.generationConfig.responseMimeType, 'application/json');
+  assert.deepEqual(generation.generationConfig.responseJsonSchema.properties.items.items.required, ['front', 'back']);
+  assert.match(generation.systemInstruction.parts[0].text, /Do not greet/);
+  assert.doesNotMatch(generation.systemInstruction.parts[0].text, /pip-edit/);
+  assert.match(generation.contents[0].parts[0].text, /Selected source text/);
+  assert.equal((await call('gemini', { studyGeneration: 'bogus' })).status, 400);
+
 });

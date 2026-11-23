@@ -35,7 +35,7 @@ export function SyllabusImport({subject}:{subject:string}) {
     <input disabled={busy} type="file" accept=".pdf,.docx,.doc" onChange={e=>{setFile(e.target.files?.[0]);setOutline('');setError('');}}/>
     <button disabled={!file || busy} onClick={async()=>{
       if(!file)return;setBusy(true);setError('');
-      try {const result=await generate('Extract syllabus units and topics in order. Include source page or section in each unit title. Return JSON array of objects with title:string and topics:string[].',await syllabusText(file));
+      try {const result=await generate('syllabus', 'Extract syllabus units and topics in order. Include source page or section in each unit title. Return items as objects with title:string and topics:string[].',await syllabusText(file));
         if (!Array.isArray(result) || !result.length || !result.every(unit=>typeof unit?.title==='string' && Array.isArray(unit.topics) && unit.topics.every((t:unknown)=>typeof t==='string'))) throw new Error('Pip returned an invalid outline.');
         setOutline(result.map(unit=>['# '+unit.title,...unit.topics].join('\n')).join('\n\n'));
       }catch(e){setError(String(e));}finally{setBusy(false);}
