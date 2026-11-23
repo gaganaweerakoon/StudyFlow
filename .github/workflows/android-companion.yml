@@ -5,11 +5,17 @@ on:
   push:
     branches: [mobile-companion-integration]
     paths:
+      - .github/workflows/**
       - android/**
-      - src/mobile/**
-      - src/index.css
+      - src/**
+      - src-tauri/**
+      - server/**
+      - package.json
+      - bun.lock
+      - index.html
+      - vite.config.ts
       - vite.android.config.ts
-      - .github/workflows/android-companion.yml
+      - tsconfig.json
 
 permissions:
   contents: read
