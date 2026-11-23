@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { parseWorkspaceEdit, splitWorkspaceResponse, type WorkspaceEdit } from './workspaceEdit';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -186,6 +187,20 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     if (activeId === id) switchChat(next[0].id);
   }
 
+  async function applyWorkspaceEdit(edit: WorkspaceEdit) {
+    let applied = false;
+    try {
+      flushSync(() => { applied = edit.apply(currentApp.current); });
+      if (!applied) return { saved: false, text: 'The record changed before I could update it. Try the request again.' };
+      await currentApp.current.saveWorkspace();
+      return { saved: true, text: edit.success ?? `Done. ${edit.title}.` };
+    } catch {
+      return { saved: false, text: applied
+        ? 'The change is visible in StudyFlow, but saving failed. Use Retry save before closing the app.'
+        : 'StudyFlow could not apply the change.' };
+    }
+  }
+
   async function send(generateImage = false) {
     const typed = draft.trim();
     if ((!typed && !attachment) || activeRequest.current || !available) return;
@@ -263,9 +278,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
               proposedEdit = edit;
               updateMessage(message => ({ ...message, text: 'Review this change before applying it.' }));
             } else {
-              const applied = edit.apply(currentApp.current);
-              const result = applied ? edit.success ?? `Done. ${edit.title}.` : 'The record changed before I could update it. Try the request again.';
-              updateMessage(message => ({ ...message, text: result }));
+              const result = await applyWorkspaceEdit(edit);
+              updateMessage(message => ({ ...message, text: result.text }));
             }
           }
           if (event.truncated) setNotice('The reply reached its token limit. Ask Pip to continue from where it stopped.');
@@ -325,12 +339,24 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   }
 
   return {
-    applyEdit(message: ChatMessage) {
-      if (!message.edit) return;
-      const applied = message.edit.apply(currentApp.current);
-      setNotice(applied ? 'Change applied to the workspace.' : 'The record changed. Ask Pip to prepare the edit again.');
+    async applyEdit(message: ChatMessage) {
+      if (!message.edit || busy || activeRequest.current) return;
+      const edit = message.edit;
+      setBusy(true);
+      try {
+        const result = await applyWorkspaceEdit(edit);
+        setConversations(items => items.map(chat => ({
+          ...chat, messages: chat.messages.map(item => item.id === message.id
+            ? { ...item, text: result.text, edit: undefined, state: result.saved ? 'complete' : 'error' } : item),
+        })));
+      } finally {
+        setBusy(false);
+      }
+    },
+    cancelEdit(id: string) {
       setConversations(items => items.map(chat => ({
-        ...chat, messages: chat.messages.map(item => item.id === message.id ? { ...item, edit: undefined } : item),
+        ...chat, messages: chat.messages.map(item => item.id === id
+          ? { ...item, text: 'Change cancelled.', edit: undefined } : item),
       })));
     },
     generate, available, settings, updateSettings, usage, configured, setKey, keyStorage, keyStorageError, model,

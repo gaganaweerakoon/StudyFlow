@@ -169,7 +169,8 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
             )}
             {message.edit && <div className="pip-message-meta">
               <span>{message.edit.title}</span>
-              <button type="button" className="pip-primary-text" disabled={assistant.busy} onClick={() => assistant.applyEdit(message)}>Apply</button>
+              <button type="button" className="pip-primary-text" disabled={assistant.busy} onClick={() => void assistant.applyEdit(message)}>Apply</button>
+              <button type="button" className="pip-primary-text" disabled={assistant.busy} onClick={() => assistant.cancelEdit(message.id)}>Cancel</button>
             </div>}
             {message.role === 'assistant' && message.state !== 'streaming' && (
               <div className="pip-message-meta">

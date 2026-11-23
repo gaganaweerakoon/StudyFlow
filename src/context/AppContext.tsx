@@ -93,6 +93,7 @@ export interface UserPreferences {
 }
 
 interface AppContextValue {
+  saveWorkspace: () => Promise<void>;
   recurringSeries: LegacyArchive[string];
   updateRecurringSeries?: (id: number, title: string, startHour: number, durationHours: number, fields?: Pick<StudySession, 'blockType' | 'countsTowardStudy' | 'alarms'>, subjectId?: string) => void;
   wipeData?: (sections: WipeSection[]) => Promise<void>;
@@ -369,15 +370,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [saveError, setSaveError] = useState('');
   const savedSnapshot = useRef(initial?.focusClock?.timer.running && !focusTimer.running ? undefined : snapshot);
 
-  const saveWorkspace = useCallback(() => {
+  const pendingSave = useRef<{ snapshot: WorkspaceSnapshot; promise: Promise<void> } | undefined>(undefined);
+
+  const saveWorkspace = useCallback(async () => {
     if (!workspace || savedSnapshot.current === snapshot) return;
-    void workspace.writer.save(snapshot).then(() => {
+    if (pendingSave.current?.snapshot === snapshot) return pendingSave.current.promise;
+    const promise = workspace.writer.save(snapshot).then(() => {
       savedSnapshot.current = snapshot;
       setSaveError('');
-    }, error => setSaveError(String(error)));
+    }, error => {
+      setSaveError(String(error));
+      throw error;
+    }).finally(() => {
+      if (pendingSave.current?.promise === promise) pendingSave.current = undefined;
+    });
+    pendingSave.current = { snapshot, promise };
+    return promise;
   }, [workspace, snapshot]);
 
-  useEffect(saveWorkspace, [saveWorkspace]);
+  function autosave() {
+    void saveWorkspace().catch(() => {});
+  }
+
+  useEffect(autosave, [saveWorkspace]);
 
   const toastTimerRef = useRef<number[]>([]);
 
@@ -914,6 +929,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   return (
     <AppContext.Provider
       value={{
+        saveWorkspace,
         recurringSeries: archive?.recurring_events ?? [],
         updateRecurringSeries,
         importLegacyBackup,
@@ -1003,7 +1019,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       {saveError && (
         <div role="alert" className="fixed inset-x-4 top-2 z-50 rounded-lg border border-red-600 bg-[var(--bg-surface)] p-3 text-sm">
           StudyFlow could not save workspace changes. {saveError}{' '}
-          <button type="button" className="underline" onClick={saveWorkspace}>Retry save</button>
+          <button type="button" className="underline" onClick={autosave}>Retry save</button>
         </div>
       )}
       {children}
