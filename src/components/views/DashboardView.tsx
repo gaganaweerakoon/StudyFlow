@@ -651,6 +651,12 @@ export const DashboardView: React.FC = () => {
 
   return (
     <div className="space-y-4 pb-6">
+      {(preferences.onboarding==='complete' || preferences.googleAccount) && (!subjects.length || !sessions.length || !notes.length) && <section className="rounded-xl p-4 space-y-2" style={surfaceStyle}>
+        <h2 className="font-semibold">Set up your workspace</h2>
+        <div className="flex flex-wrap gap-4">{([
+          ['subjects','Add a subject',subjects.length],['planner','Schedule a study block',sessions.length],['notes','Create a note',notes.length]
+        ] as const).map(([route,label,count])=><button key={route} disabled={count>0} onClick={()=>setRoute(route)}>{count?'✓':'○'} {label}</button>)}</div>
+      </section>}
       {/* Greeting Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
