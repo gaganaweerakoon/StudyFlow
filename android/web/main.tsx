@@ -28,12 +28,12 @@ declare global {
 const storageKey = 'studyflow.companion.phone';
 const pendingKey = 'studyflow.companion.pending';
 type PhonePair = { token: string; calendar?: CompanionCalendar } & (
-  { origin: string; endpoint?: never; pc?: never } | { origin?: never; endpoint: string; pc: string }
+  { origin: string; endpoint?: never; pc?: never; userName?: string } | { origin?: never; endpoint: string; pc: string; userName?: string }
 );
 interface LocalReply {
   id: string; diagnostic?: string; error?: string;
   token?: string; calendar?: CompanionCalendar; accepted?: boolean;
-  focus?: CompanionFocusSnapshot | null; serverNowMs?: number;
+  focus?: CompanionFocusSnapshot | null; serverNowMs?: number; userName?: string;
 }
 
 function localRequest(endpoint: string, token: string | null, command?: CompanionFocusCommand, sessionId = ''): Promise<LocalReply> {
@@ -162,7 +162,10 @@ function AndroidCompanion() {
         : undefined);
       if (!calendar) throw new Error('The PC did not return a calendar.');
       if (latestPair.current?.token !== credentials.token) return;
-      if (JSON.stringify(calendar.events) !== JSON.stringify(credentials.calendar?.events)) save({ ...credentials, calendar });
+      if (JSON.stringify(calendar.events) !== JSON.stringify(credentials.calendar?.events) ||
+          (result?.userName && result.userName !== credentials.userName)) {
+        save({ ...credentials, calendar, userName: result?.userName || credentials.userName });
+      }
       if (result) captureFocus(result);
       setDiagnostic(result?.diagnostic ?? '');
       setLastSync(Date.now());
@@ -204,7 +207,7 @@ function AndroidCompanion() {
           if (existing?.endpoint && JSON.parse(existing.endpoint).pin === payload.pin) {
             result = await localRequest(endpoint, existing.token);
             if (!result.calendar) throw new Error('The PC did not return a calendar.');
-            save({ ...existing, endpoint, pc: payload.pc, calendar: result.calendar });
+            save({ ...existing, endpoint, pc: payload.pc, calendar: result.calendar, userName: result.userName || existing.userName });
           } else {
             if (existing) throw new Error('Disconnect the current pairing before connecting to a different PC.');
             if (payload.code === null) throw new Error('This code is for the paired phone. Disconnect it on the PC to pair a new phone.');
@@ -215,7 +218,7 @@ function AndroidCompanion() {
             localStorage.setItem(pendingKey, JSON.stringify({ code: payload.code, pin: payload.pin, token }));
             result = await localRequest(JSON.stringify({ ...payload, token }), null);
             if (!result.token || !result.calendar) throw new Error('The PC did not complete pairing.');
-            save({ endpoint, pc: payload.pc, token: result.token, calendar: result.calendar });
+            save({ endpoint, pc: payload.pc, token: result.token, calendar: result.calendar, userName: result.userName });
             localStorage.removeItem(pendingKey);
           }
           captureFocus(result);
@@ -329,6 +332,7 @@ ${diagnostic}`).then(
     <MobileCompanionApp installed live={{
       isPaired: Boolean(pair),
       pcName: pair?.pc ?? 'StudyFlow PC',
+      profileName: pair?.userName,
       calendar: pair?.calendar,
       lastSync,
       busy,
