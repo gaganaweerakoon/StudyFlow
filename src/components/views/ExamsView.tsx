@@ -12,8 +12,26 @@ export const ExamsView: React.FC = () => {
     border: '1px solid var(--border-subtle)',
   };
 
-  const daysUntil = (iso: string) =>
-    Math.max(1, Math.round((new Date(iso).getTime() - new Date('2026-11-22').getTime()) / 86400000));
+  const [now,setNow]=useState(()=>new Date());
+  React.useEffect(()=>{const t=setInterval(()=>setNow(new Date()),1000);return ()=>clearInterval(t);},[]);
+  function countdown(date:string,time:string) {
+    const timed=/^\d{2}:\d{2}$/.test(time);
+    const target=new Date(date+'T'+(timed?time:'00:00')+':00');
+    if(!Number.isFinite(+target)) return 'Date unavailable';
+    const total=Math.round((+new Date(date+'T12:00:00') - +new Date(now.getFullYear(),now.getMonth(),now.getDate(),12))/86400000);
+    if(!timed) return total<0?'Past exam':total===0?'Today':total+' days left';
+    if(+target<=+now)return 'Exam started';
+    let months=(target.getFullYear()-now.getFullYear())*12+target.getMonth()-now.getMonth();
+    function afterMonths(n:number) {
+      const d=new Date(now);d.setDate(1);d.setMonth(d.getMonth()+n);
+      const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+      d.setDate(Math.min(now.getDate(),last));return d;
+    }
+    if(afterMonths(months)>target) months--;
+    const seconds=Math.floor((+target-+afterMonths(months))/1000);
+    const days=Math.floor(seconds/86400);
+    return months+'mo '+Math.floor(days/7)+'w '+days%7+'d '+Math.floor(seconds/3600)%24+'h '+Math.floor(seconds/60)%60+'m '+seconds%60+'s · '+total+' days';
+  }
 
   return (
     <div className="space-y-4 pb-6">
@@ -51,7 +69,7 @@ export const ExamsView: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
         {exams.map((ex) => {
           const sub = subjects.find((s) => s.id === ex.subjectId);
-          const days = daysUntil(ex.date);
+          const days = countdown(ex.date,ex.time);
           const active = selectedExam?.id === ex.id;
 
           return (
@@ -71,7 +89,7 @@ export const ExamsView: React.FC = () => {
                   {sub?.code}
                 </span>
                 <span className="font-mono-num text-[12px] font-semibold text-amber-600 dark:text-amber-400">
-                  {days}d left
+                  {days}
                 </span>
               </div>
               <div className="font-display text-[14px] font-semibold text-[var(--text-primary)] line-clamp-2">
@@ -185,7 +203,7 @@ export const ExamsView: React.FC = () => {
               ))}
               {Array.from({ length: 28 }, (_, i) => {
                 // Nov 22 to Dec 19
-                const dt = new Date(2026, 10, 22 + i);
+                const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate()+i);
                 const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
                 const examOnDay = exams.find((e) => e.date === iso);
                 const sub = examOnDay ? subjects.find((s) => s.id === examOnDay.subjectId) : null;

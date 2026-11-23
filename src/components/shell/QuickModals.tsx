@@ -63,8 +63,9 @@ export const QuickModals: React.FC = () => {
 
   // Exam form
   const [exTitle, setExTitle] = useState('');
-  const [exSubject, setExSubject] = useState(subjects[0]?.id ?? '');
-  const [exDate, setExDate] = useState('2026-12-10');
+  const [exSubject, setExSubject] = useState('');
+  const [exTime,setExTime]=useState('');
+  const [exDate, setExDate] = useState(localDay());
   const [exRoom, setExRoom] = useState('Science Hall 201');
   const [exTarget, setExTarget] = useState('A (92%+)');
 
@@ -203,16 +204,16 @@ export const QuickModals: React.FC = () => {
     }
     addExam({
       title: exTitle.trim(),
-      subjectId: subjects.find(item => item.id === exSubject)?.id ?? subjects[0]?.id ?? '',
+      subjectId: subjects.find(item => item.id === exSubject)?.id ?? '',
       date: exDate,
-      time: '10:00 AM – 12:00 PM',
+      time: exTime,
       room: exRoom.trim() || 'Main Hall',
       weightPercent: 25,
       prepProgress: 35,
       targetGrade: exTarget,
       syllabusTopics: ['Core Lectures', 'Problem Sets'],
     });
-    setExTitle('');
+    setExTitle('');setExTime('');
     closeModal();
   };
 
@@ -648,6 +649,7 @@ export const QuickModals: React.FC = () => {
                       Subject
                     </label>
                     <select value={exSubject} onChange={(e) => setExSubject(e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-[13px]" style={inputStyle}>
+                      <option value="">No subject</option>
                       {subjects.map((s) => (
                         <option key={s.id} value={s.id}>{s.code} · {s.name}</option>
                       ))}
@@ -657,9 +659,10 @@ export const QuickModals: React.FC = () => {
                     <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
                       Exam Date
                     </label>
-                    <input type="date" value={exDate} onChange={(e) => setExDate(e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-[13px]" style={inputStyle} />
+                    <input required type="date" value={exDate} onChange={(e) => setExDate(e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-[13px]" style={inputStyle} />
                   </div>
                 </div>
+                <label>Start time (optional) <input type="time" value={exTime} onChange={e=>setExTime(e.target.value)}/></label>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
