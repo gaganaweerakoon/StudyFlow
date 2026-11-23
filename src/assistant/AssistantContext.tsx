@@ -102,7 +102,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         setNotice('Pip could not save the conversation history on this device.');
       }
     }
-    if (saved.length) void save();
+    void save();
   }, [busy, conversations, desktopHistory]);
 
   const active = conversations.find(chat => chat.id === activeId) ?? conversations[0];
@@ -144,6 +144,20 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const id = createId();
     setConversations(items => [{ ...initial, id }, ...items].slice(0, historyLimit + 1));
     switchChat(id);
+  }
+
+  function renameChat(id: string, title: string) {
+    const name = title.trim().slice(0, 80);
+    if (!name || busy) return;
+    setConversations(chats => chats.map(chat => chat.id === id ? { ...chat, title: name } : chat));
+  }
+
+  function removeChat(id: string) {
+    if (busy) return;
+    const remaining = conversations.filter(chat => chat.id !== id);
+    const next = remaining.length ? remaining : [{ ...initial, id: createId() }];
+    setConversations(next);
+    if (activeId === id) switchChat(next[0].id);
   }
 
   async function send() {
@@ -283,7 +297,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       })));
     },
     generate, available, settings, updateSettings, usage, configured, setKey, model,
-    active, activeId, conversations, switchChat, newChat,
+    active, activeId, conversations, switchChat, newChat, renameChat, removeChat,
     petOpen, setPetOpen, settingsRequested, setSettingsRequested,
     openSettings, openFullChat: () => app.setRoute('assistant'), context, includeContext, setIncludeContext, draft, setDraft, attachment,
     setAttachment, previousAttachment, detail, setDetail, busy, notice, setNotice, send,

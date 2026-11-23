@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowUp, Check, ChevronDown, Clipboard, Maximize2, Paperclip, Plus, Settings2, Square, X } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, Clipboard, Maximize2, PanelLeft, Paperclip, Pencil, Plus, Settings2, Square, Trash2, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAssistant } from './AssistantContext';
 import { prepareImage } from './chatClient';
@@ -31,6 +31,7 @@ const AssistantMarkdown = lazy(() => import('./AssistantMarkdown'));
 export function AssistantChat({ onClose }: { onClose?: () => void }) {
   const floating = !!onClose;
   const assistant = useAssistant();
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [copied, setCopied] = useState('');
   const picker = useRef<HTMLInputElement>(null);
@@ -42,7 +43,7 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
 
   useEffect(() => {
     if (scroller.current && follow.current) scroller.current.scrollTop = scroller.current.scrollHeight;
-  }, [assistant.active.messages]);
+  }, [assistant.active.messages, historyOpen]);
 
   useEffect(() => {
     follow.current = true;
@@ -84,6 +85,7 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
           </div>
         </div>
         <div className="pip-actions">
+          <button type="button" className="pip-icon" aria-expanded={historyOpen} onClick={() => setHistoryOpen(open => !open)} aria-label="Chat history" title="Chat history"><PanelLeft size={17} /></button>
           <button type="button" className="pip-icon" onClick={assistant.newChat} disabled={assistant.busy || !assistant.active.messages.length} aria-label="New chat" title="New chat"><Plus size={17} /></button>
           <button type="button" className="pip-icon" onClick={assistant.openSettings} aria-label="AI settings" title="AI settings"><Settings2 size={17} /></button>
           {floating && <>
@@ -95,15 +97,38 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
           </>}
         </div>
       </header>
-      {assistant.conversations.length > 1 && (
-        <details className="pip-conversations"><summary>Chat history</summary>
-          <label htmlFor="pip-chat-thread">Conversation</label>
-          <select id="pip-chat-thread" value={assistant.activeId} disabled={assistant.busy} onChange={event => assistant.switchChat(event.target.value)}>
-            {assistant.conversations.map(chat => <option key={chat.id} value={chat.id}>{chat.title}</option>)}
-          </select>
-        </details>
-      )}
-
+      <div className={`pip-chat-body${historyOpen ? ' pip-history-open' : ''}`}>
+        {historyOpen && (
+          <aside className="pip-history" aria-label="Chat history">
+            <div className="pip-history-heading">
+              <h3>Chat history</h3>
+              <button type="button" className="pip-icon" onClick={() => setHistoryOpen(false)} aria-label="Close chat history"><X size={15} /></button>
+            </div>
+            <ul>
+              {assistant.conversations.map(chat => (
+                <li key={chat.id} data-active={chat.id === assistant.activeId}>
+                  <button type="button" className="pip-history-thread" aria-current={chat.id === assistant.activeId ? 'true' : undefined}
+                    disabled={assistant.busy} title={chat.title} onClick={() => {
+                      assistant.switchChat(chat.id);
+                      if (floating) setHistoryOpen(false);
+                    }}>{chat.title}</button>
+                  {chat.messages.length > 0 && <>
+                    <button type="button" className="pip-icon" disabled={assistant.busy}
+                      aria-label={`Rename ${chat.title}`} title="Rename chat" onClick={() => {
+                        const title = window.prompt('Conversation name', chat.title);
+                        if (title !== null) assistant.renameChat(chat.id, title);
+                      }}><Pencil size={13} /></button>
+                    <button type="button" className="pip-icon" disabled={assistant.busy}
+                      aria-label={`Delete ${chat.title}`} title="Delete chat" onClick={() => {
+                        if (window.confirm(`Delete the conversation “${chat.title}”?`)) assistant.removeChat(chat.id);
+                      }}><Trash2 size={13} /></button>
+                  </>}
+                </li>
+              ))}
+            </ul>
+          </aside>
+        )}
+        <div className="pip-chat-content">
       <div className="pip-messages" ref={scroller} onScroll={event => {
         const el = event.currentTarget;
         follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
@@ -219,6 +244,8 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
           </div>
         </div>
       </form>
+        </div>
+      </div>
     </section>
   );
 }
