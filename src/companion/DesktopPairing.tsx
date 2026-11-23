@@ -24,14 +24,46 @@ function calendarEvents(sessions: StudySession[]): CompanionEvent[] {
 }
 
 export function PublishCompanionCalendar() {
-  const { sessions } = useApp();
+  const { sessions, focusClock, applyPhoneFocusAction } = useApp();
+
+  // The desktop timer is authoritative. Publish immediately when its phase,
+  // running state, subject, or time anchor changes, not just once a minute.
   useEffect(() => {
     if (!isTauri()) return;
-    const publish = () => void invoke('local_companion', { action: 'publish', events: calendarEvents(sessions) }).catch(() => {});
+    const publish = () => void invoke('local_companion', {
+      action: 'publish',
+      events: calendarEvents(sessions),
+      focus: focusClock,
+    }).catch(() => {});
     publish();
-    const timer = window.setInterval(publish, 60_000);
-    return () => window.clearInterval(timer);
-  }, [sessions]);
+    const interval = window.setInterval(publish, 30_000);
+    return () => window.clearInterval(interval);
+  }, [sessions, focusClock]);
+
+  // Phone commands are authenticated and queued by the TLS companion service.
+  // Drain them on the desktop UI thread so the real React timer state changes.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let active = true;
+    let pending = false;
+    type Command = Parameters<typeof applyPhoneFocusAction>[0];
+    const receive = async () => {
+      if (!active || pending) return;
+      pending = true;
+      try {
+        const commands = await invoke<Command[]>('local_companion', { action: 'focus_commands' });
+        if (active) for (const command of commands) applyPhoneFocusAction(command);
+      } catch {
+        // The local companion may not be initialized until the PC is paired.
+      } finally {
+        pending = false;
+      }
+    };
+    void receive();
+    const interval = window.setInterval(() => void receive(), 1000);
+    return () => { active = false; window.clearInterval(interval); };
+  }, [applyPhoneFocusAction]);
+
   return null;
 }
 
