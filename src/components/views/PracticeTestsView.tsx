@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   Play,
 } from 'lucide-react';
+import type { PracticeAttempt } from '../../types/studyflow';
 import { useApp } from '../../context/AppContext';
 import { formatTimerSeconds, gradePracticeTest } from '../../utils/studyLogic';
 
@@ -34,6 +35,7 @@ export const PracticeTestsView: React.FC = () => {
   const [gradingError,setGradingError]=useState('');
   const [marks,setMarks]=useState<Record<string,{correct:boolean;feedback:string}>>({});
   const shortMarks=Object.fromEntries(Object.entries(marks).map(([id,mark])=>[id,mark.correct]));
+  const [review, setReview] = useState<PracticeAttempt['review']>();
   const [submitted, setSubmitted] = useState(false);
 
   const activeQuiz = quizzes.find((q) => q.id === activeQuizId) ?? null;
@@ -52,6 +54,7 @@ export const PracticeTestsView: React.FC = () => {
     setActiveQuizId(id);
     setQuestionIdx(0);
     setAnswers({});
+    setReview(undefined);
     setMarks({});
     setGradingError("");
     setSecondsLeft(q.durationMinutes * 60);
@@ -86,7 +89,12 @@ export const PracticeTestsView: React.FC = () => {
     }
     setMarks(assessed);
     const result = gradePracticeTest(activeQuiz.questions, answers, Object.fromEntries(Object.entries(assessed).map(([id,mark])=>[id,mark.correct])));
-    recordQuizScore(activeQuiz.id, result.scorePercent);
+    recordQuizScore(activeQuiz.id, {
+      id: crypto.randomUUID(),
+      at: new Date().toISOString(),
+      score: result.scorePercent,
+      review: { questions: activeQuiz.questions, answers, marks: assessed },
+    });
     setConfirmSubmit(false);
     setSubmitted(true);
     pushToast(`Quiz graded: ${result.correctCount}/${result.totalCount} marks`);
@@ -98,7 +106,8 @@ export const PracticeTestsView: React.FC = () => {
   };
 
   if (activeQuiz && submitted) {
-    const result = gradePracticeTest(activeQuiz.questions, answers, shortMarks);
+    const questions = review?.questions ?? activeQuiz.questions;
+    const result = gradePracticeTest(questions, answers, shortMarks);
     const sub = subjects.find((s) => s.id === activeQuiz.subjectId);
 
     return (
@@ -180,7 +189,7 @@ export const PracticeTestsView: React.FC = () => {
         }}>Open source note · {activeQuiz.sourceSection}</button>}
         {/* Question-by-Question Review */}
         <div className="rounded-xl divide-y divide-[var(--border-subtle)]" style={surfaceStyle}>
-          {activeQuiz.questions.map((q, idx) => {
+          {questions.map((q, idx) => {
             const given = (answers[q.id] ?? '').trim();
             const isCorrect = gradePracticeTest([q],answers,shortMarks).correctCount === 1;
 
@@ -477,6 +486,24 @@ export const PracticeTestsView: React.FC = () => {
                   {qz.questions.length} questions (MCQ + short answer) · {qz.durationMinutes} min timer
                 </div>
               </div>
+
+              {!!qz.attempts?.length && <details className="text-sm">
+                <summary>Attempt history ({qz.attempts.length})</summary>
+                <ul className="mt-2 space-y-2">
+                  {[...qz.attempts].reverse().map((attempt, index) => (
+                    <li key={attempt.id ?? index} className="flex flex-wrap items-center justify-between gap-2">
+                      <span>{new Date(attempt.at).toLocaleString()} · {attempt.score}%</span>
+                      {attempt.review ? <button type="button" className="underline" onClick={() => {
+                        setActiveQuizId(qz.id);
+                        setReview(attempt.review);
+                        setAnswers(attempt.review!.answers);
+                        setMarks(attempt.review!.marks);
+                        setSubmitted(true);
+                      }}>Review attempt</button> : <span className="text-[var(--text-muted)]">Score only</span>}
+                    </li>
+                  ))}
+                </ul>
+              </details>}
 
               <div className="pt-3 flex items-center justify-between" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <span className="text-[12px] text-[var(--text-secondary)]">

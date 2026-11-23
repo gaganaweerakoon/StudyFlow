@@ -16,6 +16,7 @@ import type {
   NoteFolder,
   NoteItem,
   NotificationItem,
+  PracticeAttempt,
   PracticeQuiz,
   StudySession,
   Subject,
@@ -167,7 +168,7 @@ interface AppContextValue {
 
   quizzes: PracticeQuiz[];
   addQuiz: (quiz:PracticeQuiz) => void;
-  recordQuizScore: (quizId: string, score: number) => void;
+  recordQuizScore: (quizId: string, attempt: PracticeAttempt) => void;
 
   focusTimer: FocusTimerState;
   setFocusMode: (mode: FocusTimerState['mode'], customMinutes?: number) => void;
@@ -803,9 +804,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     [pushToast]
   );
 
-  const recordQuizScore = useCallback((quizId: string, score: number) => {
-    setQuizzes((prev) => prev.map((q) => (q.id === quizId ? { ...q, lastScore: score, attempts:[...(q.attempts ?? []),{at:new Date().toISOString(),score}] } : q)));
-    setXpPoints((x) => x + 80);
+  const recordQuizScore = useCallback((quizId: string, attempt: PracticeAttempt) => {
+    setQuizzes(previous => previous.map(quiz => {
+      if (quiz.id !== quizId) return quiz;
+      return { ...quiz, lastScore: attempt.score, attempts: [...(quiz.attempts ?? []), attempt] };
+    }));
+    setXpPoints(points => points + 80);
   }, []);
 
   const claimChallenge = useCallback(

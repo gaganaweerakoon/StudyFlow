@@ -184,10 +184,21 @@ export interface QuizQuestion {
   explanation: string;
 }
 
+export interface PracticeAttempt {
+  id?: string;
+  at: string;
+  score: number;
+  review?: {
+    questions: QuizQuestion[];
+    answers: Record<string, string>;
+    marks: Record<string, { correct: boolean; feedback: string }>;
+  };
+}
+
 export interface PracticeQuiz {
   sourceNoteId?: string;
   sourceSection?: string;
-  attempts?: {at:string;score:number}[];
+  attempts?: PracticeAttempt[];
   id: string;
   title: string;
   subjectId: string;
