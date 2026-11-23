@@ -91,6 +91,13 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
     root.style.setProperty('--accent-border', hexToRgba(settings.accentColor, 0.30));
   }, [settings.theme, settings.accentColor]);
 
+  useEffect(() => {
+    if (!installed) return;
+    const openFocus = () => setActiveTab('focus');
+    window.addEventListener('studyflow-open-focus', openFocus);
+    return () => window.removeEventListener('studyflow-open-focus', openFocus);
+  }, [installed, setActiveTab]);
+
   // Android system Back navigation via Escape key
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
