@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ThemeId } from '../types/studyflow';
+import type { CompanionCalendar } from '../companion/client';
 import {
   buildAlertSchedule,
   findExactAlertAtTime,
@@ -32,6 +33,64 @@ import type {
   ViewportPreviewConfig,
 } from './types';
 
+export interface LiveCompanionData {
+  pcName: string;
+  calendar?: CompanionCalendar;
+  isPaired: boolean;
+  lastSync?: number;
+  busy: boolean;
+  onSync: () => void;
+  onReconnect: () => void;
+  onForget: () => void;
+  onPair: () => void;
+  alarmStatus?: { exact: boolean; notifications: boolean } | null;
+}
+
+interface UsageResult {
+  granted: boolean;
+  today: { id: string; name: string; minutes: number }[];
+  session: { id: string; name: string; minutes: number }[];
+}
+interface NativeUsageBridge {
+  status: () => string;
+  snapshot: (sessionStartMs: number) => string;
+  request: () => void;
+}
+function usageBridge(): NativeUsageBridge | undefined {
+  return (window as unknown as { StudyFlowUsage?: NativeUsageBridge }).StudyFlowUsage;
+}
+function currentAbsoluteMinute(): number {
+  const d = new Date();
+  return ((d.getDay() + 6) % 7) * 1440 + d.getHours() * 60 + d.getMinutes();
+}
+function calendarToBlocks(calendar?: CompanionCalendar): ScheduleBlock[] {
+  if (!calendar) return [];
+  const now = new Date();
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (now.getDay() + 6) % 7);
+  return calendar.events.flatMap(event => {
+    const date = new Date(event.startAt);
+    if (!Number.isFinite(date.getTime())) return [];
+    const day = Math.round((new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime() - monday.getTime()) / 86400000);
+    if (day < -1 || day > 7) return [];
+    return [{
+      id: event.id, revision: calendar.revision, type: event.type, title: event.title,
+      subjectId: event.type === 'study' ? 'synced-study' : undefined,
+      dayIndex: day, startMin: date.getHours() * 60 + date.getMinutes(),
+      durationMin: event.durationMinutes, advanceNoticeMin: (event.alarms?.advanceNoticeMin ?? 0) as AdvanceNoticeOption,
+      ringAtStart: Boolean(event.alarms?.ringAtStart),
+      focusIntervalMin: 25, remindAtBedtime: Boolean(event.alarms?.remindAtBedtime),
+      wakeAtEnd: Boolean(event.alarms?.wakeAtEnd),
+    }];
+  });
+}
+const LIVE_SUBJECTS: CompanionSubject[] = [
+  { id: 'synced-study', code: 'STUDY', name: 'Study session', color: '#4F46E5' },
+];
+function liveInitialFocus(): CompanionFocusState {
+  return { ...makeInitialFocus(), sessionId: 'local-focus', subjectId: 'synced-study',
+    sessionTitle: 'Focus session', startedAtAbsMin: null, pendingSyncWhenOnline: false };
+}
+
 interface SnoozedWakeUp {
   sourceAlertId: string;
   blockId: string;
@@ -40,6 +99,7 @@ interface SnoozedWakeUp {
 
 interface CompanionContextValue {
   // Navigation & overlays
+  liveMode: boolean;
   activeTab: MobileTabId;
   setActiveTab: (tab: MobileTabId) => void;
   selectedDayIndex: number;
@@ -153,26 +213,38 @@ function makeInitialFocus(): CompanionFocusState {
   };
 }
 
-export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: LiveCompanionData }> = ({ children, live }) => {
   const [activeTab, setActiveTabState] = useState<MobileTabId>('today');
   const [tabHistory, setTabHistory] = useState<MobileTabId[]>(['today']);
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(0);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [connectionSheetOpen, setConnectionSheetOpen] = useState(false);
-  const [pairingOpen, setPairingOpen] = useState(false);
+  const [pairingOpen, setPairingOpenState] = useState(false);
+  const setPairingOpen = useCallback((open: boolean) => {
+    if (open && live) { live.onReconnect(); return; }
+    setPairingOpenState(open);
+  }, [live]);
 
-  const [nowAbsMin, setNowAbsMin] = useState<number>(DEMO_START_ABS_MIN);
-  const [blocks, setBlocks] = useState<ScheduleBlock[]>(INITIAL_SCHEDULE_BLOCKS);
+  const [nowAbsMin, setNowAbsMin] = useState<number>(live ? currentAbsoluteMinute() : DEMO_START_ABS_MIN);
+  const [blocks, setBlocks] = useState<ScheduleBlock[]>(live ? calendarToBlocks(live.calendar) : INITIAL_SCHEDULE_BLOCKS);
   const [snoozedWakeUp, setSnoozedWakeUp] = useState<SnoozedWakeUp | null>(null);
   const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(() => new Set());
   const [activeBanner, setActiveBanner] = useState<ScheduledAlert | null>(null);
   const [activeAlarm, setActiveAlarm] = useState<ScheduledAlert | null>(null);
 
-  const [focus, setFocus] = useState<CompanionFocusState>(makeInitialFocus);
-  const [screenTimeMode, setScreenTimeModeState] = useState<ScreenTimeStateMode>('measured');
+  const [focus, setFocus] = useState<CompanionFocusState>(live ? liveInitialFocus : makeInitialFocus);
+  const [sessionStartEpoch, setSessionStartEpoch] = useState(0);
+  const [measuredSessionUsage, setMeasuredSessionUsage] = useState<AppUsageEntry[]>([]);
+  const [measuredTodayUsage, setMeasuredTodayUsage] = useState<AppUsageEntry[]>([]);
+  const [screenTimeMode, setScreenTimeModeState] = useState<ScreenTimeStateMode>(live ? 'permission_needed' : 'measured');
   const [screenTimeTab, setScreenTimeTab] = useState<'session' | 'today'>('session');
 
-  const [connection, setConnection] = useState<CompanionConnectionState>({
+  const [connection, setConnection] = useState<CompanionConnectionState>(live ? {
+    isPaired: live.isPaired, pcName: live.pcName, mode: live.isPaired ? 'internet' : 'offline',
+    internetAvailable: live.isPaired, bluetoothNearby: false,
+    lastSyncedLabel: live.lastSync ? new Date(live.lastSync).toLocaleTimeString() : 'Not synced',
+    pendingPcEdit: null,
+  } : {
     isPaired: true,
     pcName: "Maya's StudyFlow PC",
     mode: 'internet',
@@ -182,7 +254,11 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     pendingPcEdit: null,
   });
 
-  const [permissions, setPermissions] = useState<AndroidPermissionsState>({
+  const [permissions, setPermissions] = useState<AndroidPermissionsState>(live ? {
+    notifications: Boolean(live.alarmStatus?.notifications),
+    exactAlarms: Boolean(live.alarmStatus?.exact),
+    usageAccess: false,
+  } : {
     notifications: true,
     exactAlarms: true,
     usageAccess: true,
@@ -219,14 +295,77 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [blocks, snoozedWakeUp]
   );
 
-  // Trigger initial 7:15 AM Chemistry heads-up banner on first mount
+  // The installed app uses native Android alarms, not the preview's simulated alarm.
   useEffect(() => {
+    if (live) return;
     const initial = findExactAlertAtTime(scheduledAlerts, DEMO_START_ABS_MIN, new Set());
     if (initial && initial.kind === 'study_headsup') {
       setActiveBanner(initial);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!live) return;
+    setBlocks(calendarToBlocks(live.calendar));
+    setConnection(prev => ({
+      ...prev,
+      isPaired: live.isPaired,
+      pcName: live.pcName,
+      mode: live.busy ? 'syncing' : live.isPaired ? 'internet' : 'offline',
+      internetAvailable: live.isPaired,
+      bluetoothNearby: false,
+      lastSyncedLabel: live.lastSync ? new Date(live.lastSync).toLocaleTimeString() : 'Not synced',
+      pendingPcEdit: null,
+    }));
+  }, [live?.calendar, live?.pcName, live?.isPaired, live?.lastSync, live?.busy]);
+
+  useEffect(() => {
+    if (!live) return;
+    const tick = () => setNowAbsMin(currentAbsoluteMinute());
+    tick();
+    const timer = window.setInterval(tick, 15000);
+    return () => window.clearInterval(timer);
+  }, [Boolean(live)]);
+
+  useEffect(() => {
+    if (!live) return;
+    const refresh = () => {
+      try {
+        const bridge = usageBridge();
+        if (!bridge) throw new Error('Usage bridge unavailable');
+        const result = JSON.parse(bridge.snapshot(sessionStartEpoch)) as UsageResult;
+        setPermissions(prev => ({
+          ...prev,
+          usageAccess: result.granted,
+          notifications: Boolean(live.alarmStatus?.notifications),
+          exactAlarms: Boolean(live.alarmStatus?.exact),
+        }));
+        setScreenTimeModeState(result.granted ? 'measured' : 'permission_needed');
+        const colorSet = ['#4F46E5', '#0D9488', '#E87929', '#7C3AED', '#0284C7', '#DC2626'];
+        const convert = (rows: UsageResult['today']): AppUsageEntry[] =>
+          (rows ?? []).map((item, index) => ({
+            id: item.id, name: item.name, category: 'App',
+            minutes: item.minutes, color: colorSet[index % colorSet.length],
+          }));
+        setMeasuredSessionUsage(convert(result.session));
+        setMeasuredTodayUsage(convert(result.today));
+      } catch {
+        setScreenTimeModeState('permission_needed');
+        setMeasuredSessionUsage([]);
+        setMeasuredTodayUsage([]);
+      }
+    };
+    refresh();
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    const interval = window.setInterval(refresh, 15000);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+      window.clearInterval(interval);
+    };
+  }, [Boolean(live), sessionStartEpoch, live?.alarmStatus?.notifications, live?.alarmStatus?.exact]);
 
   // Live 1-second timer tick when focus or break is actively running
   useEffect(() => {
@@ -473,7 +612,9 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const target =
         blocks.find((b) => b.id === blockId) ??
         blocks.find((b) => b.type === 'study' && b.dayIndex === fromAbsMin(nowAbsMin).dayIndex) ??
-        blocks.find((b) => b.type === 'study')!;
+        blocks.find((b) => b.type === 'study') ??
+        { id: 'local-focus', subjectId: 'synced-study', title: 'Focus session',
+          focusIntervalMin: 25 };
 
       const intervalMin = target.focusIntervalMin ?? 25;
       const startMinute =
@@ -485,6 +626,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
       setActiveBanner(null);
 
+      if (live) setSessionStartEpoch(Date.now());
       setFocus({
         sessionId: target.id,
         subjectId: target.subjectId ?? 'chem210',
@@ -503,13 +645,15 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
 
       setActiveTab('focus');
-      if (origin === 'pc') {
+      if (live) {
+        showPhoneToast('Focus timer started locally on your phone');
+      } else if (origin === 'pc') {
         showPhoneToast(`Focus started on ${connection.pcName}`);
       } else if (origin === 'alarm') {
         showPhoneToast(`Focus started · ${intervalMin} min interval`);
       }
     },
-    [activeAlarm, blocks, connection.mode, connection.pcName, nowAbsMin, setActiveTab, showPhoneToast]
+    [activeAlarm, blocks, connection.mode, connection.pcName, nowAbsMin, setActiveTab, showPhoneToast, live]
   );
 
   const pauseFocus = useCallback(() => {
@@ -539,12 +683,13 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showBreakSheet: false,
       pendingSyncWhenOnline: connection.mode === 'offline' ? true : false,
     }));
-    showPhoneToast(
-      connection.mode === 'offline'
+    showPhoneToast(live
+      ? 'Focus session completed locally (PC syncing not yet supported)'
+      : connection.mode === 'offline'
         ? 'Session saved locally · will sync when connected'
         : 'Focus session completed & synced'
     );
-  }, [connection.mode, showPhoneToast]);
+  }, [connection.mode, showPhoneToast, live]);
 
   const startBreakInterval = useCallback(() => {
     setActiveBanner(null);
@@ -674,19 +819,32 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [permissions.exactAlarms, scheduledAlerts, showPhoneToast]);
 
   const setScreenTimeMode = useCallback((mode: ScreenTimeStateMode) => {
+    if (live) {
+      if (mode === 'measured' && !permissions.usageAccess) usageBridge()?.request();
+      return;
+    }
     setScreenTimeModeState(mode);
-    setPermissions((prev) => ({
-      ...prev,
-      usageAccess: mode !== 'permission_needed',
-    }));
-  }, []);
+    setPermissions(prev => ({ ...prev, usageAccess: mode !== 'permission_needed' }));
+  }, [live, permissions.usageAccess]);
 
   const setPermission = useCallback((key: keyof AndroidPermissionsState, enabled: boolean) => {
-    setPermissions((prev) => ({ ...prev, [key]: enabled }));
-    if (key === 'usageAccess') {
-      setScreenTimeModeState(enabled ? 'measured' : 'permission_needed');
+    if (live) {
+      if (key === 'usageAccess') {
+        usageBridge()?.request();
+      } else {
+        const alarms = (window as unknown as { StudyFlowAlarms?: {
+          enableNotifications: () => void; enableExact: () => void;
+        } }).StudyFlowAlarms;
+        if (enabled) {
+          if (key === 'notifications') alarms?.enableNotifications();
+          if (key === 'exactAlarms') alarms?.enableExact();
+        }
+      }
+      return;
     }
-  }, []);
+    setPermissions(prev => ({ ...prev, [key]: enabled }));
+    if (key === 'usageAccess') setScreenTimeModeState(enabled ? 'measured' : 'permission_needed');
+  }, [live]);
 
   const completePairing = useCallback(
     (pcName = "Maya's StudyFlow PC") => {
@@ -737,6 +895,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 
   const toggleBluetoothRange = useCallback(() => {
+    if (live) { showPhoneToast('Bluetooth sync is not available in this build'); return; }
     setConnection((prev) => {
       const nextBt = !prev.bluetoothNearby;
       const nextMode: ConnectionMode =
@@ -751,18 +910,20 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         mode: nextMode,
       };
     });
-  }, []);
+  }, [live, showPhoneToast]);
 
   const stagePcCalendarEdit = useCallback(() => {
+    if (live) { showPhoneToast('Use StudyFlow on Windows to edit the calendar'); return; }
     setConnection((prev) => ({
       ...prev,
       pendingPcEdit: SIMULATED_PC_CALENDAR_EDIT,
     }));
     showPhoneToast('PC calendar edit ready — tap Sync now to pull');
-  }, [showPhoneToast]);
+  }, [showPhoneToast, live]);
 
   const triggerSyncNow = useCallback(
     (via?: 'internet' | 'bluetooth') => {
+      if (live) { live.onSync(); return; }
       if (!connection.isPaired) {
         setPairingOpen(true);
         return;
@@ -809,7 +970,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         );
       }, 650);
     },
-    [connection.bluetoothNearby, connection.internetAvailable, connection.isPaired, connection.pendingPcEdit, nowAbsMin, showPhoneToast, updateBlock]
+    [connection.bluetoothNearby, connection.internetAvailable, connection.isPaired, connection.pendingPcEdit, nowAbsMin, showPhoneToast, updateBlock, live]
   );
 
   const updateSettings = useCallback((patch: Partial<CompanionSettingsState>) => {
@@ -892,6 +1053,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [showPhoneToast]);
 
   const value: CompanionContextValue = {
+    liveMode: Boolean(live),
     activeTab,
     setActiveTab,
     selectedDayIndex,
@@ -908,7 +1070,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     jumpToAbsMin,
     advanceClockMinutes,
     resetDemoState,
-    subjects: COMPANION_SUBJECTS,
+    subjects: live ? LIVE_SUBJECTS : COMPANION_SUBJECTS,
     blocks,
     updateBlock,
     scheduledAlerts,
@@ -933,8 +1095,8 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setScreenTimeMode,
     screenTimeTab,
     setScreenTimeTab,
-    sessionScreenTimeApps: SESSION_SCREEN_TIME_APPS,
-    todayScreenTimeApps: TODAY_SCREEN_TIME_APPS,
+    sessionScreenTimeApps: live ? measuredSessionUsage : SESSION_SCREEN_TIME_APPS,
+    todayScreenTimeApps: live ? measuredTodayUsage : TODAY_SCREEN_TIME_APPS,
     connection,
     completePairing,
     skipPairing,
