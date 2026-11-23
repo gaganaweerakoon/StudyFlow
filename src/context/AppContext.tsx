@@ -68,6 +68,11 @@ export interface FocusTimerState {
   lastCompletedMinutes: number;
 }
 
+export type PhoneFocusAction = {
+  action: 'start' | 'pause' | 'resume' | 'reset' | 'complete';
+  sessionId?: string;
+};
+
 export interface UserPreferences {
   onboarding?: 'open'|'later'|'complete';
   focusScene?: string;
@@ -176,6 +181,8 @@ interface AppContextValue {
   recordQuizScore: (quizId: string, attempt: PracticeAttempt) => void;
 
   focusTimer: FocusTimerState;
+  focusClock: { at: number; timer: FocusTimerState };
+  applyPhoneFocusAction: (command: PhoneFocusAction) => void;
   setFocusMode: (mode: FocusTimerState['mode'], customMinutes?: number) => void;
   toggleFocusRunning: () => void;
   resetFocusTimer: () => void;
@@ -482,6 +489,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       if (!useDefault) return { ...prev, running: !prev.running };
       return { ...prev, running: true, calendarSessionId: current?.id,
         subjectId: current?.subjectId ?? '', taskTitle: current?.title ?? '' };
+    });
+  }, [sessions]);
+
+  const applyPhoneFocusAction = useCallback((command: PhoneFocusAction) => {
+    const session = command.sessionId ? sessions.find(item => item.id === command.sessionId) : undefined;
+    setFocusTimer(prev => {
+      switch (command.action) {
+        case 'start': {
+          if (prev.running) return prev;
+          return { ...prev, running: true, completionModalOpen: false,
+            ...(session ? { calendarSessionId: session.id, subjectId: session.subjectId ?? '',
+              taskTitle: session.title } : {}) };
+        }
+        case 'pause':
+          return prev.running ? { ...prev, running: false } : prev;
+        case 'resume':
+          return !prev.running && !prev.completionModalOpen
+            ? { ...prev, running: true } : prev;
+        case 'reset':
+          return { ...prev, running: false, elapsedSeconds: 0, completionModalOpen: false,
+            secondsLeft: prev.mode === 'Stopwatch' ? 0 : prev.totalSeconds };
+        case 'complete': {
+          if (prev.completionModalOpen) return prev;
+          const minutes = prev.mode === 'Stopwatch'
+            ? Math.max(1, Math.round(prev.elapsedSeconds / 60) || 25)
+            : Math.max(1, Math.round((prev.totalSeconds - prev.secondsLeft) / 60) || Math.round(prev.totalSeconds / 60));
+          return { ...prev, running: false, completionModalOpen: true,
+            lastCompletedMinutes: minutes };
+        }
+        default:
+          return prev;
+      }
     });
   }, [sessions]);
 
@@ -1002,6 +1041,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         addQuiz: quiz=>setQuizzes(prev=>[quiz,...prev]),
         recordQuizScore,
         focusTimer,
+        focusClock,
+        applyPhoneFocusAction,
         setFocusMode,
         toggleFocusRunning,
         resetFocusTimer,
