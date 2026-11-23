@@ -20,9 +20,13 @@ function ProviderSettings() {
   const [custom, setCustom] = useState(!choices.includes(assistant.model));
   const [message, setMessage] = useState('');
   const connected = assistant.configured.includes(provider);
+  const [pending, setPending] = useState(false);
+  const persistent = assistant.keyStorage === 'windows';
+  const loading = assistant.keyStorage === 'loading';
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
+    if (pending || loading) return;
     const nextModel = model.trim() || PROVIDERS[provider].model;
     if (!isModelId(nextModel)) {
       setMessage('Enter a valid provider model ID.');
@@ -34,10 +38,27 @@ function ProviderSettings() {
       return;
     }
     assistant.updateSettings({ ...assistant.settings, models: { ...models, [provider]: nextModel } });
-    if (nextKey) assistant.setKey(provider, nextKey);
-    setKey('');
-    setModel(nextModel);
-    setMessage(nextKey ? 'Key saved for this tab. Send a chat message to verify it.' : 'Model saved.');
+    if (!nextKey) {
+      setModel(nextModel);
+      setMessage('Model saved.');
+      return;
+    }
+    await saveKey(nextKey);
+  }
+
+  async function saveKey(value: string) {
+    setPending(true);
+    try {
+      await assistant.setKey(provider, value);
+      setKey('');
+      setMessage(value
+        ? persistent ? 'Key saved on this device.' : 'Key saved for this tab.'
+        : 'Key removed.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -60,17 +81,15 @@ function ProviderSettings() {
         API key
         <input
           type="password" autoComplete="off" spellCheck={false} maxLength={512} value={key}
-          onChange={event => setKey(event.target.value)} disabled={!assistant.available}
-          placeholder={connected ? '••••••••••••  Key set for this tab' : `Paste your ${PROVIDERS[provider].label} key`}
+          onChange={event => setKey(event.target.value)} disabled={!assistant.available || pending || loading}
+          placeholder={connected ? persistent ? 'Key saved · Paste a new key to replace it' : 'Key set for this tab' : `Paste your ${PROVIDERS[provider].label} key`}
         />
       </label>
       <div className="pip-settings-actions">
-        <button type="submit" className="pip-settings-primary">Save</button>
-        {connected && <button type="button" onClick={() => {
-          assistant.setKey(provider, '');
-          setKey('');
-          setMessage('Key removed.');
-        }}>Remove key</button>}
+        <button type="submit" className="pip-settings-primary" disabled={pending || loading}>
+          {connected && key.trim() ? 'Replace key' : 'Save'}
+        </button>
+        {connected && <button type="button" disabled={pending} onClick={() => void saveKey('')}>Remove key</button>}
         {message && <span role="status">{message}</span>}
       </div>
     </form>
@@ -160,7 +179,11 @@ export function AssistantSettings() {
   return (
     <section className="pip-settings">
       <div className="pip-settings-heading"><h2><KeyRound size={18} /> AI Connection</h2></div>
-      <p>Keys stay in memory for this tab. Messages, selected workspace context, and attached images go to your chosen provider.</p>
+      <p>{assistant.keyStorage === 'windows'
+        ? 'API keys are saved per provider in Windows Credential Manager.'
+        : assistant.keyStorage === 'loading' ? 'Checking for saved API keys…' : 'Keys stay in memory for this tab.'}
+        {' '}Messages, selected workspace context, and attached images go to your chosen provider.</p>
+      {assistant.keyStorageError && <p role="status">{assistant.keyStorageError}</p>}
       {!assistant.available && <p role="status">Open StudyFlow at localhost to enter a key and use the assistant.</p>}
       <label>
         Provider

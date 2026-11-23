@@ -11,7 +11,7 @@ export function estimatedTokens(request: ChatRequest) {
   return 80 + textTokens + imageTokens + request.maxOutput;
 }
 
-async function* sendDesktopChat(request: ChatRequest, key: string, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+async function* sendDesktopChat(request: ChatRequest, key: string | undefined, signal: AbortSignal): AsyncGenerator<ChatEvent> {
   signal.throwIfAborted();
   const id = crypto.randomUUID();
   const events = new Channel<ChatEvent>();
@@ -49,11 +49,12 @@ async function* sendDesktopChat(request: ChatRequest, key: string, signal: Abort
   }
 }
 
-export async function* sendChat(request: ChatRequest, key: string, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+export async function* sendChat(request: ChatRequest, key: string | undefined, signal: AbortSignal): AsyncGenerator<ChatEvent> {
   if (isTauri()) {
     yield* sendDesktopChat(request, key, signal);
     return;
   }
+  if (!key) throw new Error('Add the API key for this provider in AI Settings.');
   const response = await fetch(CHAT_ENDPOINT, {
     method: 'POST',
     signal,

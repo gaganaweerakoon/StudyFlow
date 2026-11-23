@@ -1,3 +1,4 @@
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { parseWorkspaceEdit, splitWorkspaceResponse, type WorkspaceEdit } from './workspaceEdit';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '../context/AppContext';
@@ -54,6 +55,9 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   const [settings, setSettings] = useState(readSettings);
   const [usage, setUsage] = useState(() => mergeUsage(desktopUsage?.records ?? readUsage()));
   const [configured, setConfigured] = useState<Provider[]>([]);
+  const [keyStorage, setKeyStorage] = useState<'loading' | 'windows' | 'session'>(() =>
+    isTauri() ? 'loading' : 'session');
+  const [keyStorageError, setKeyStorageError] = useState('');
   const [conversations, setConversations] = useState(() => [
     { ...initial, id: createId() }, ...(desktopHistory?.conversations ?? browserHistory()),
   ].slice(0, historyLimit + 1));
@@ -70,6 +74,21 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   const [lastPage, setLastPage] = useState<WorkspacePage>('dashboard');
   const keys = useRef<Partial<Record<Provider, string>>>({});
   const activeRequest = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    let cancelled = false;
+    void invoke<Provider[] | null>('assistant_saved_providers').then(providers => {
+      if (cancelled) return;
+      setKeyStorage(providers ? 'windows' : 'session');
+      setConfigured(providers ?? []);
+    }).catch(error => {
+      if (cancelled) return;
+      setKeyStorage('windows');
+      setKeyStorageError(String(error));
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (app.route !== 'assistant' && app.route !== 'settings') setLastPage(app.route);
@@ -117,11 +136,17 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     writeSettings(next);
   }
 
-  function setKey(provider: Provider, value: string) {
+  async function setKey(provider: Provider, value: string) {
     const key = value.trim();
-    if (key) keys.current[provider] = key;
-    else delete keys.current[provider];
-    setConfigured((Object.keys(keys.current) as Provider[]));
+    if (keyStorage === 'loading') throw new Error('Wait for AI Settings to finish loading.');
+    if (keyStorage === 'windows') {
+      await invoke('update_assistant_key', { provider, key: key || null });
+    } else if (key) {
+      keys.current[provider] = key;
+    } else {
+      delete keys.current[provider];
+    }
+    setConfigured(items => key ? [...new Set([...items, provider])] : items.filter(item => item !== provider));
   }
 
   function openSettings() {
@@ -166,7 +191,11 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     if ((!typed && !attachment) || activeRequest.current || !available) return;
     const { provider } = settings;
     const key = keys.current[provider];
-    if (!key) {
+    if (keyStorage === 'loading') {
+      setNotice('Pip is checking for saved API keys. Try again in a moment.');
+      return;
+    }
+    if (!configured.includes(provider) && !keyStorageError) {
       setNotice(`Add a ${PROVIDERS[provider].label} API key in AI Settings to send a message.`);
       return;
     }
@@ -270,7 +299,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   async function generate(prompt: string, source: string): Promise<unknown> {
     const provider = settings.provider;
     const key = keys.current[provider];
-    if (!key) throw new Error('Add your '+PROVIDERS[provider].label+' API key in Settings.');
+    if (keyStorage === 'loading') throw new Error('Pip is checking for saved API keys. Try again in a moment.');
+    if (!configured.includes(provider) && !keyStorageError) throw new Error('Add your '+PROVIDERS[provider].label+' API key in Settings.');
     if (!source.trim()) throw new Error('Select a section containing text.');
     if (source.length > CHAT_LIMITS.context) throw new Error('Choose a shorter section for this request.');
     let body = '';
@@ -303,7 +333,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         ...chat, messages: chat.messages.map(item => item.id === message.id ? { ...item, edit: undefined } : item),
       })));
     },
-    generate, available, settings, updateSettings, usage, configured, setKey, model,
+    generate, available, settings, updateSettings, usage, configured, setKey, keyStorage, keyStorageError, model,
     active, activeId, conversations, switchChat, newChat, renameChat, removeChat,
     petOpen, setPetOpen, settingsRequested, setSettingsRequested,
     openSettings, openFullChat: () => app.setRoute('assistant'), context, includeContext, setIncludeContext, draft, setDraft, attachment,

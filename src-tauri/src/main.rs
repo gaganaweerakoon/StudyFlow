@@ -2,6 +2,7 @@
 
 mod google;
 mod companion;
+mod credentials;
 mod ocr;
 
 use serde_json::Value;
@@ -65,6 +66,33 @@ async fn recognize_pdf_page(request: tauri::ipc::Request<'_>) -> Result<String, 
         .map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+fn assistant_saved_providers() -> Result<Option<Vec<&'static str>>, String> {
+    #[cfg(windows)]
+    {
+        let mut providers = Vec::new();
+        for provider in ["openai", "gemini", "claude"] {
+            if credentials::read(provider)?.is_some() {
+                providers.push(provider);
+            }
+        }
+        Ok(Some(providers))
+    }
+    #[cfg(not(windows))]
+    Ok(None)
+}
+
+#[tauri::command]
+fn update_assistant_key(provider: String, key: Option<String>) -> Result<(), String> {
+    #[cfg(windows)]
+    return credentials::update(&provider, key);
+    #[cfg(not(windows))]
+    {
+        let _ = (provider, key);
+        Err("Persistent API keys are available in the Windows app.".into())
+    }
+}
+
 #[derive(Default)]
 struct ActiveChat(std::sync::Mutex<Option<(String, Option<tokio::sync::oneshot::Sender<()>>)>>);
 
@@ -73,9 +101,12 @@ async fn assistant_chat(
     state: State<'_, ActiveChat>,
     id: String,
     request: studyflow_assistant::ChatRequest,
-    key: String,
+    key: Option<String>,
     events: tauri::ipc::Channel<Value>,
 ) -> Result<(), String> {
+    #[cfg(windows)]
+    let key = credentials::read(request.provider_id())?.or(key);
+    let key = key.ok_or("Add the API key for this provider in AI Settings.")?;
     let (cancel, cancelled) = tokio::sync::oneshot::channel();
     {
         let mut active = state.0.lock().map_err(|error| error.to_string())?;
@@ -121,6 +152,8 @@ fn main() {
             inspect_legacy_backup,
             recognize_pdf_page,
             assistant_chat,
+            assistant_saved_providers,
+            update_assistant_key,
             cancel_assistant_chat,
             companion::companion_request,
             google::google_sign_in

@@ -43,6 +43,16 @@ pub struct ChatRequest {
     generate_image: bool,
 }
 
+impl ChatRequest {
+    pub fn provider_id(&self) -> &'static str {
+        match self.provider {
+            Provider::Openai => "openai",
+            Provider::Gemini => "gemini",
+            Provider::Claude => "claude",
+        }
+    }
+}
+
 fn validate(request: &ChatRequest, key: &str) -> Result<(), String> {
     let model = request.model.as_bytes();
     if model.is_empty()
