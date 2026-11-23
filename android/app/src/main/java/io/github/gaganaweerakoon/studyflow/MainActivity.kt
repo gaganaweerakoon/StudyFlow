@@ -75,6 +75,21 @@ class MainActivity : Activity() {
                 emit("studyflow-pairing-result", result.put("id", id))
             }
         }
+
+        @JavascriptInterface
+        fun control(id: String, endpoint: String, token: String, command: String, sessionId: String) {
+            if (id.length > 64 || endpoint.length > 2048 || token.length != 64 ||
+                command !in listOf("start", "pause", "resume", "reset", "complete") ||
+                sessionId.length > 128) return
+            pairingWorker.execute {
+                val result = try {
+                    LocalCompanion.request(endpoint, token, command, sessionId)
+                } catch (error: Exception) {
+                    JSONObject().put("error", error.message ?: "Could not send focus command.")
+                }
+                emit("studyflow-pairing-result", result.put("id", id))
+            }
+        }
     }
 
     @Deprecated("Scanner activity returns its result here.")
