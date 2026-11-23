@@ -156,8 +156,8 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
             {message.attachment && <div className="pip-message-file"><Paperclip size={13} /> {message.attachment}</div>}
             {message.role === 'user' ? <p className="pip-user-text">{message.text}</p> : (
               message.text ? <div className="pip-markdown">
-                <Suspense fallback={<p>{message.text}</p>}>
-                  <AssistantMarkdown text={message.text} />
+                <Suspense fallback={<p>Loading reply…</p>}>
+                  <AssistantMarkdown text={message.text} diagrams={message.state === 'complete'} />
                 </Suspense>
               </div> : <p className="pip-muted">{message.state === 'streaming' ? 'Thinking…' : message.state === 'stopped' ? 'Reply stopped.' : 'Reply unavailable.'}</p>
             )}
