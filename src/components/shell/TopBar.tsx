@@ -1,3 +1,4 @@
+import {GoogleAccount} from '../../desktop/GoogleAccount';
 import { UserRound } from 'lucide-react';
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -440,6 +441,7 @@ export const TopBar: React.FC = () => {
                   {preferences.major}
                 </div>
               </div>
+              <GoogleAccount/>
               <button
                 type="button"
                 onClick={() => {

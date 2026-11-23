@@ -10,7 +10,9 @@ use url::Url;
 use uuid::Uuid;
 
 #[tauri::command]
-pub async fn google_sign_in(client_id: String, client_secret: String) -> Result<Value, String> {
+pub async fn google_sign_in() -> Result<Value, String> {
+    let client_id = option_env!("STUDYFLOW_GOOGLE_CLIENT_ID").unwrap_or("").to_string();
+    let client_secret = option_env!("STUDYFLOW_GOOGLE_CLIENT_SECRET").unwrap_or("").to_string();
     if !client_id.ends_with(".apps.googleusercontent.com")
         || client_id.len() > 200
         || !client_id
@@ -19,7 +21,7 @@ pub async fn google_sign_in(client_id: String, client_secret: String) -> Result<
         || client_secret.is_empty()
         || client_secret.len() > 512
     {
-        return Err("Select a valid Google Desktop app OAuth configuration.".into());
+        return Err("Google sign-in requires the app publisher to configure the StudyFlow desktop OAuth client.".into());
     }
     let verifier = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     let state = Uuid::new_v4().to_string();
