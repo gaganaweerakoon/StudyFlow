@@ -39,6 +39,7 @@ export interface ChatRequest {
   model: string;
   prompt: string;
   context: string;
+  clientContext?: string;
   history: ChatTurn[];
   image?: ChatImage;
   generateImage?: boolean;

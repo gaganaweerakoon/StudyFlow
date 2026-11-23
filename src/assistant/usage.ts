@@ -1,11 +1,13 @@
 import { CHAT_LIMITS, isModelId, isProvider, type Provider, type ReplyLimit, type TokenUsage } from './protocol';
-import { localDay } from './workspaceContext';
+import { localDay, validTimeZone } from './workspaceContext';
 
 export interface AssistantSettings {
   provider: Provider;
   models: Partial<Record<Provider, string>>;
   maxOutput: ReplyLimit;
   dailyLimit: number;
+  language?: string;
+  timezone?: string;
 }
 
 export interface UsageEntry {
@@ -45,6 +47,8 @@ export function readSettings(): AssistantSettings {
     dailyLimit: Number.isInteger(saved.dailyLimit) && saved.dailyLimit >= 0 && saved.dailyLimit <= 1_000_000
       ? saved.dailyLimit : defaults.dailyLimit,
     models,
+    language: ['English', 'Sinhala', 'Tamil'].includes(saved.language) ? saved.language : undefined,
+    timezone: validTimeZone(saved.timezone) ? saved.timezone : undefined,
   };
 }
 

@@ -45,6 +45,7 @@ function providerRequest(request: ChatRequest, key: string) {
   const prompt = request.context
     ? `${request.prompt}\n\nWorkspace reference (read-only):\n${request.context}`
     : request.prompt;
+  const system = request.clientContext ? SYSTEM_PROMPT + '\n' + request.clientContext : SYSTEM_PROMPT;
   const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
 
   if (provider === 'openai') {
@@ -53,7 +54,7 @@ function providerRequest(request: ChatRequest, key: string) {
       url: 'https://api.openai.com/v1/responses',
       headers,
       body: {
-        model, instructions: SYSTEM_PROMPT, stream: true, store: false, max_output_tokens: maxOutput,
+        model, instructions: system, stream: true, store: false, max_output_tokens: maxOutput,
         input: [
           ...history.map(({ role, text }) => ({ role, content: text })),
           { role: 'user', content: [
@@ -74,7 +75,7 @@ function providerRequest(request: ChatRequest, key: string) {
       url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
       headers,
       body: {
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        systemInstruction: { parts: [{ text: system }] },
         generationConfig: {
           maxOutputTokens: maxOutput,
         },
@@ -95,7 +96,7 @@ function providerRequest(request: ChatRequest, key: string) {
     url: 'https://api.anthropic.com/v1/messages',
     headers,
     body: {
-      model, system: SYSTEM_PROMPT, stream: true, max_tokens: maxOutput,
+      model, system, stream: true, max_tokens: maxOutput,
       messages: [
         ...history.map(({ role, text }) => ({ role, content: text })),
         { role: 'user', content: [

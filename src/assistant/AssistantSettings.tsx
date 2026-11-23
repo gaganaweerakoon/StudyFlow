@@ -5,6 +5,8 @@ import { PROVIDERS, isModelId, isProvider, type Provider } from './protocol';
 import { type UsageEntry } from './usage';
 import './assistant.css';
 
+const timezones = [...new Set(['Asia/Colombo', 'UTC', ...Intl.supportedValuesOf('timeZone')])].sort();
+
 const MODEL_CHOICES: Record<Provider, string[]> = {
   openai: ['gpt-4.1-mini', 'gpt-4.1', 'gpt-5-mini', 'gpt-5.4-mini', 'gpt-6.2-sol', 'gpt-6.2-astra'],
   gemini: ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-4-hydrogen', 'gemini-4-carbon', 'gemini-4-neon', 'gemini-4-argon'],
@@ -194,6 +196,20 @@ export function AssistantSettings() {
           {Object.entries(PROVIDERS).map(([id, item]) => <option key={id} value={id}>{item.label}</option>)}
         </select>
       </label>
+      <div className="pip-settings-form">
+        <label>Default response language
+          <select value={settings.language ?? ''} onChange={event => assistant.updateSettings({ ...settings, language: event.target.value || undefined })}>
+            <option value="">Match my message</option>
+            {['English', 'Sinhala', 'Tamil'].map(language => <option key={language}>{language}</option>)}
+          </select>
+        </label>
+        <label>Pip timezone
+          <select value={settings.timezone ?? ''} onChange={event => assistant.updateSettings({ ...settings, timezone: event.target.value || undefined })}>
+            <option value="">Use device timezone</option>
+            {timezones.map(zone => <option key={zone}>{zone}</option>)}
+          </select>
+        </label>
+      </div>
       <ProviderSettings key={settings.provider} />
       <details><summary>View usage</summary><UsageViewer usage={assistant.usage} /></details>
     </section>

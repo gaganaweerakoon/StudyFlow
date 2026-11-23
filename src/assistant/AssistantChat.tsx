@@ -190,7 +190,7 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
           <label><input type="checkbox" checked={assistant.includeContext} onChange={event => assistant.setIncludeContext(event.target.checked)} /> Include context</label>
           {assistant.includeContext && <details>
             <summary title="Preview context sent with your message">{assistant.context.label}<ChevronDown size={12} /></summary>
-            <pre>{assistant.context.text}</pre>
+            <pre>{assistant.context.text || 'No workspace records will be sent.'}</pre>
           </details>}
         </div>
         {assistant.notice && <p className="pip-notice" role="status">{assistant.notice}</p>}

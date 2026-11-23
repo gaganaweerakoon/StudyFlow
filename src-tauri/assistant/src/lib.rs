@@ -36,6 +36,7 @@ pub struct ChatRequest {
     model: String,
     prompt: String,
     context: String,
+    client_context: Option<String>,
     history: Vec<Turn>,
     image: Option<Image>,
     max_output: u32,
@@ -64,6 +65,7 @@ fn validate(request: &ChatRequest, key: &str) -> Result<(), String> {
         || !matches!(request.max_output, 300 | 650 | 1200 | 16384)
         || request.prompt.trim().is_empty()
         || request.prompt.encode_utf16().count() > 3000
+        || request.client_context.as_ref().is_some_and(|value| value.encode_utf16().count() > 300)
         || request.context.encode_utf16().count() > 120_000
         || request.history.len() > 20
         || request.history.iter().any(|turn| {
@@ -97,6 +99,7 @@ fn validate(request: &ChatRequest, key: &str) -> Result<(), String> {
 fn make_request(client: &Client, request: &ChatRequest, key: &str) -> RequestBuilder {
     let model = &request.model;
     let limit = request.max_output;
+    let system = request.client_context.as_ref().map_or_else(|| SYSTEM.to_owned(), |extra| format!("{SYSTEM}\n{extra}"));
     let prompt = if request.context.is_empty() {
         request.prompt.clone()
     } else {
@@ -125,20 +128,20 @@ fn make_request(client: &Client, request: &ChatRequest, key: &str) -> RequestBui
         Provider::Openai => {
             input.push(json!({"role":"user","content":parts}));
             client.post("https://api.openai.com/v1/responses").bearer_auth(key)
-                .json(&json!({"model":model,"instructions":SYSTEM,"stream":true,"store":false,"max_output_tokens":limit,"input":input}))
+                .json(&json!({"model":model,"instructions":system,"stream":true,"store":false,"max_output_tokens":limit,"input":input}))
         }
         Provider::Gemini => {
             input.push(json!({"role":"user","parts":parts}));
             let config = json!({"maxOutputTokens":limit});
             client.post(format!("https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse"))
                 .header("x-goog-api-key", key)
-                .json(&json!({"systemInstruction":{"parts":[{"text":SYSTEM}]},"generationConfig":config,"contents":input}))
+                .json(&json!({"systemInstruction":{"parts":[{"text":system}]},"generationConfig":config,"contents":input}))
         }
         Provider::Claude => {
             input.push(json!({"role":"user","content":parts}));
             client.post("https://api.anthropic.com/v1/messages")
                 .header("x-api-key", key).header("anthropic-version", "2023-06-01")
-                .json(&json!({"model":model,"system":SYSTEM,"stream":true,"max_tokens":limit,"messages":input}))
+                .json(&json!({"model":model,"system":system,"stream":true,"max_tokens":limit,"messages":input}))
         }
     }
 }

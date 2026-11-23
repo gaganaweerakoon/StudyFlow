@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { useApp } from '../context/AppContext';
 import { estimatedTokens, isAssistantAvailable, sendChat, type Attachment } from './chatClient';
 import { CHAT_LIMITS, PROVIDERS, type ChatRequest, type ChatTurn, type Provider, type TokenUsage } from './protocol';
-import { localDay, workspaceContext, type WorkspacePage } from './workspaceContext';
+import { localDay, requestClock, workspaceContext, type WorkspacePage } from './workspaceContext';
 import { mergeUsage, readSettings, readUsage, todayTokens, usageKey, writeSettings, writeUsage, type AssistantSettings, type UsageEntry } from './usage';
 
 export interface DesktopUsage {
@@ -129,7 +129,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   const active = conversations.find(chat => chat.id === activeId) ?? conversations[0];
   const model = settings.models[settings.provider] ?? PROVIDERS[settings.provider].model;
   const currentPage = app.route === 'assistant' || app.route === 'settings' ? lastPage : app.route;
-  const context = workspaceContext(app, currentPage, draft.trim() || (attachment ? imagePrompt : ''));
+  const context = workspaceContext(app, currentPage, draft.trim() || (attachment ? imagePrompt : ''), requestClock(settings.timezone));
   const available = isAssistantAvailable();
 
   function updateSettings(next: AssistantSettings) {
@@ -216,10 +216,12 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     }
     if (generateImage && (!typed || attachment || provider === 'claude')) return;
     const prompt = typed || imagePrompt;
+    const clock = requestClock(settings.timezone);
     const request: ChatRequest = {
       prompt, provider, model, maxOutput: 16384,
       generateImage,
-      context: includeContext && !generateImage ? context.text : '',
+      context: includeContext && !generateImage ? workspaceContext(currentApp.current, currentPage, prompt, clock).text : '',
+      clientContext: generateImage ? undefined : `Current local date and time: ${clock.label}. Resolve relative dates and times using this clock. Default response language: ${settings.language ?? 'match the user’s message'}.`,
       image: attachment?.image,
       history: generateImage ? [] : active.messages
         .filter(message => message.text && (message.role === 'user' || message.state === 'complete'))

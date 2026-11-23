@@ -23,6 +23,7 @@ function isRequest(value: unknown): value is ChatRequest {
       !CHAT_LIMITS.response.some(limit => limit === maxOutput)) return false;
   if (!history.every(turn => isObject(turn) && (turn.role === 'user' || turn.role === 'assistant') &&
       typeof turn.text === 'string' && turn.text.length <= CHAT_LIMITS.historyMessage)) return false;
+  if (value.clientContext !== undefined && (typeof value.clientContext !== 'string' || value.clientContext.length > 300)) return false;
   if (value.generateImage !== undefined && typeof value.generateImage !== 'boolean') return false;
   if (image === undefined) return true;
   if (!isObject(image) || (image.mime !== 'image/png' && image.mime !== 'image/jpeg') ||
