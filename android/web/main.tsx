@@ -45,7 +45,7 @@ function localRequest(endpoint: string, token: string | null): Promise<LocalRepl
     const timer = window.setTimeout(() => {
       cleanup();
       reject(new Error('The PC did not respond. Check the Wi-Fi connection and try again.'));
-    }, 25_000);
+    }, 40_000);
     function cleanup() {
       window.clearTimeout(timer);
       window.removeEventListener('studyflow-pairing-result', result);
