@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:gravity="center_vertical"
+    android:padding="15dp"
+    android:background="@drawable/widget_focus_background">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+        <TextView android:id="@+id/widget_title" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:text="StudyFlow · Focus" android:textSize="14sp"
+            android:textStyle="bold" android:textColor="#FFFFFF" android:maxLines="1" />
+        <TextView android:id="@+id/widget_phase" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:text="Ready" android:textColor="#BFB9FF"
+            android:textSize="12sp" />
+    </LinearLayout>
+    <TextView android:id="@+id/widget_session" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="5dp"
+        android:text="Open StudyFlow to start focusing" android:textSize="12sp"
+        android:textColor="#CAC9D9" android:maxLines="1" android:ellipsize="end"/>
+    <Chronometer android:id="@+id/widget_timer"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="5dp" android:format="%s"
+        android:text="25:00" android:textSize="28sp"
+        android:textStyle="bold" android:textColor="#FFFFFF"/>
+    <ProgressBar android:id="@+id/widget_progress" android:layout_width="match_parent"
+        android:layout_height="4dp" android:layout_marginTop="7dp"
+        style="?android:attr/progressBarStyleHorizontal" android:indeterminate="false"
+        android:max="1000" android:progress="0"
+        android:progressTint="#8E85FF" android:progressBackgroundTint="#35354B"/>
+    <TextView android:id="@+id/widget_sync" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="7dp"
+        android:text="Tap to open Focus" android:textSize="11sp" android:textColor="#AEADBC"
+        android:maxLines="1" android:ellipsize="end"/>
+</LinearLayout>
