@@ -90,6 +90,7 @@ pub async fn local_companion(
             "focus_commands" => companion.drain_focus_commands(),
             "invite" => {
                 companion.publish(events.ok_or("Missing calendar.")?)?;
+                if let Some(focus) = focus { companion.publish_focus(focus)?; }
                 companion.invite()
             }
             "status" => companion.status(),
