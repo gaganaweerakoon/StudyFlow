@@ -4,7 +4,7 @@ import { relayRequest, type CompanionCalendar, type CompanionFocusUpdate, type C
 import { MobileCompanionApp } from '../../src/mobile/MobileCompanionApp';
 import { deviceAlerts } from '../../src/companion/alarms';
 import { QrCode } from 'lucide-react';
-import logo from '../../src-tauri/icons/icon.png';
+import logo from './studyflow-icon.svg';
 import './index.css';
 
 interface AlarmStatus { exact: boolean; notifications: boolean }
