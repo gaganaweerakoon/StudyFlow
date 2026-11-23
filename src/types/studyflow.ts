@@ -117,6 +117,7 @@ export interface PdfHighlight {
 }
 
 export interface NoteItem {
+  pdf?: import('../notes/pdf').PdfSource;
   id: string;
   folderId: string;
   subjectId: string;

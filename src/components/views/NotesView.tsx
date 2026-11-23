@@ -1,3 +1,4 @@
+import { PdfPanel } from '../../notes/PdfPanel';
 import React, { useState } from 'react';
 import {
   Folder,
@@ -301,7 +302,7 @@ export const NotesView: React.FC = () => {
           </div>
 
           {rightTab === 'pdf' ? (
-            <p className="p-4 text-sm">No PDF attached.</p>
+            <PdfPanel key={activeNote.id} source={activeNote.pdf} save={pdf => updateNote(activeNote.id, {pdf})}/>
           ) : (
             <div className="flex-1 overflow-y-auto p-3.5 space-y-4">
               <div>
