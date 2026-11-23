@@ -22,8 +22,7 @@ export interface PdfDocument {
   destroy(): Promise<void>;
 }
 export async function openPdf(data: string): Promise<PdfDocument> {
-  const path = '/pdfjs/pdf.min.mjs';
-  const api = await import(/* @vite-ignore */ path);
+  const api = await import('../vendor/pdf.min.mjs');
   api.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.mjs';
   return api.getDocument({ data: Uint8Array.from(atob(data), ch => ch.charCodeAt(0)), isEvalSupported: false }).promise;
 }
