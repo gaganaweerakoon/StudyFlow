@@ -55,6 +55,11 @@ export const SettingsView: React.FC = () => {
         <h2 className="font-display text-[calc(13px*var(--sf-font-scale,1))] font-semibold text-[var(--text-secondary)] px-0.5">
           Paired PC
         </h2>
+        {liveMode && <button type="button" onClick={() => window.dispatchEvent(new Event('studyflow-show-permissions'))}
+          className="w-full min-h-11 rounded-xl text-sm font-semibold"
+          style={{ backgroundColor: 'var(--accent-soft)', border: '1px solid var(--accent-border)', color: 'var(--accent)' }}>
+          Open permission setup
+        </button>}
         <div className="rounded-xl overflow-hidden divide-y" style={sectionCardStyle}>
           <button
             type="button"
@@ -294,7 +299,7 @@ export const SettingsView: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setPermission('exactAlarms', true);
-                  showPhoneToast('Exact alarm access enabled');
+                  if (!liveMode) showPhoneToast('Exact alarm access enabled');
                 }}
                 className="w-full min-h-[48px] rounded-xl text-[calc(13px*var(--sf-font-scale,1))] font-semibold transition-opacity hover:opacity-90"
                 style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
@@ -313,6 +318,17 @@ export const SettingsView: React.FC = () => {
 
         </div>
       </section>
+
+      {liveMode && (
+        <section aria-label="Focus home widget" className="space-y-2">
+          <h2 className="font-display text-[calc(13px*var(--sf-font-scale,1))] font-semibold text-[var(--text-secondary)] px-0.5">Focus home-screen widget</h2>
+          <div className="rounded-xl p-4 space-y-2" style={sectionCardStyle}>
+            <p className="text-sm font-semibold text-[var(--text-primary)]">Focus at a glance</p>
+            <p className="text-xs text-[var(--text-secondary)]">Shows the PC focus timer, current session, progress, and last sync. Tap it to open Focus.</p>
+            <p className="text-xs text-[var(--text-muted)]">Long-press your Android home screen → Widgets → StudyFlow → Focus. The timer continues counting on the widget, but new PC changes require the app to reconnect.</p>
+          </div>
+        </section>
+      )}
 
       {/* 4. Permissions (Notifications, Exact Alarms, Usage Access separately) */}
       <section aria-label="Permissions" className="space-y-2">
