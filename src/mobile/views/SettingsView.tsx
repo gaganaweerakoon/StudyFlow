@@ -17,6 +17,8 @@ export const SettingsView: React.FC = () => {
   const {
     nowAbsMin,
     blocks,
+    liveMode,
+    syncOptions,
     snoozedWakeUp,
     connection,
     permissions,
@@ -108,6 +110,34 @@ export const SettingsView: React.FC = () => {
           </button>
         </div>
       </section>
+
+      {liveMode && syncOptions && (
+        <section aria-label="Live sync options" className="space-y-2">
+          <h2 className="font-display text-[calc(13px*var(--sf-font-scale,1))] font-semibold text-[var(--text-secondary)] px-0.5">Live synchronization</h2>
+          <div className="rounded-xl p-4 space-y-3" style={sectionCardStyle}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-[var(--text-primary)]">Auto-sync calendar & focus</p>
+                <p className="text-xs text-[var(--text-muted)] mt-1">While this app is open, follow PC starts, pauses, resumes and completions.</p>
+              </div>
+              <button type="button" role="switch" aria-checked={syncOptions.autoSync} onClick={() => syncOptions.setAutoSync(!syncOptions.autoSync)}
+                className="min-w-[52px] min-h-[44px] flex items-center justify-center" aria-label="Automatically sync with PC">
+                <span className="flex w-11 h-6 rounded-full p-0.5" style={{ background: syncOptions.autoSync ? 'var(--accent)' : 'var(--border-strong)', justifyContent: syncOptions.autoSync ? 'flex-end' : 'flex-start' }}><span className="h-5 w-5 rounded-full bg-white shadow-sm" /></span>
+              </button>
+            </div>
+            <label className="flex items-center justify-between gap-3 text-sm">
+              <span className="font-medium text-[var(--text-primary)]">Refresh interval</span>
+              <select aria-label="Automatic sync interval" disabled={!syncOptions.autoSync} value={syncOptions.intervalSeconds}
+                onChange={event => syncOptions.setIntervalSeconds(Number(event.target.value))}
+                className="min-h-11 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-sm">
+                <option value={2}>2 seconds</option><option value={5}>5 seconds</option>
+                <option value={15}>15 seconds</option><option value={30}>30 seconds</option>
+              </select>
+            </label>
+            <p className="text-xs text-[var(--text-muted)]">Focus state comes from Windows. Android can request timer controls, but focus history is still logged on Windows. Updates may pause when Android suspends the app.</p>
+          </div>
+        </section>
+      )}
 
       {/* 2. Session Reminders */}
       <section aria-label="Session reminders" className="space-y-2">
