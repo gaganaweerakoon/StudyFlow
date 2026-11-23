@@ -1,3 +1,4 @@
+import { localDay } from '../../assistant/workspaceContext';
 import React, { useState, useMemo } from 'react';
 import {
   Search,
@@ -34,6 +35,7 @@ export const TasksView: React.FC = () => {
   const {
     tasks,
     subjects,
+    legacyCalendar,
     toggleTaskStatus,
     toggleSubtask,
     updateTask,
@@ -53,6 +55,12 @@ export const TasksView: React.FC = () => {
   const [newSubtaskText, setNewSubtaskText] = useState('');
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
 
+  const today = legacyCalendar ? localDay() : '2026-11-22';
+  const calendarDates = Array.from({ length: 5 }, (_, index) => {
+    const day = new Date(today + 'T12:00:00');
+    day.setDate(day.getDate() + index - 1);
+    return localDay(day);
+  });
   const visibleTasks = useMemo(
     () =>
       filterAndSortTasks(tasks, {
@@ -61,8 +69,9 @@ export const TasksView: React.FC = () => {
         scope,
         priority: priorityFilter,
         sortBy,
+        todayIso: today,
       }),
-    [tasks, query, subjectFilter, scope, priorityFilter, sortBy]
+    [tasks, query, subjectFilter, scope, priorityFilter, sortBy, today]
   );
 
   const drawerTask = tasks.find((t) => t.id === drawerTaskId) ?? null;
@@ -464,9 +473,9 @@ export const TasksView: React.FC = () => {
       {layout === 'calendar' && (
         <div className="rounded-xl p-4" style={surfaceStyle}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            {['2026-11-21', '2026-11-22', '2026-11-23', '2026-11-24', '2026-11-25'].map((dayIso) => {
+            {calendarDates.map((dayIso) => {
               const dayTasks = visibleTasks.filter((t) => t.dueDate === dayIso);
-              const isToday = dayIso === '2026-11-22';
+              const isToday = dayIso === today;
               return (
                 <div
                   key={dayIso}
@@ -478,7 +487,7 @@ export const TasksView: React.FC = () => {
                 >
                   <div className="flex items-center justify-between text-[12px] font-semibold">
                     <span className="text-[var(--text-primary)]">
-                      {isToday ? 'Today · Nov 22' : dayIso.slice(5)}
+                      {isToday ? `Today · ${dayIso.slice(5)}` : dayIso.slice(5)}
                     </span>
                     <span className="font-mono-num text-[11px] text-[var(--text-muted)]">
                       {dayTasks.length}

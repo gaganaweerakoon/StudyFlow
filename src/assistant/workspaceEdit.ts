@@ -20,6 +20,35 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
     if (!edit || typeof edit !== 'object' || Array.isArray(edit)) return;
     const title = typeof edit.title === 'string' && edit.title.trim() && edit.title.length <= 200 ? edit.title.trim() : undefined;
     const id = typeof edit.id === 'string' ? edit.id : undefined;
+    if (edit.action === 'delete_tasks' || edit.action === 'complete_tasks') {
+      const ids: unknown = edit.ids;
+      if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100 ||
+          ids.some(value => typeof value !== 'string') || new Set(ids).size !== ids.length) return;
+      const targets = ids.map(id => app.tasks.find(task => task.id === id));
+      if (targets.some(task => !task)) return;
+      const deleting = edit.action === 'delete_tasks';
+      return {
+        title: `${deleting ? 'Delete' : 'Complete'} ${ids.length} ${ids.length === 1 ? 'task' : 'tasks'} · ${targets.map(task => task?.title).join(', ')}`,
+        apply: current => {
+          if (targets.some(task => current.tasks.find(item => item.id === task?.id) !== task)) return false;
+          if (deleting) current.deleteTasks(ids);
+          else for (const id of ids) current.updateTask(id, { status: 'done' });
+          return true;
+        },
+      };
+    }
+    if (edit.action === 'delete_event' && id) {
+      const event = app.sessions.find(item => item.id === id);
+      if (!event || event.recurring && edit.scope !== 'occurrence') return;
+      return {
+        title: `Delete “${event.title}” on ${event.date}${event.recurring ? ' · this occurrence only' : ''}`,
+        apply: current => {
+          if (JSON.stringify(current.sessions.find(item => item.id === id)) !== JSON.stringify(event)) return false;
+          current.deleteSession(id);
+          return true;
+        },
+      };
+    }
     if (edit.action === 'create_task' && title && (edit.date === undefined || validDate(edit.date))) {
       const date = typeof edit.date === 'string' ? edit.date : '';
       return {
