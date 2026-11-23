@@ -1,3 +1,4 @@
+import AssistantMarkdown from '../../assistant/AssistantMarkdown';
 import { PdfPanel } from '../../notes/PdfPanel';
 import React, { useState } from 'react';
 import {
@@ -18,6 +19,7 @@ import {
   PanelRightOpen,
   Check,
   ExternalLink,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -35,6 +37,8 @@ export const NotesView: React.FC = () => {
 
   const [activeFolderId, setActiveFolderId] = useState<string>('fld-all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingNote, setEditingNote] = useState<string>();
+  const [addingResource, setAddingResource] = useState<string>();
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [rightTab, setRightTab] = useState<'pdf' | 'resources'>('pdf');
   const [highlightColor, setHighlightColor] = useState<'amber' | 'sky' | 'emerald'>('amber');
@@ -56,6 +60,7 @@ export const NotesView: React.FC = () => {
     .sort((a, b) => Number(b.pinned) - Number(a.pinned));
 
   const activeNote = notes.find((n) => n.id === selectedNoteId) ?? filteredNotes[0] ?? notes[0];
+  const sourceEditing = activeNote && (editingNote === activeNote.id || !activeNote.content);
   const activeSubject = subjects.find((s) => s.id === activeNote?.subjectId);
 
   const handleContentChange = (nextContent: string) => {
@@ -67,6 +72,7 @@ export const NotesView: React.FC = () => {
 
   const insertMarkdown = (snippet: string) => {
     if (!activeNote) return;
+    setEditingNote(activeNote.id);
     handleContentChange(`${activeNote.content}\n${snippet}`);
   };
 
@@ -244,20 +250,58 @@ export const NotesView: React.FC = () => {
               <select aria-label="Note subject" value={activeNote.subjectId} onChange={e => updateNote(activeNote.id, {subjectId:e.target.value})}>
                 <option value="">No subject</option>{subjects.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
               </select>
-              <button onClick={() => { if (window.confirm('Delete “' + activeNote.title + '”?')) deleteNote(activeNote.id); }}>Delete note</button>
               <span aria-hidden="true">·</span>
               <span>{activeNote.tags.join(' / ')}</span>
               <span aria-hidden="true">·</span>
               <span>Updated {activeNote.updatedAt}</span>
             </div>
 
-            <textarea
-              value={activeNote.content}
-              onChange={(e) => handleContentChange(e.target.value)}
-              aria-label="Note markdown editor"
-              className="w-full min-h-[380px] bg-transparent text-[13.5px] leading-relaxed text-[var(--text-primary)] font-mono focus:outline-none resize-none pt-2"
-              style={{ borderTop: '1px solid var(--border-subtle)' }}
-            />
+            <div className="flex flex-wrap gap-2 text-sm">
+              <button type="button" aria-pressed={!sourceEditing} className="rounded-lg border border-[var(--border-subtle)] px-3 py-2" onClick={() => setEditingNote(undefined)}>Preview</button>
+              <button type="button" aria-pressed={Boolean(sourceEditing)} className="rounded-lg border border-[var(--border-subtle)] px-3 py-2" onClick={() => setEditingNote(activeNote.id)}>Edit Markdown</button>
+              <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3 py-2" onClick={() => { setRightPanelOpen(true); setRightTab('pdf'); }}>
+                <FileText className="h-4 w-4" /> PDF to Markdown
+              </button>
+              <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3 py-2" onClick={() => setAddingResource(activeNote.id)}>
+                <Plus className="h-4 w-4" /> Add resource
+              </button>
+              <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-red-500" onClick={() => {
+                if (window.confirm('Delete “' + activeNote.title + '”?')) deleteNote(activeNote.id);
+              }}><Trash2 className="h-4 w-4" /> Delete note</button>
+            </div>
+            {addingResource === activeNote.id && (
+              <form className="flex flex-wrap gap-2" onSubmit={event => {
+                event.preventDefault();
+                const url = new URL(String(new FormData(event.currentTarget).get('url')));
+                if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+                  pushToast('Enter an HTTP or HTTPS address.');
+                  return;
+                }
+                updateNote(activeNote.id, {
+                  linkedResources: [...new Set([...activeNote.linkedResources, url.href])],
+                  updatedAt: 'Just now',
+                });
+                setAddingResource(undefined);
+                setRightPanelOpen(true);
+                setRightTab('resources');
+              }}>
+                <input autoFocus required type="url" name="url" aria-label="Resource URL" placeholder="https://…" className="min-w-0 flex-1 rounded-lg border border-[var(--border-subtle)] px-3 py-2" />
+                <button type="submit" className="rounded-lg bg-[var(--accent)] px-3 py-2 text-[var(--accent-fg)]">Save link</button>
+                <button type="button" className="px-2 py-2" onClick={() => setAddingResource(undefined)}>Cancel</button>
+              </form>
+            )}
+            {sourceEditing ? (
+              <textarea
+                value={activeNote.content}
+                onChange={(e) => handleContentChange(e.target.value)}
+                aria-label="Note markdown editor"
+                className="min-h-[380px] w-full resize-y border-t border-[var(--border-subtle)] bg-transparent pt-3 text-[13.5px] leading-relaxed focus:outline-none"
+              />
+            ) : (
+              <article className="pip-markdown min-w-0 border-t border-[var(--border-subtle)] pt-4 text-sm leading-loose [overflow-wrap:anywhere]" aria-label="Note preview">
+                <AssistantMarkdown text={activeNote.content.trim().replace(/^```(?:markdown|md)\s*\n([\s\S]*?)\n```$/, '$1')} />
+              </article>
+            )}
           </div>
         </div>
       )}
@@ -339,7 +383,9 @@ export const NotesView: React.FC = () => {
                       className="p-2.5 rounded-lg flex items-center justify-between gap-2 text-[12px] text-[var(--text-secondary)]"
                       style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}
                     >
-                      <span className="truncate">{res}</span>
+                      {/^https?:\/\//i.test(res)
+                        ? <a href={res} target="_blank" rel="noopener noreferrer" className="truncate text-[var(--accent)] hover:underline">{res}</a>
+                        : <span className="truncate">{res}</span>}
                       <ExternalLink className="w-3 h-3 text-[var(--text-muted)] shrink-0" />
                     </div>
                   ))}

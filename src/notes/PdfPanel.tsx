@@ -102,11 +102,11 @@ export function PdfPanel({source, save}: {source?:PdfSource; save:(next:PdfSourc
         ? <text key={i} x={m.points[0][0]} y={m.points[0][1]} fill="#273998" fontSize="14">{m.text}</text>
         : <polyline key={i} points={m.points.map(p=>p.join(',')).join(' ')} fill="none" stroke={m.kind==='ink'?'#2843ac':'#ffd025'} opacity={m.kind==='ink'?1:0.45} strokeWidth={m.kind==='ink'?2:15} strokeLinecap="round"/>)}
     </svg></div>
-    {(!source.pages || source.pages.some(page => !page.structured)) && <button disabled={working || !doc} onClick={async()=>{
+    {(!source.pages || source.pages.some(page => !page.structured)) && <button className="rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm" disabled={working || !doc} onClick={async()=>{
       if(!doc)return;setWorking(true);try {const pages=await preparePages(doc); save({...latest.current!,pages});}
       catch(err){setError(String(err));}finally{setWorking(false);}
     }}>{working?'Preparing…':source.pages?'Rebuild Markdown':'Prepare Markdown'}</button>}
-    {scanned.length > 0 && (isTauri() ? <button disabled={working || !doc} onClick={recognizeScans}>
+    {scanned.length > 0 && (isTauri() ? <button className="rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm" disabled={working || !doc} onClick={recognizeScans}>
       Recognize scanned text ({scanned.length} {scanned.length === 1 ? 'page' : 'pages'})
     </button> : <p>Open this note in the desktop app to recognize scanned text offline.</p>)}
     {ocrStatus && <p role="status">{ocrStatus}</p>}
