@@ -17,6 +17,11 @@ on:
       - vite.android.config.ts
       - tsconfig.json
 
+# Cancel superseded builds when source files are committed in quick succession.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
