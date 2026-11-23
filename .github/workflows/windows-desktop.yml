@@ -29,7 +29,7 @@ jobs:
       - name: Check TypeScript
         run: bun run lint
       - name: Run existing tests
-        run: node --import tsx --test src/utils/studyLogic.test.ts server/studyAssistant.test.ts
+        run: node --import tsx --test src/utils/studyLogic.test.ts src/utils/workspaceMetrics.test.ts server/studyAssistant.test.ts
       - name: Test Rust storage and Pip
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml -p studyflow-storage -p studyflow-assistant
       - name: Build the installer
