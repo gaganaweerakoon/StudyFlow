@@ -54,8 +54,8 @@ export interface LiveCompanionData {
 
 interface UsageResult {
   granted: boolean;
-  today: { id: string; name: string; minutes: number }[];
-  session: { id: string; name: string; minutes: number }[];
+  today: { id: string; name: string; category?: string; minutes: number }[];
+  session: { id: string; name: string; category?: string; minutes: number }[];
 }
 interface NativeUsageBridge {
   status: () => string;
@@ -353,7 +353,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
         const colorSet = ['#4F46E5', '#0D9488', '#E87929', '#7C3AED', '#0284C7', '#DC2626'];
         const convert = (rows: UsageResult['today']): AppUsageEntry[] =>
           (rows ?? []).map((item, index) => ({
-            id: item.id, name: item.name, category: 'App',
+            id: item.id, name: item.name, category: item.category || 'Other',
             minutes: item.minutes, color: colorSet[index % colorSet.length],
           }));
         setMeasuredSessionUsage(convert(result.session));
