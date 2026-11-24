@@ -75,7 +75,14 @@ function AndroidCompanion() {
   const [attemptedPc, setAttemptedPc] = useState('');
   const [lastScannedCode, setLastScannedCode] = useState('');
   const [manualAddress, setManualAddress] = useState('');
-  const [lastSync, setLastSync] = useState<number | undefined>(pair?.calendar ? undefined : 0);
+  const [lastSync, setLastSync] = useState<number | undefined>(() => {
+    const value = Number(localStorage.getItem('studyflow.phone.lastSync'));
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  });
+  useEffect(() => {
+    if (lastSync) localStorage.setItem('studyflow.phone.lastSync', String(lastSync));
+    else localStorage.removeItem('studyflow.phone.lastSync');
+  }, [lastSync]);
   const [pcFocus, setPcFocus] = useState<CompanionFocusUpdate | undefined>();
   const [autoSync, setAutoSync] = useState(() => localStorage.getItem('studyflow.phone.autosync') !== 'false');
   const [syncIntervalSeconds, setSyncIntervalSeconds] = useState(() => {
@@ -84,14 +91,6 @@ function AndroidCompanion() {
   });
   const latestPair = useRef(pair);
 
-  useEffect(() => {
-    window.StudyFlowWidget?.update(JSON.stringify({
-      focus: pcFocus?.focus ?? null,
-      serverNowMs: pcFocus?.serverNowMs ?? 0,
-      receivedAtMs: pcFocus?.receivedAtMs ?? Date.now(),
-      pcName: pair?.pc ?? 'StudyFlow PC',
-    }));
-  }, [pcFocus, pair?.pc]);
   const syncing = useRef(false);
 
   const [alarmStatus, setAlarmStatus] = useState<AlarmStatus | null>(null);
