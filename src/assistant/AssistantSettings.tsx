@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from 'react';
-import { BarChart3, KeyRound } from 'lucide-react';
+import { useMemo, useState, type FormEvent } from 'react';
+import { BarChart3, KeyRound, Table2 } from 'lucide-react';
 import { useAssistant } from './AssistantContext';
 import { PROVIDERS, isModelId, isProvider, type Provider } from './protocol';
-import { type UsageEntry } from './usage';
+import { filterUsageEntries, summarizeUsageEntries } from './usageAnalytics';
+import { UsageDetailsModal } from './UsageDetailsModal';
 import './assistant.css';
 
 const timezones = [...new Set(['Asia/Colombo', 'UTC', ...Intl.supportedValuesOf('timeZone')])].sort();
@@ -98,93 +99,23 @@ function ProviderSettings() {
   );
 }
 
-function UsageViewer({ usage }: { usage: UsageEntry[] }) {
-  const [windowDays, setWindowDays] = useState(7);
-  const [provider, setProvider] = useState<Provider | 'all'>('all');
-  const from = new Date();
-  from.setHours(0, 0, 0, 0);
-  from.setDate(from.getDate() - windowDays + 1);
-  const rows = usage.filter(row => row.at >= from.getTime() && (provider === 'all' || row.provider === provider));
-  const unreported = rows.filter(row => !row.tokens).length;
-  const totals = rows.reduce((total, record) => ({
-    input: total.input + (record.tokens?.input ?? 0),
-    output: total.output + (record.tokens?.output ?? 0),
-    total: total.total + (record.tokens?.total ?? 0),
-  }), { input: 0, output: 0, total: 0 });
-  const daily = new Map<string, { row: UsageEntry; input: number; output: number; cached: number; total: number; requests: number }>();
-  for (const row of rows) {
-    const key = JSON.stringify([row.day, row.provider, row.model]);
-    const group = daily.get(key) ?? { row, input: 0, output: 0, cached: 0, total: 0, requests: 0 };
-    group.input += row.tokens?.input ?? 0;
-    group.output += row.tokens?.output ?? 0;
-    group.cached += row.tokens?.cached ?? 0;
-    group.total += row.tokens?.total ?? 0;
-    group.requests++;
-    daily.set(key, group);
-  }
-  const fmt = (n: number) => n.toLocaleString();
-
-  return (
-    <div className="pip-usage">
-      <div className="pip-settings-heading">
-        <h2><BarChart3 size={18} /> AI Usage</h2>
-        <div className="pip-actions">
-          <select aria-label="Usage date range" value={windowDays} onChange={event => setWindowDays(Number(event.target.value))}>
-            <option value={1}>Today</option>
-            <option value={7}>Last 7 days</option>
-            <option value={30}>Last 30 days</option>
-          </select>
-          <select aria-label="Filter usage by provider" value={provider} onChange={event => setProvider(isProvider(event.target.value) ? event.target.value : 'all')}>
-            <option value="all">All providers</option>
-            {Object.entries(PROVIDERS).map(([id, item]) => <option key={id} value={id}>{item.label}</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="pip-stats">
-        {([['Total tokens', totals.total], ['Input tokens', totals.input], ['Output tokens', totals.output]] as const)
-          .map(([label, count]) => <div key={label}><span>{label}</span><strong>{fmt(count)}</strong></div>)}
-      </div>
-      {!rows.length ? <p>No assistant requests for this period.</p> : <>
-        {unreported > 0 && <p>{unreported} {unreported === 1 ? 'request has' : 'requests have'} no provider-reported usage. These are excluded from token totals.</p>}
-        <div className="pip-table-wrap">
-          <table>
-            <caption>Daily totals by model</caption>
-            <thead><tr><th>Date</th><th>Provider / model</th><th>Input</th><th>Output</th><th>Cached input</th><th>Total</th><th>Requests</th></tr></thead>
-            <tbody>{[...daily.values()].map(({ row, input, output, cached, total, requests }) => (
-              <tr key={JSON.stringify([row.day, row.provider, row.model])}>
-                <td>{row.day}</td><td>{PROVIDERS[row.provider]?.label} · {row.model}</td>
-                <td>{fmt(input)}</td><td>{fmt(output)}</td><td>{fmt(cached)}</td><td>{fmt(total)}</td><td>{fmt(requests)}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-        <div className="pip-table-wrap">
-          <table>
-            <caption>Latest requests</caption>
-            <thead><tr><th>Time</th><th>Model</th><th>Status</th><th>Input</th><th>Output</th><th>Total</th></tr></thead>
-            <tbody>{rows.slice(0, 15).map(row => (
-              <tr key={row.id}>
-                <td>{new Date(row.at).toLocaleString()}</td><td>{row.model}</td><td>{row.status}</td>
-                <td>{row.tokens ? fmt(row.tokens.input) : '—'}</td><td>{row.tokens ? fmt(row.tokens.output) : '—'}</td><td>{row.tokens ? fmt(row.tokens.total) : '—'}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-      </>}
-    </div>
-  );
-}
-
 export function AssistantSettings() {
   const assistant = useAssistant();
-  const { settings } = assistant;
+  const { settings, usage } = assistant;
+  const [usageModalOpen, setUsageModalOpen] = useState(false);
+
+  const weeklyTotals = useMemo(
+    () => summarizeUsageEntries(filterUsageEntries(usage, { windowDays: 7, provider: 'all' })),
+    [usage],
+  );
+
   return (
     <section className="pip-settings">
       <div className="pip-settings-heading"><h2><KeyRound size={18} /> AI Connection</h2></div>
       <p>{assistant.keyStorage === 'windows'
         ? 'API keys are saved per provider in Windows Credential Manager.'
         : assistant.keyStorage === 'loading' ? 'Checking for saved API keys…' : 'Keys stay in memory for this tab.'}
-        {' '}Messages, selected workspace context, and attached images go to your chosen provider.</p>
+        {' '}Messages, selected workspace context, and attached PDFs, documents, or images go to your chosen provider.</p>
       {assistant.keyStorageError && <p role="status">{assistant.keyStorageError}</p>}
       {!assistant.available && <p role="status">Open StudyFlow at localhost to enter a key and use the assistant.</p>}
       <label>
@@ -211,7 +142,46 @@ export function AssistantSettings() {
         </label>
       </div>
       <ProviderSettings key={settings.provider} />
-      <details><summary>View usage</summary><UsageViewer usage={assistant.usage} /></details>
+
+      {/* Compact Usage Overview + Popup Table Trigger */}
+      <div
+        className="pt-4 mt-1 flex flex-wrap items-center justify-between gap-4"
+        style={{ borderTop: '1px solid var(--border-subtle)' }}
+      >
+        <div className="space-y-1 min-w-0">
+          <div className="flex items-center gap-2 text-[14px] font-semibold text-[var(--text-primary)] font-display">
+            <BarChart3 className="w-4 h-4 shrink-0" style={{ color: 'var(--accent)' }} />
+            <span>AI Usage</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[var(--text-muted)] font-mono tabular-nums">
+            <span>Last 7 days</span>
+            <span aria-hidden="true">·</span>
+            <span>{weeklyTotals.requests.toLocaleString()} {weeklyTotals.requests === 1 ? 'request' : 'requests'}</span>
+            <span aria-hidden="true">·</span>
+            <span>{weeklyTotals.total.toLocaleString()} tokens</span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setUsageModalOpen(true)}
+          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[12.5px] font-semibold transition-colors hover:bg-[var(--bg-surface-hover)] whitespace-nowrap shrink-0"
+          style={{
+            backgroundColor: 'var(--bg-surface-subtle)',
+            border: '1px solid var(--border-subtle)',
+            color: 'var(--text-primary)',
+          }}
+        >
+          <Table2 className="w-4 h-4" style={{ color: 'var(--accent)' }} />
+          View usage
+        </button>
+      </div>
+
+      <UsageDetailsModal
+        open={usageModalOpen}
+        onClose={() => setUsageModalOpen(false)}
+        usage={usage}
+      />
     </section>
   );
 }

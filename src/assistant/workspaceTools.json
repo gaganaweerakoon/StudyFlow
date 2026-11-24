@@ -1,207 +1,330 @@
 [
   {
     "name": "create_event",
-    "description": "Schedule a new event. Ask for missing date, time, or duration.",
+    "description": "Schedule a new study session, class, sleep block, or free block on the StudyFlow calendar.",
     "parameters": {
       "type": "object",
       "properties": {
-        "title": {
-          "type": "string",
-          "description": "The title as the user wants it saved"
-        },
-        "date": {
-          "type": "string",
-          "description": "Local calendar date in YYYY-MM-DD"
-        },
-        "startHour": {
-          "type": "number",
-          "description": "Start hour on a 24-hour clock, e.g. 19.5 for 7:30 PM"
-        },
-        "durationHours": {
-          "type": "number",
-          "description": "Duration in hours, e.g. 0.75 for 45 minutes"
-        },
-        "blockType": {
-          "type": "string",
-          "enum": [
-            "study",
-            "sleep",
-            "free"
-          ]
-        },
+        "title": { "type": "string", "description": "Title of the calendar event or study block." },
+        "date": { "type": "string", "description": "Local start date in YYYY-MM-DD format." },
+        "startHour": { "type": "number", "description": "Start time as 24-hour decimal (e.g., 9.5 for 09:30, 14 for 14:00, 19.25 for 19:15)." },
+        "startTime": { "type": "string", "description": "Optional alternative start time in HH:MM 24-hour format (e.g., '14:30')." },
+        "durationHours": { "type": "number", "description": "Duration in hours (e.g., 1, 1.5, 2). Defaults to 1 if omitted." },
+        "subjectId": { "type": "string", "description": "Optional matching subject ID or subject code from workspace context." },
+        "blockType": { "type": "string", "enum": ["study", "sleep", "free"], "description": "Block category. Defaults to 'study'." },
+        "location": { "type": "string", "description": "Optional room or location." },
+        "notes": { "type": "string", "description": "Optional session agenda or study notes." },
         "weekdays": {
           "type": "array",
-          "description": "Repeating weekdays from Monday=0 through Sunday=6",
-          "items": {
-            "type": "integer"
-          }
+          "description": "Optional repeating weekdays using Monday=0 through Sunday=6. Include all 7 for daily recurrence.",
+          "items": { "type": "integer" }
         }
       },
-      "required": [
-        "title",
-        "date",
-        "startHour",
-        "durationHours"
-      ]
+      "required": ["title", "date"]
     }
   },
   {
     "name": "update_event",
-    "description": "Modify an existing calendar event. Ask which event or recurrence scope if unclear.",
+    "description": "Update an existing calendar session or recurring series.",
     "parameters": {
       "type": "object",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Exact existing record ID from the workspace reference"
-        },
-        "title": {
-          "type": "string",
-          "description": "The title as the user wants it saved"
-        },
-        "date": {
-          "type": "string",
-          "description": "Local calendar date in YYYY-MM-DD"
-        },
-        "startHour": {
-          "type": "number",
-          "description": "Start hour on a 24-hour clock, e.g. 19.5 for 7:30 PM"
-        },
-        "durationHours": {
-          "type": "number",
-          "description": "Duration in hours, e.g. 0.75 for 45 minutes"
-        },
-        "scope": {
-          "type": "string",
-          "description": "For a recurrence, ask the user which scope they want",
-          "enum": [
-            "occurrence",
-            "series"
-          ]
-        },
-        "weekdays": {
-          "type": "array",
-          "description": "Repeating weekdays from Monday=0 through Sunday=6",
-          "items": {
-            "type": "integer"
-          }
-        }
+        "id": { "type": "string", "description": "Existing session ID from workspace context." },
+        "scope": { "type": "string", "enum": ["occurrence", "series"], "description": "Required when editing a recurring event." },
+        "title": { "type": "string" },
+        "date": { "type": "string", "description": "YYYY-MM-DD" },
+        "startHour": { "type": "number" },
+        "startTime": { "type": "string", "description": "HH:MM" },
+        "durationHours": { "type": "number" },
+        "subjectId": { "type": "string" },
+        "blockType": { "type": "string", "enum": ["study", "sleep", "free"] },
+        "weekdays": { "type": "array", "items": { "type": "integer" } }
       },
-      "required": [
-        "id"
-      ]
+      "required": ["id"]
     }
   },
   {
     "name": "delete_event",
-    "description": "Prepare a calendar deletion for user confirmation. For recurring events only one occurrence is supported.",
+    "description": "Delete an existing calendar event (StudyFlow will ask the student to confirm first).",
     "parameters": {
       "type": "object",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Exact existing record ID from the workspace reference"
-        },
-        "scope": {
-          "type": "string",
-          "description": "For a recurrence, ask the user which scope they want",
-          "enum": [
-            "occurrence",
-            "series"
-          ]
-        }
+        "id": { "type": "string", "description": "Existing session ID." },
+        "scope": { "type": "string", "enum": ["occurrence"] }
       },
-      "required": [
-        "id"
-      ]
+      "required": ["id"]
     }
   },
   {
     "name": "create_task",
-    "description": "Create one task.",
+    "description": "Create a new study task or assignment in StudyFlow.",
     "parameters": {
       "type": "object",
       "properties": {
-        "title": {
-          "type": "string",
-          "description": "The title as the user wants it saved"
-        },
-        "date": {
-          "type": "string",
-          "description": "Local calendar date in YYYY-MM-DD"
-        }
+        "title": { "type": "string", "description": "Task title." },
+        "date": { "type": "string", "description": "Optional due date in YYYY-MM-DD format." },
+        "subjectId": { "type": "string", "description": "Optional subject ID or subject code." },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "estimatedMinutes": { "type": "integer", "description": "Optional estimated time in minutes." },
+        "description": { "type": "string", "description": "Optional task details." }
       },
-      "required": [
-        "title"
-      ]
+      "required": ["title"]
     }
   },
   {
     "name": "update_task",
-    "description": "Change an existing task. Set status to done only when asked to complete it.",
+    "description": "Update an existing task's title, due date, priority, or status.",
     "parameters": {
       "type": "object",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Exact existing record ID from the workspace reference"
-        },
-        "title": {
-          "type": "string",
-          "description": "The title as the user wants it saved"
-        },
-        "date": {
-          "type": "string",
-          "description": "Local calendar date in YYYY-MM-DD"
-        },
-        "status": {
-          "type": "string",
-          "enum": [
-            "done"
-          ]
-        }
+        "id": { "type": "string", "description": "Existing task ID." },
+        "title": { "type": "string" },
+        "date": { "type": "string", "description": "YYYY-MM-DD" },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "status": { "type": "string", "enum": ["todo", "in_progress", "done"] }
       },
-      "required": [
-        "id"
-      ]
-    }
-  },
-  {
-    "name": "delete_tasks",
-    "description": "Prepare deletion of one or more tasks for user confirmation.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "ids": {
-          "type": "array",
-          "description": "Exact IDs from the workspace reference",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "required": [
-        "ids"
-      ]
+      "required": ["id"]
     }
   },
   {
     "name": "complete_tasks",
-    "description": "Prepare completion of multiple tasks for user confirmation.",
+    "description": "Mark one or more existing tasks complete (StudyFlow will ask for confirmation when bulk-completing).",
     "parameters": {
       "type": "object",
       "properties": {
-        "ids": {
+        "ids": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["ids"]
+    }
+  },
+  {
+    "name": "delete_tasks",
+    "description": "Delete one or more existing tasks (StudyFlow will ask the student to confirm first).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "ids": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["ids"]
+    }
+  },
+  {
+    "name": "create_exam",
+    "description": "Add a new exam or assessment to StudyFlow Exams.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "date": { "type": "string", "description": "Exam date in YYYY-MM-DD format." },
+        "time": { "type": "string", "description": "Optional exam time in HH:MM 24-hour format." },
+        "subjectId": { "type": "string", "description": "Optional subject ID or subject code." },
+        "room": { "type": "string" },
+        "targetGrade": { "type": "string" },
+        "weightPercent": { "type": "number" }
+      },
+      "required": ["title", "date"]
+    }
+  },
+  {
+    "name": "update_exam",
+    "description": "Update an existing exam's details or prep progress.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "room": { "type": "string" },
+        "targetGrade": { "type": "string" },
+        "weightPercent": { "type": "number" },
+        "prepProgress": { "type": "number", "description": "0 to 100." }
+      },
+      "required": ["id"]
+    }
+  },
+  {
+    "name": "delete_exam",
+    "description": "Delete an existing exam (StudyFlow will ask the student to confirm first).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" }
+      },
+      "required": ["id"]
+    }
+  },
+  {
+    "name": "create_goal",
+    "description": "Create a new study goal or milestone target in StudyFlow Goals.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "target": { "type": "number", "description": "Numeric target value (e.g., 10, 100). Defaults to 100." },
+        "unit": { "type": "string", "description": "Unit such as 'hours', 'chapters', 'cards', '%', or 'problems'." },
+        "deadline": { "type": "string", "description": "Optional deadline in YYYY-MM-DD or short label." },
+        "category": { "type": "string", "enum": ["daily", "weekly", "subject", "tasks", "syllabus", "revision"] },
+        "subjectId": { "type": "string" },
+        "milestones": {
           "type": "array",
-          "description": "Exact IDs from the workspace reference",
+          "description": "Optional milestone step titles for this goal.",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["title"]
+    }
+  },
+  {
+    "name": "add_goal_milestone",
+    "description": "Add a milestone step to an existing goal.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "goalId": { "type": "string", "description": "Existing goal ID or goal title." },
+        "title": { "type": "string", "description": "Milestone title." }
+      },
+      "required": ["goalId", "title"]
+    }
+  },
+  {
+    "name": "create_note",
+    "description": "Create a new Markdown study note in StudyFlow Notes.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string", "description": "Well-structured Markdown note content." },
+        "subjectId": { "type": "string", "description": "Optional subject ID or subject code." },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["title", "content"]
+    }
+  },
+  {
+    "name": "update_note",
+    "description": "Update an existing Markdown note's content or title.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" }
+      },
+      "required": ["id", "content"]
+    }
+  },
+  {
+    "name": "delete_note",
+    "description": "Delete an existing note (StudyFlow will ask the student to confirm first).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" }
+      },
+      "required": ["id"]
+    }
+  },
+  {
+    "name": "create_deck",
+    "description": "Create a new flashcard deck in StudyFlow Flashcards.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "subjectId": { "type": "string", "description": "Optional subject ID or subject code." }
+      },
+      "required": ["title"]
+    }
+  },
+  {
+    "name": "create_flashcards",
+    "description": "Create flashcards from a student's note or study topic and save them to an existing deck (deckId) or a new deck (deckTitle).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "noteId": { "type": "string", "description": "Optional source note ID or note title from workspace context." },
+        "deckId": { "type": "string", "description": "Existing deck ID to add cards to." },
+        "deckTitle": { "type": "string", "description": "If creating a new deck or matching by name, provide the deck title." },
+        "subjectId": { "type": "string", "description": "Optional subject ID or code if creating a new deck." },
+        "cards": {
+          "type": "array",
+          "description": "Array of flashcards with front (question/prompt) and back (concise answer).",
           "items": {
-            "type": "string"
+            "type": "object",
+            "properties": {
+              "front": { "type": "string" },
+              "back": { "type": "string" },
+              "hint": { "type": "string" }
+            },
+            "required": ["front", "back"]
           }
         }
       },
-      "required": [
-        "ids"
-      ]
+      "required": ["cards"]
+    }
+  },
+  {
+    "name": "create_practice_test",
+    "description": "Create an interactive timed practice test (MCQ, multi-select, and/or short answer) grounded in the student's notes or topic.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "noteId": { "type": "string", "description": "Optional source note ID or title from workspace context." },
+        "title": { "type": "string", "description": "Practice test title." },
+        "subjectId": { "type": "string", "description": "Optional subject ID or subject code." },
+        "difficulty": { "type": "string", "enum": ["Standard", "Challenge", "Exam Level"] },
+        "sourceSection": { "type": "string" },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["mcq", "multi", "short"] },
+              "topic": { "type": "string" },
+              "prompt": { "type": "string" },
+              "options": { "type": "array", "items": { "type": "string" } },
+              "answer": { "type": "string", "description": "Exact option text for mcq, newline-separated exact options for multi, or expected concise answer for short." },
+              "explanation": { "type": "string" },
+              "rubric": { "type": "string" }
+            },
+            "required": ["type", "prompt", "answer", "explanation"]
+          }
+        }
+      },
+      "required": ["questions"]
+    }
+  },
+  {
+    "name": "start_focus_session",
+    "description": "Configure and start a StudyFlow Focus Timer session and optionally switch to the Focus view.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "taskTitle": { "type": "string", "description": "What the student will focus on." },
+        "subjectId": { "type": "string", "description": "Optional subject ID or subject code." },
+        "mode": { "type": "string", "enum": ["Pomodoro", "Countdown", "Stopwatch", "Custom"] },
+        "minutes": { "type": "integer", "description": "Optional duration in minutes (used when mode is Custom)." },
+        "autoStart": { "type": "boolean", "description": "Start ticking immediately (default true)." }
+      },
+      "required": ["taskTitle"]
+    }
+  },
+  {
+    "name": "navigate_to_view",
+    "description": "Open a specific page inside StudyFlow when the user asks to go there.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "route": {
+          "type": "string",
+          "enum": ["dashboard", "planner", "subjects", "tasks", "focus", "notes", "flashcards", "practice", "exams", "goals", "analytics", "settings"]
+        },
+        "noteId": { "type": "string", "description": "Optional note ID to select when opening notes." }
+      },
+      "required": ["route"]
     }
   }
 ]

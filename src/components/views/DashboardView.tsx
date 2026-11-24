@@ -25,6 +25,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { DashboardAiOverviewCard } from '../dashboard/DashboardAiOverviewCard';
 import { localDay } from '../../assistant/workspaceContext';
 import { currentStudySession, layoutCalendarDay } from '../../utils/calendarLayout';
 import { studyChart } from '../../utils/workspaceMetrics';
@@ -35,6 +36,7 @@ import {
   formatHourLabel,
   formatTimerSeconds,
 } from '../../utils/studyLogic';
+import { extractFirstName, getTimeOfDayGreeting } from '../../firebase/authGateLogic';
 
 type RangeKey = 'daily' | 'weekly' | 'monthly';
 
@@ -46,7 +48,6 @@ export const DashboardView: React.FC = () => {
     subjects,
     tasks,
     sessions,
-    exams,
     notes,
     focusTimer,
     toggleFocusRunning,
@@ -74,8 +75,35 @@ export const DashboardView: React.FC = () => {
     return () => window.clearInterval(interval);
   }, []);
   const hour = now.getHours() + now.getMinutes() / 60;
-  const todaySessions = layoutCalendarDay(sessions, localDay(now))
+  const todayIso = localDay(now);
+  const todaySessions = layoutCalendarDay(sessions, todayIso)
     .filter(block => block.to > hour && block.session.status === 'upcoming' && block.session.countsTowardStudy !== false);
+  const upcomingSessions = (() => {
+    const isStudyUpcoming = (s: (typeof sessions)[number]) =>
+      s.status === 'upcoming' && s.countsTowardStudy !== false && s.blockType !== 'sleep' && s.blockType !== 'free';
+    const seen = new Set<string>();
+    const list: { session: (typeof sessions)[number]; date: string; startHour: number; daysAway: number }[] = [];
+    for (let offset = 0; offset < 14; offset += 1) {
+      const d = new Date(now);
+      d.setHours(12, 0, 0, 0);
+      d.setDate(d.getDate() + offset);
+      const iso = localDay(d);
+      for (const block of layoutCalendarDay(sessions, iso)) {
+        if (block.continued || !isStudyUpcoming(block.session)) continue;
+        if (offset === 0 && block.from <= hour) continue;
+        if (seen.has(block.session.id)) continue;
+        seen.add(block.session.id);
+        list.push({ session: block.session, date: iso, startHour: block.from, daysAway: offset });
+      }
+    }
+    if (!legacyCalendar && list.length === 0) {
+      return sessions
+        .filter(isStudyUpcoming)
+        .sort((a, b) => a.date.localeCompare(b.date) || a.startHour - b.startHour)
+        .map(session => ({ session, date: session.date, startHour: session.startHour, daysAway: 0 }));
+    }
+    return list;
+  })();
   const dailyStudyHours = legacyCalendar ? studyChart('daily', sessions, focusHistory)[0].actual : 3.4;
   const weekly = calculateStudyAdherence(studyChart('weekly', sessions, focusHistory, { date: now, creditCompletedBlocks: true }));
   const weeklyProgress = weekly.totalPlanned > 0 ? Math.min(100, weekly.totalActual / weekly.totalPlanned * 100) : 0;
@@ -492,36 +520,56 @@ export const DashboardView: React.FC = () => {
           <section key={id} className="rounded-xl p-4" style={surfaceStyle}>
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-display text-[14.5px] font-semibold text-[var(--text-primary)]">
-                Upcoming Exams
+                Upcoming Sessions
               </h2>
               <button
                 type="button"
-                onClick={() => setRoute('exams')}
-                className="text-[12px] font-medium hover:underline"
+                onClick={() => setRoute('planner')}
+                className="text-[12px] font-medium hover:underline whitespace-nowrap"
                 style={{ color: 'var(--accent)' }}
               >
-                Exam prep
+                Open planner
               </button>
             </div>
             <div className="divide-y divide-[var(--border-subtle)]">
-              {exams.slice(0, 3).map((ex) => {
-                const sub = subjects.find((s) => s.id === ex.subjectId);
-                const daysAway = Math.max(
-                  1,
-                  Math.round((new Date(ex.date).getTime() - new Date('2026-11-22').getTime()) / 86400000)
-                );
+              {upcomingSessions.length === 0 && (
+                <p className="py-3 text-[12.5px] text-[var(--text-muted)]">
+                  No upcoming study sessions scheduled.
+                </p>
+              )}
+              {upcomingSessions.slice(0, 4).map(({ session: ses, date, startHour, daysAway }) => {
+                const sub = subjects.find((s) => s.id === ses.subjectId);
+                const dateObj = new Date(date + 'T12:00:00');
+                const dayLabel =
+                  daysAway === 0
+                    ? 'Today'
+                    : daysAway === 1
+                      ? 'Tomorrow'
+                      : dateObj.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                const badgeLabel =
+                  daysAway === 0
+                    ? formatHourLabel(startHour)
+                    : daysAway === 1
+                      ? 'Tomorrow'
+                      : `${daysAway}d`;
                 return (
-                  <div key={ex.id} className="py-2.5 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-medium text-[var(--text-primary)] truncate">
-                        {ex.title}
-                      </div>
-                      <div className="text-[11.5px] text-[var(--text-muted)]">
-                        {sub?.code} · {ex.date} · {ex.prepProgress}% ready
+                  <div key={ses.id} className="py-2.5 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: sub?.color ?? 'var(--accent)' }}
+                      />
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-medium text-[var(--text-primary)] truncate">
+                          {ses.title}
+                        </div>
+                        <div className="text-[11.5px] text-[var(--text-muted)] truncate">
+                          {sub?.code ? `${sub.code} · ` : ''}{dayLabel} · {formatHourLabel(startHour)} · {Math.round(ses.durationHours * 60)} min
+                        </div>
                       </div>
                     </div>
-                    <span className="font-mono-num text-[12px] font-semibold shrink-0 text-amber-600 dark:text-amber-400">
-                      {daysAway}d
+                    <span className="font-mono-num text-[12px] font-semibold shrink-0 text-[var(--text-secondary)]">
+                      {badgeLabel}
                     </span>
                   </div>
                 );
@@ -600,44 +648,7 @@ export const DashboardView: React.FC = () => {
         );
 
       case 'ai_insight':
-        return (
-          <section
-            key={id}
-            className="rounded-xl p-4 self-start"
-            style={{
-              backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--accent-border)',
-              boxShadow: 'var(--shadow-subtle)',
-            }}
-          >
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: 'var(--accent)' }}>
-                  <Sparkles className="w-3.5 h-3.5" />
-                  StudyFlow Productivity Insight
-                </span>
-                <span className="text-[11px] text-[var(--text-muted)]">{legacyCalendar ? 'Study history' : 'Based on 14-day log'}</span>
-              </div>
-              <p className="text-[13px] text-[var(--text-primary)] leading-relaxed">
-                {legacyCalendar ? `You have ${focusHistory.length} completed focus sessions in this workspace.` : <>Your morning deep-work blocks between <span className="font-mono-num font-medium">9:00–11:30 AM</span> average{' '}
-                <span className="font-mono-num font-semibold">93%</span> focus quality — 14% higher than late afternoon sessions.</>}
-              </p>
-              <p className="text-[12.5px] text-[var(--text-secondary)] mt-2">
-                {legacyCalendar ? 'Open Analytics to review your study time.' : 'Recommendation: Shift CHEM 210 carbonyl mechanism drills into tomorrow morning’s open 9:30 AM slot before Midterm III prep peaks.'}
-              </p>
-            </div>
-            <div className="mt-3.5 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setRoute('assistant')}
-                className="inline-flex items-center gap-1.5 text-[12.5px] font-medium hover:underline"
-                style={{ color: 'var(--accent)' }}
-              >
-                Ask AI Assistant to rebalance week <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </section>
-        );
+        return <DashboardAiOverviewCard key={id} />;
 
       default:
         return null;
@@ -649,7 +660,7 @@ export const DashboardView: React.FC = () => {
   const fullWidthIds = new Set(['kpi_strip', 'planned_actual_chart']);
 
   return (
-    <div className="space-y-4 pb-6">
+    <div className="space-y-4 pb-24">
       {(preferences.onboarding==='complete' || preferences.googleAccount) && (!subjects.length || !sessions.length || !notes.length) && <section className="rounded-xl p-4 space-y-2" style={surfaceStyle}>
         <h2 className="font-semibold">Set up your workspace</h2>
         <div className="flex flex-wrap gap-4">{([
@@ -664,7 +675,7 @@ export const DashboardView: React.FC = () => {
             <span>{legacyCalendar ? new Date().toLocaleDateString(undefined, { dateStyle: 'full' }) : 'Sunday, November 22, 2026 · Week 12 of Fall Term'}</span>
           </div>
           <h1 className="font-display text-[22px] font-semibold tracking-tight text-[var(--text-primary)] mt-0.5">
-            Good morning, {preferences.name.split(' ')[0]}
+            {getTimeOfDayGreeting()}, {extractFirstName(preferences.name)}
           </h1>
         </div>
 
@@ -709,7 +720,7 @@ export const DashboardView: React.FC = () => {
                     style={{ backgroundColor: 'var(--bg-surface-subtle)' }}
                   >
                     <span className="text-[12.5px] text-[var(--text-primary)] truncate">
-                      {w.label}
+                      {w.id === 'upcoming_exams' ? 'Upcoming Sessions' : w.label}
                     </span>
                     <div className="flex items-center gap-0.5 shrink-0">
                       <button

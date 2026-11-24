@@ -22,7 +22,7 @@ export interface UsageEntry {
 
 const settingsKey = 'studyflow.assistant.settings.v1';
 export const usageKey = 'studyflow.assistant.usage.v1';
-const defaults: AssistantSettings = { provider: 'openai', models: {}, maxOutput: 650, dailyLimit: 12000 };
+const defaults: AssistantSettings = { provider: 'gemini', models: {}, maxOutput: 1200, dailyLimit: 50000 };
 
 function read(key: string) {
   try { return JSON.parse(localStorage.getItem(key) ?? 'null'); }

@@ -1,8 +1,72 @@
 import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
-import { CHAT_ENDPOINT, CHAT_LIMITS, SYSTEM_PROMPT, type ChatEvent, type ChatImage, type ChatRequest } from './protocol';
+import {
+  CHAT_ENDPOINT,
+  CHAT_LIMITS,
+  NOTES_RESTRUCTURE_ENDPOINT,
+  OVERVIEW_ENDPOINT,
+  STATUS_ENDPOINT,
+  SYSTEM_PROMPT,
+  type ChatEvent,
+  type ChatImage,
+  type ChatRequest,
+  type DashboardAiOverview,
+  type TokenUsage,
+} from './protocol';
 
 export const isAssistantAvailable = () =>
-  isTauri() || window.location.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+  isTauri() || typeof window !== 'undefined';
+
+export interface AssistantServerStatus {
+  geminiConfigured: boolean;
+  defaultProvider?: string;
+  defaultModel?: string;
+}
+
+export async function fetchAssistantStatus(): Promise<AssistantServerStatus> {
+  if (isTauri()) return { geminiConfigured: false };
+  try {
+    const response = await fetch(STATUS_ENDPOINT, {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) return { geminiConfigured: false };
+    const data = (await response.json()) as Partial<AssistantServerStatus>;
+    return {
+      geminiConfigured: Boolean(data.geminiConfigured),
+      defaultProvider: data.defaultProvider,
+      defaultModel: data.defaultModel,
+    };
+  } catch {
+    return { geminiConfigured: false };
+  }
+}
+
+export async function fetchDashboardOverview(
+  payload: { diagnosticsJson: string; clockLabel?: string; model?: string },
+  key: string | undefined,
+  signal?: AbortSignal,
+): Promise<{ overview: DashboardAiOverview; usage?: TokenUsage }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (key) headers.Authorization = `Bearer ${key}`;
+  const response = await fetch(OVERVIEW_ENDPOINT, {
+    method: 'POST',
+    signal,
+    credentials: 'same-origin',
+    redirect: 'error',
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const data = (await response.json().catch(() => ({}))) as {
+    overview?: DashboardAiOverview;
+    usage?: TokenUsage;
+    message?: string;
+  };
+  if (!response.ok || !data.overview) {
+    throw new Error(data.message ?? 'Could not generate AI study overview right now.');
+  }
+  return { overview: data.overview, usage: data.usage };
+}
 
 export function estimatedTokens(request: ChatRequest) {
   const text = [SYSTEM_PROMPT, request.prompt, request.context, ...request.history.map(turn => turn.text)].join('\n');
@@ -49,25 +113,8 @@ async function* sendDesktopChat(request: ChatRequest, key: string | undefined, s
   }
 }
 
-async function* sendOnce(request: ChatRequest, key: string | undefined, signal: AbortSignal): AsyncGenerator<ChatEvent> {
-  if (isTauri()) {
-    yield* sendDesktopChat(request, key, signal);
-    return;
-  }
-  if (!key) throw new Error('Add the API key for this provider in AI Settings.');
-  const response = await fetch(CHAT_ENDPOINT, {
-    method: 'POST',
-    signal,
-    credentials: 'same-origin',
-    redirect: 'error',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify(request),
-  });
-  if (!response.ok || !response.body || !response.headers.get('Content-Type')?.includes('application/x-ndjson')) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message ?? 'The local assistant backend is unavailable. Start StudyFlow with bun run dev or bun run preview.');
-  }
-
+async function* readNdjsonStream<T>(response: Response): AsyncGenerator<T> {
+  if (!response.body) return;
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let pending = '';
@@ -77,13 +124,94 @@ async function* sendOnce(request: ChatRequest, key: string | undefined, signal: 
       pending += done ? decoder.decode() + '\n' : decoder.decode(value, { stream: true });
       const lines = pending.split('\n');
       pending = lines.pop() ?? '';
-      for (const line of lines) if (line.trim()) yield JSON.parse(line);
+      for (const line of lines) {
+        if (line.trim()) yield JSON.parse(line) as T;
+      }
       if (done) break;
     }
   } finally {
     await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
+}
+
+async function* sendOnce(request: ChatRequest, key: string | undefined, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+  if (isTauri()) {
+    yield* sendDesktopChat(request, key, signal);
+    return;
+  }
+  if (!key && request.provider !== 'gemini') {
+    throw new Error('Add the API key for this provider in AI Settings.');
+  }
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (key) headers.Authorization = `Bearer ${key}`;
+
+  const response = await fetch(CHAT_ENDPOINT, {
+    method: 'POST',
+    signal,
+    credentials: 'same-origin',
+    redirect: 'error',
+    headers,
+    body: JSON.stringify(request),
+  });
+  if (!response.ok || !response.body || !response.headers.get('Content-Type')?.includes('application/x-ndjson')) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message ?? 'The assistant server is unavailable.');
+  }
+
+  yield* readNdjsonStream<ChatEvent>(response);
+}
+
+export interface ClientRestructureFigure {
+  id: string;
+  mimeType: 'image/webp' | 'image/png' | 'image/jpeg';
+  base64: string;
+  positionHint?: 'header' | 'body' | 'footer';
+  width?: number;
+  height?: number;
+  pageNumber?: number;
+  repeatCount?: number;
+}
+
+export interface ClientRestructurePayload {
+  markdown: string;
+  instructions?: string;
+  normalizeLanguage?: boolean;
+  targetLanguage?: string;
+  filterUnwantedImages?: boolean;
+  figures?: ClientRestructureFigure[];
+  model?: string;
+}
+
+export type ClientRestructureEvent =
+  | { type: 'meta'; detectedLanguage?: string; removedFigures: string[]; keptFigures: string[] }
+  | { type: 'text'; text: string }
+  | { type: 'usage'; usage: TokenUsage }
+  | { type: 'done'; truncated?: boolean }
+  | { type: 'error'; message: string; status?: number };
+
+export async function* streamNotesRestructureClient(
+  payload: ClientRestructurePayload,
+  key: string | undefined,
+  signal: AbortSignal,
+): AsyncGenerator<ClientRestructureEvent> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (key) headers.Authorization = `Bearer ${key}`;
+
+  const response = await fetch(NOTES_RESTRUCTURE_ENDPOINT, {
+    method: 'POST',
+    signal,
+    credentials: 'same-origin',
+    redirect: 'error',
+    headers,
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok || !response.body || !response.headers.get('Content-Type')?.includes('application/x-ndjson')) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message ?? 'Could not reach Gemini for Markdown restructuring.');
+  }
+
+  yield* readNdjsonStream<ClientRestructureEvent>(response);
 }
 
 export function retrySeconds(status: number, header?: string) {

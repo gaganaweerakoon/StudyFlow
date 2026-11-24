@@ -26,6 +26,11 @@ const claudeEvents = [
   { type: 'message_stop' },
 ];
 
+function geminiSse(events: object[]) {
+  const body = events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('');
+  return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
+}
+
 function sse(events: object[]) {
   const text = events.map(event => `event: message\r\ndata: ${JSON.stringify(event)}`).join('\r\n\r\n');
   const chunks = text.match(/.{1,13}|\r|\n/g) ?? [];
@@ -53,10 +58,10 @@ test('the localhost assistant streams images, context, and normalized usage thro
     calls.push({ url, headers: new Headers(init.headers), body: JSON.parse(String(init.body)) });
     if (url.startsWith('https://api.openai.com/')) return sse(openaiEvents);
     if (url.startsWith('https://generativelanguage.googleapis.com/')) {
-      if (calls.at(-1)?.body.tools) return sse([
+      if (calls.at(-1)?.body.tools) return geminiSse([
         { candidates: [{ content: { parts: [{ functionCall: { name: 'create_event', args: { title: 'Chemistry', date: '2026-11-24', startHour: 7, durationHours: 1 } } }] }, finishReason: 'STOP' }] },
       ]);
-      return sse(geminiEvents);
+      return geminiSse(geminiEvents);
     }
     if (url.startsWith('https://api.anthropic.com/')) return sse(claudeEvents);
     throw new Error('Unexpected upstream');
@@ -93,7 +98,7 @@ test('the localhost assistant streams images, context, and normalized usage thro
     assert.equal(events.at(-1)?.type, 'done');
   }
 
-  const [openai, gemini, claude] = calls;
+  const [gemini, openai, claude] = calls;
   assert.equal(openai.headers.get('authorization'), `Bearer ${key}`);
   assert.equal(openai.body.max_output_tokens, 650);
   assert.equal(openai.body.store, false);

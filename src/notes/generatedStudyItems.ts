@@ -4,33 +4,116 @@ const nonempty = (value: unknown): value is string => typeof value === 'string' 
 export type GeneratedCard = { front: string; back: string };
 
 export function readGeneratedCards(input: unknown, count?: number): GeneratedCard[] {
-  if (!Array.isArray(input) || input.length < 1 || input.length > 30 ||
-      (count !== undefined && input.length !== count) ||
-      !input.every(card => nonempty(card?.front) && nonempty(card?.back))) {
+  if (!Array.isArray(input) || input.length < 1 || input.length > 30) {
     throw new Error('Incomplete flashcard set. Try again.');
   }
-  return input.map(({ front, back }) => ({ front, back }));
+  const cleaned = input
+    .filter((card): card is { front: string; back: string } => Boolean(card) && nonempty(card.front) && nonempty(card.back))
+    .map(({ front, back }) => ({ front: front.trim(), back: back.trim() }));
+
+  if (!cleaned.length) {
+    throw new Error('Incomplete flashcard set. Try again.');
+  }
+  return count !== undefined ? cleaned.slice(0, count) : cleaned;
+}
+
+function matchOption(options: string[], candidate: string): string | undefined {
+  const trimmed = candidate.trim();
+  const exact = options.find((opt) => opt === trimmed);
+  if (exact) return exact;
+  const ci = options.find((opt) => opt.toLowerCase() === trimmed.toLowerCase());
+  if (ci) return ci;
+  // Match letter index like "A" or "A." when model outputs option letter
+  const letter = trimmed.match(/^([A-F])(?:[).:\s]|$)/i);
+  if (letter) {
+    const idx = letter[1].toUpperCase().charCodeAt(0) - 65;
+    if (idx >= 0 && idx < options.length) return options[idx];
+  }
+  return undefined;
 }
 
 export function readGeneratedQuestions(input: unknown, topic: string, count?: number, kind = 'mixed'): QuizQuestion[] {
-  if (!Array.isArray(input) || input.length < 1 || input.length > 30 || (count !== undefined && input.length !== count)) {
+  if (!Array.isArray(input) || input.length < 1 || input.length > 30) {
     throw new Error('Incomplete test from provider.');
   }
-  return input.map(question => {
-    const { type, prompt, explanation, options, answer, rubric } = question ?? {};
-    if (!['mcq', 'multi', 'short'].includes(type) || (kind !== 'mixed' && kind !== type) ||
-        !nonempty(prompt) || !nonempty(explanation)) throw new Error('Invalid question from provider.');
-    if (type !== 'short' && (!Array.isArray(options) || options.length < 2 || !options.every(nonempty))) {
-      throw new Error('Missing answer choices.');
+  const results: QuizQuestion[] = [];
+  for (const question of input) {
+    const raw = (question ?? {}) as Record<string, unknown>;
+    const type = raw.type;
+    const prompt = typeof raw.prompt === 'string' ? raw.prompt.trim() : '';
+    const explanation = typeof raw.explanation === 'string' ? raw.explanation.trim() : '';
+    const rubric = typeof raw.rubric === 'string' ? raw.rubric.trim() : undefined;
+    if (
+      (type !== 'mcq' && type !== 'multi' && type !== 'short') ||
+      (kind !== 'mixed' && kind !== type) ||
+      !prompt ||
+      !explanation
+    ) {
+      continue;
     }
-    if (type === 'multi' ? !Array.isArray(answer) || !answer.length || !answer.every(option => options.includes(option))
-      : !nonempty(answer) || (type === 'mcq' && !options.includes(answer))) throw new Error('Invalid answer key.');
-    return {
+
+    if (type === 'short') {
+      const answerStr = Array.isArray(raw.answer)
+        ? raw.answer.filter(nonempty).map((s) => s.trim()).join('; ')
+        : nonempty(raw.answer)
+          ? raw.answer.trim()
+          : '';
+      if (!answerStr) continue;
+      results.push({
+        id: crypto.randomUUID(),
+        type,
+        prompt,
+        explanation,
+        topic: typeof raw.topic === 'string' && raw.topic.trim() ? raw.topic.trim() : topic,
+        correctAnswer: answerStr,
+        rubric: rubric || undefined,
+      });
+      continue;
+    }
+
+    const rawOptions = Array.isArray(raw.options)
+      ? raw.options.filter(nonempty).map((o) => o.trim())
+      : [];
+    if (rawOptions.length < 2) continue;
+
+    if (type === 'mcq') {
+      const rawAns = Array.isArray(raw.answer) ? raw.answer[0] : raw.answer;
+      if (!nonempty(rawAns)) continue;
+      const matched = matchOption(rawOptions, rawAns);
+      if (!matched) continue;
+      results.push({
+        id: crypto.randomUUID(),
+        type,
+        prompt,
+        explanation,
+        topic: typeof raw.topic === 'string' && raw.topic.trim() ? raw.topic.trim() : topic,
+        options: rawOptions,
+        correctAnswer: matched,
+      });
+      continue;
+    }
+
+    // type === 'multi'
+    const rawAnsArr = Array.isArray(raw.answer)
+      ? raw.answer.filter(nonempty)
+      : nonempty(raw.answer)
+        ? raw.answer.split(/\n|;/).filter(nonempty)
+        : [];
+    const matchedAll = [...new Set(rawAnsArr.map((a) => matchOption(rawOptions, a)).filter((x): x is string => Boolean(x)))];
+    if (!matchedAll.length) continue;
+    results.push({
       id: crypto.randomUUID(),
-      type, prompt, explanation, topic,
-      options: type === 'short' ? undefined : options,
-      correctAnswer: type === 'multi' ? [...answer].sort().join('\n') : answer,
-      rubric: type === 'short' && nonempty(rubric) ? rubric : undefined,
-    };
-  });
+      type,
+      prompt,
+      explanation,
+      topic: typeof raw.topic === 'string' && raw.topic.trim() ? raw.topic.trim() : topic,
+      options: rawOptions,
+      correctAnswer: matchedAll.sort().join('\n'),
+    });
+  }
+
+  if (!results.length) {
+    throw new Error('Could not build valid questions from the AI response. Try again.');
+  }
+  return count !== undefined ? results.slice(0, count) : results;
 }

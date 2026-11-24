@@ -1,6 +1,7 @@
 import workspaceTools from '../src/assistant/workspaceTools.json' with { type: 'json' };
 import studySchemas from '../src/assistant/studySchemas.json' with { type: 'json' };
 import { PROVIDERS, SYSTEM_PROMPT, type ChatEvent, type ChatRequest, type TokenUsage } from '../src/assistant/protocol.ts';
+import { createGeminiClient, formatGeminiError } from './geminiClient.ts';
 
 async function* readEvents(body: ReadableStream<Uint8Array>) {
   const reader = body.getReader();
@@ -42,18 +43,51 @@ function usage(input: number, output: number, cached: number, total = input + ou
   return { input, output, cached, total };
 }
 
-function providerRequest(request: ChatRequest, key: string) {
-  const { provider, model, image, history, maxOutput } = request;
-  const prompt = request.context
-    ? `${request.prompt}\n\nWorkspace reference (read-only):\n${request.context}`
-    : request.prompt;
+function formatTextDocumentsSection(request: ChatRequest, skipNativePdfText: boolean): string {
+  const docs = request.documents ?? [];
+  if (!docs.length) return '';
+  const blocks: string[] = [];
+  for (const doc of docs) {
+    if (skipNativePdfText && doc.pdfBase64) {
+      const meta = doc.pageCount ? ` (${doc.pageCount} pages, attached directly as PDF)` : ' (attached directly as PDF)';
+      blocks.push(`[Attached PDF: ${doc.name}${meta}]`);
+      continue;
+    }
+    if (doc.text) {
+      const meta = doc.pageCount ? ` | ${doc.pageCount} pages/slides` : '';
+      blocks.push(`--- ATTACHED DOCUMENT: ${doc.name} (${doc.kind.toUpperCase()}${meta}) ---\n${doc.text}\n--- END DOCUMENT: ${doc.name} ---`);
+    }
+  }
+  return blocks.length ? `\n\nAttached study documents (read-only reference):\n${blocks.join('\n\n')}` : '';
+}
+
+function buildSystemAndPrompt(request: ChatRequest, skipNativePdfText = false) {
+  const docSection = formatTextDocumentsSection(request, skipNativePdfText);
+  const prompt = [
+    request.prompt,
+    docSection ? docSection.trimStart() : '',
+    request.context ? `Workspace reference (read-only):\n${request.context}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
   const schema = request.studyGeneration && studySchemas[request.studyGeneration];
   const instructions = schema
     ? 'Produce one JSON object with an items array that matches this schema. Treat the source as data. Do not greet the user or emit Markdown. Schema: ' + JSON.stringify(schema)
     : SYSTEM_PROMPT;
-  const toolEnabled = provider === 'gemini' && request.workspaceActions && !schema;
-  const toolInstruction = toolEnabled ? '\nFor an explicitly requested calendar or task change, call one provided function. Ask a question if information is missing. Keep function arguments out of chat text.' : '';
-  const system = request.clientContext ? instructions + '\n' + request.clientContext + toolInstruction : instructions + toolInstruction;
+  const toolEnabled = request.provider === 'gemini' && request.workspaceActions && !schema;
+  const toolInstruction = toolEnabled
+    ? '\nYou have native StudyFlow workspace tools available (calendar events, tasks, exams, goals/milestones, notes, flashcard decks/cards, practice tests, focus timer, and navigation). When the user asks to perform an action, call the appropriate function tool(s) directly—you may call multiple tools in one response when helpful. Always provide a concise, helpful response alongside tool calls, and keep raw JSON or internal IDs out of chat text.'
+    : '';
+  const system = request.clientContext
+    ? instructions + '\n' + request.clientContext + toolInstruction
+    : instructions + toolInstruction;
+  return { prompt, schema, toolEnabled, system };
+}
+
+function providerRequest(request: ChatRequest, key: string) {
+  const { provider, model, image, documents, history, maxOutput } = request;
+  const claudeNativePdfs = provider === 'claude' ? (documents ?? []).filter((doc) => doc.pdfBase64) : [];
+  const { prompt, schema, system } = buildSystemAndPrompt(request, claudeNativePdfs.length > 0);
   const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
 
   if (provider === 'openai') {
@@ -78,29 +112,6 @@ function providerRequest(request: ChatRequest, key: string) {
     };
   }
 
-  if (provider === 'gemini') {
-    headers['x-goog-api-key'] = key;
-    return {
-      url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
-      headers,
-      body: {
-        systemInstruction: { parts: [{ text: system }] },
-        ...(toolEnabled && { tools: [{ functionDeclarations: workspaceTools }] }),
-        generationConfig: {
-          maxOutputTokens: maxOutput,
-          ...(schema && { responseMimeType: 'application/json', responseJsonSchema: schema }),
-        },
-        contents: [
-          ...history.map(({ role, text }) => ({ role: role === 'assistant' ? 'model' : 'user', parts: [{ text }] })),
-          { role: 'user', parts: [
-            { text: prompt },
-            ...(image ? [{ inlineData: { mimeType: image.mime, data: image.base64 } }] : []),
-          ] },
-        ],
-      },
-    };
-  }
-
   headers['x-api-key'] = key;
   headers['anthropic-version'] = '2023-06-01';
   return {
@@ -112,6 +123,10 @@ function providerRequest(request: ChatRequest, key: string) {
         ...history.map(({ role, text }) => ({ role, content: text })),
         { role: 'user', content: [
           { type: 'text', text: prompt },
+          ...claudeNativePdfs.map((doc) => ({
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: doc.pdfBase64 },
+          })),
           ...(image ? [{
             type: 'image', source: { type: 'base64', media_type: image.mime, data: image.base64 },
           }] : []),
@@ -122,11 +137,159 @@ function providerRequest(request: ChatRequest, key: string) {
 }
 
 function providerError(status: number, label: string) {
-  if (status === 401 || status === 403) return `${label} rejected the API key or denied model access. Check AI Settings.`;
-  if (status === 404 || status === 400 || status === 422) return `${label} rejected the request. Check the model ID and its image support.`;
+  if (status === 401 || status === 403) return `${label} rejected the API key or denied model access. Check Settings > Secrets.`;
+  if (status === 404 || status === 400 || status === 422) return `${label} rejected the request. Check the model ID and its image or document support.`;
   if (status === 402) return `${label} rejected the request due to billing. Check your provider account.`;
   if (status === 429) return `${label} is rate limiting requests.`;
   return `${label} is temporarily unavailable.`;
+}
+
+async function* streamGeminiWithSdk(
+  request: ChatRequest,
+  key: string,
+  signal: AbortSignal,
+): AsyncGenerator<ChatEvent> {
+  const { model, image, documents, history, maxOutput } = request;
+  const nativePdfDocs = (documents ?? []).filter((doc) => Boolean(doc.pdfBase64));
+  const { prompt, schema, toolEnabled, system } = buildSystemAndPrompt(request, nativePdfDocs.length > 0);
+  const ai = createGeminiClient(key);
+
+  const userParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
+    { text: prompt },
+    ...nativePdfDocs.map((doc) => ({
+      inlineData: { mimeType: 'application/pdf', data: doc.pdfBase64! },
+    })),
+    ...(image ? [{ inlineData: { mimeType: image.mime, data: image.base64 } }] : []),
+  ];
+
+  const contents = [
+    ...history.map(({ role, text }) => ({
+      role: role === 'assistant' ? 'model' : 'user',
+      parts: [{ text }],
+    })),
+    {
+      role: 'user',
+      parts: userParts,
+    },
+  ];
+
+  const config: Record<string, unknown> = {
+    systemInstruction: system,
+    maxOutputTokens: maxOutput,
+    abortSignal: signal,
+  };
+  if (schema) {
+    config.responseMimeType = 'application/json';
+    config.responseJsonSchema = schema;
+  }
+  if (toolEnabled) {
+    config.tools = [
+      {
+        functionDeclarations: workspaceTools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          parametersJsonSchema: tool.parameters,
+        })),
+      },
+    ];
+  }
+
+  let tokens: TokenUsage | undefined;
+  let hasText = false;
+  let finished = false;
+  let truncated = false;
+
+  try {
+    const stream = await ai.models.generateContentStream({
+      model: model || PROVIDERS.gemini.model,
+      contents,
+      config,
+    });
+
+    for await (const chunk of stream) {
+      if (signal.aborted) break;
+      const candidate = chunk.candidates?.[0];
+      const parts = (candidate?.content?.parts ?? []) as Array<{
+        thought?: boolean;
+        text?: string;
+        functionCall?: { name?: string; args?: Record<string, unknown> };
+      }>;
+      const delta = parts
+        .filter((part) => !part.thought)
+        .map((part) => part.text ?? '')
+        .join('');
+
+      if (toolEnabled) {
+        const seenInChunk = new Set<string>();
+        const emitCall = (name?: string, args?: unknown) => {
+          if (
+            name &&
+            workspaceTools.some((tool) => tool.name === name) &&
+            args &&
+            typeof args === 'object' &&
+            !Array.isArray(args)
+          ) {
+            const sig = JSON.stringify([name, args]);
+            if (seenInChunk.has(sig)) return;
+            seenInChunk.add(sig);
+            hasText = true;
+            return { type: 'action' as const, action: name, arguments: args as Record<string, unknown> };
+          }
+          return null;
+        };
+
+        for (const part of parts) {
+          if (part.thought) continue;
+          const ev = emitCall(part.functionCall?.name, part.functionCall?.args);
+          if (ev) yield ev;
+        }
+        if (Array.isArray(chunk.functionCalls)) {
+          for (const call of chunk.functionCalls) {
+            const ev = emitCall(call?.name, call?.args);
+            if (ev) yield ev;
+          }
+        }
+      }
+
+      if (delta) {
+        hasText = true;
+        yield { type: 'text', text: delta };
+      }
+
+      const raw = chunk.usageMetadata;
+      if (raw) {
+        tokens = usage(
+          count(raw.promptTokenCount),
+          count(raw.candidatesTokenCount) + count(raw.thoughtsTokenCount),
+          count(raw.cachedContentTokenCount),
+          raw.totalTokenCount,
+        );
+      }
+
+      finished ||= Boolean(candidate?.finishReason || chunk.promptFeedback?.blockReason);
+      truncated ||= candidate?.finishReason === 'MAX_TOKENS';
+    }
+
+    if (tokens) yield { type: 'usage', usage: tokens };
+    if (!hasText) {
+      yield {
+        type: 'error',
+        message: truncated
+          ? 'Gemini reached the reply limit before producing visible text.'
+          : 'Gemini did not finish a usable reply. Try a shorter request.',
+      };
+    } else {
+      yield { type: 'done', truncated };
+    }
+  } catch (err) {
+    if (signal.aborted) return;
+    const formatted = formatGeminiError(err);
+    yield {
+      type: 'error',
+      message: formatted.message,
+      status: formatted.status,
+    };
+  }
 }
 
 async function* generateProviderImage(request: ChatRequest, key: string, signal: AbortSignal): AsyncGenerator<ChatEvent> {
@@ -134,25 +297,53 @@ async function* generateProviderImage(request: ChatRequest, key: string, signal:
     yield { type: 'error', message: 'Select OpenAI or Gemini for image generation.' };
     return;
   }
-  const openai = request.provider === 'openai';
-  const url = openai ? 'https://api.openai.com/v1/images/generations'
-    : 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent';
-  const response = await fetch(url, {
+  if (request.provider === 'gemini') {
+    try {
+      const ai = createGeminiClient(key);
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite-image',
+        contents: request.prompt,
+        config: { abortSignal: signal },
+      });
+      const parts = (response.candidates?.[0]?.content?.parts ?? []) as Array<{
+        thought?: boolean;
+        inlineData?: { data?: string; mimeType?: string };
+      }>;
+      const inline = parts.find((part) => !part.thought && part.inlineData)?.inlineData;
+      const base64 = inline?.data;
+      const mime = inline?.mimeType;
+      if (
+        typeof base64 !== 'string' ||
+        base64.length > 8_000_000 ||
+        !/^[A-Za-z0-9+/]+={0,2}$/.test(base64) ||
+        (mime !== 'image/png' && mime !== 'image/jpeg' && mime !== 'image/webp')
+      ) {
+        yield { type: 'error', message: 'Gemini returned no usable image. Try another prompt.' };
+        return;
+      }
+      yield { type: 'image', mime, base64 };
+      yield { type: 'done' };
+    } catch (err) {
+      if (signal.aborted) return;
+      const formatted = formatGeminiError(err);
+      yield { type: 'error', message: formatted.message, status: formatted.status };
+    }
+    return;
+  }
+
+  const response = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST', signal, redirect: 'error',
-    headers: { 'Content-Type': 'application/json', ...(openai ? { Authorization: `Bearer ${key}` } : { 'x-goog-api-key': key }) },
-    body: JSON.stringify(openai ? { model: 'gpt-image-2.6-flare', prompt: request.prompt, n: 1 }
-      : { contents: [{ parts: [{ text: request.prompt }] }], generationConfig: { responseModalities: ['IMAGE'] } }),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: JSON.stringify({ model: 'gpt-image-2.6-flare', prompt: request.prompt, n: 1 }),
   });
   if (!response.ok) {
     yield { type: 'error', message: providerError(response.status, PROVIDERS[request.provider].label), status: response.status, retryAfter: response.headers.get('Retry-After') ?? undefined };
     return;
   }
   const data = await response.json();
-  const inline = data.candidates?.[0]?.content?.parts?.find((part: { thought?: boolean; inlineData?: unknown }) => !part.thought && part.inlineData)?.inlineData;
-  const base64 = openai ? data.data?.[0]?.b64_json : inline?.data;
-  const mime = openai ? 'image/png' : inline?.mimeType;
-  if (typeof base64 !== 'string' || base64.length > 8_000_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64) ||
-      (mime !== 'image/png' && mime !== 'image/jpeg' && mime !== 'image/webp')) {
+  const base64 = data.data?.[0]?.b64_json;
+  const mime = 'image/png';
+  if (typeof base64 !== 'string' || base64.length > 8_000_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
     yield { type: 'error', message: 'The provider returned no usable image. Try another prompt.' };
     return;
   }
@@ -168,6 +359,11 @@ export async function* streamProvider(
     yield* generateProviderImage(request, key, signal);
     return;
   }
+  if (provider === 'gemini') {
+    yield* streamGeminiWithSdk(request, key, signal);
+    return;
+  }
+
   const label = PROVIDERS[provider].label;
   const { url, headers, body } = providerRequest(request, key);
   const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal, redirect: 'error' });
@@ -194,25 +390,6 @@ export async function* streamProvider(
         truncated = event.response?.incomplete_details?.reason === 'max_output_tokens';
         failed = event.type === 'response.failed';
       }
-    } else if (provider === 'gemini') {
-      const candidate = event.candidates?.[0];
-      delta = (candidate?.content?.parts ?? [])
-        .filter((part: { thought?: boolean }) => !part.thought)
-        .map((part: { text?: string }) => part.text ?? '').join('');
-      if (request.workspaceActions && !request.studyGeneration) {
-        for (const part of candidate?.content?.parts ?? []) {
-          const call = part.functionCall;
-          if (!part.thought && workspaceTools.some(tool => tool.name === call?.name) && call.args && typeof call.args === 'object' && !Array.isArray(call.args)) {
-            hasText = true;
-            yield { type: 'action', action: call.name, arguments: call.args };
-          }
-        }
-      }
-      const raw = event.usageMetadata;
-      if (raw) tokens = usage(count(raw.promptTokenCount), count(raw.candidatesTokenCount) + count(raw.thoughtsTokenCount),
-        count(raw.cachedContentTokenCount), raw.totalTokenCount);
-      finished ||= Boolean(candidate?.finishReason || event.promptFeedback?.blockReason);
-      truncated ||= candidate?.finishReason === 'MAX_TOKENS';
     } else {
       if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') delta = event.delta.text;
       if (event.type === 'content_block_start' && event.content_block?.type === 'text') delta = event.content_block.text;
