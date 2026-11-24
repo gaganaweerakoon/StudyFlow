@@ -76,6 +76,7 @@ export type FocusOrigin = 'phone' | 'pc' | 'alarm';
 export interface CompanionFocusState {
   sessionId: string;
   subjectId: string;
+  customSubject?: string;
   sessionTitle: string;
   phase: FocusPhase;
   origin: FocusOrigin;
