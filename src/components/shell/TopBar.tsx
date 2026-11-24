@@ -1,5 +1,5 @@
-import {GoogleAccount} from '../../desktop/GoogleAccount';
-import { UserRound } from 'lucide-react';
+import { GoogleAccount, GoogleMark } from '../../desktop/GoogleAccount';
+import { UserRound, Loader2 } from 'lucide-react';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Search,
@@ -19,6 +19,7 @@ import {
   User,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../firebase/AuthContext';
 import { THEME_OPTIONS, ACCENT_PRESETS, USER_AVATAR_URL } from '../../data/mockData';
 import type { NavRoute } from '../../types/studyflow';
 
@@ -61,9 +62,12 @@ export const TopBar: React.FC = () => {
     preferences,
     legacyCalendar,
   } = useApp();
+  const { user, authReady, signingIn, signInWithGoogle } = useAuth();
 
   const [openMenu, setOpenMenu] = useState<'create' | 'notifications' | 'theme' | 'profile' | null>(null);
   const menuContainerRef = useRef<HTMLDivElement>(null);
+  const avatarSrc = user?.photoURL || preferences.googleAccount?.photoURL || (legacyCalendar ? '' : USER_AVATAR_URL);
+  const isSignedIn = Boolean(user || preferences.googleAccount);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -403,8 +407,30 @@ export const TopBar: React.FC = () => {
           )}
         </div>
 
+        {/* Direct Google Sign-In button when signed out */}
+        {!isSignedIn && (
+          <button
+            type="button"
+            disabled={signingIn || !authReady}
+            onClick={() => void signInWithGoogle()}
+            aria-label="Sign in with Google"
+            className="hidden sm:inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[12px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-60 transition-colors whitespace-nowrap"
+            style={{
+              backgroundColor: 'var(--bg-surface-subtle)',
+              border: '1px solid var(--border-subtle)',
+            }}
+          >
+            {signingIn ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <GoogleMark className="w-3.5 h-3.5 shrink-0" />
+            )}
+            <span>{signingIn ? 'Signing in…' : 'Sign in'}</span>
+          </button>
+        )}
+
         {/* Profile Avatar Menu */}
-        <div className="relative pl-1">
+        <div className="relative pl-0.5">
           <button
             type="button"
             onClick={() => setOpenMenu((m) => (m === 'profile' ? null : 'profile'))}
@@ -412,18 +438,27 @@ export const TopBar: React.FC = () => {
             aria-expanded={openMenu === 'profile'}
             className="flex items-center gap-2 rounded-full p-0.5 hover:ring-2 hover:ring-[var(--accent-border)] transition-all"
           >
-            {legacyCalendar ? <span aria-hidden="true" className="grid h-7 w-7 place-items-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]"><UserRound className="h-4 w-4" /></span> : <img
-              src={USER_AVATAR_URL}
-              alt={preferences.name}
-              referrerPolicy="no-referrer"
-              className="w-7 h-7 rounded-full object-cover"
-              style={{ border: '1px solid var(--border-subtle)' }}
-            />}
+            {avatarSrc ? (
+              <img
+                src={avatarSrc}
+                alt={preferences.name}
+                referrerPolicy="no-referrer"
+                className="w-7 h-7 rounded-full object-cover"
+                style={{ border: '1px solid var(--border-subtle)' }}
+              />
+            ) : (
+              <span
+                aria-hidden="true"
+                className="grid h-7 w-7 place-items-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]"
+              >
+                <UserRound className="h-4 w-4" />
+              </span>
+            )}
           </button>
 
           {openMenu === 'profile' && (
             <div
-              className="absolute right-0 mt-2 w-60 rounded-xl p-1.5 z-50"
+              className="absolute right-0 mt-2 w-64 rounded-xl p-1.5 z-50"
               style={{
                 backgroundColor: 'var(--bg-elevated)',
                 border: '1px solid var(--border-subtle)',
@@ -434,14 +469,14 @@ export const TopBar: React.FC = () => {
                 className="px-2.5 py-2 mb-1"
                 style={{ borderBottom: '1px solid var(--border-subtle)' }}
               >
-                <div className="text-[13px] font-semibold text-[var(--text-primary)]">
+                <div className="text-[13px] font-semibold text-[var(--text-primary)] truncate">
                   {preferences.name}
                 </div>
                 <div className="text-[11.5px] text-[var(--text-muted)] truncate">
-                  {preferences.major}
+                  {user?.email || preferences.email || preferences.major}
                 </div>
               </div>
-              <GoogleAccount/>
+              <GoogleAccount compact onSignedIn={() => setOpenMenu(null)} />
               <button
                 type="button"
                 onClick={() => {

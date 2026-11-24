@@ -18,8 +18,10 @@ import {
   Download,
   Sparkles,
   Smartphone,
+  RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../firebase/AuthContext';
 import { useAssistant } from '../../assistant/AssistantContext';
 import { AssistantSettings } from '../../assistant/AssistantSettings';
 import { ACCENT_PRESETS, THEME_OPTIONS, USER_AVATAR_URL } from '../../data/mockData';
@@ -47,7 +49,7 @@ const SECTIONS: { id: SettingsSection; label: string; icon: React.ComponentType<
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'companion', label: 'Mobile companion', icon: Smartphone },
   { id: 'privacy', label: 'Privacy', icon: Shield },
-  { id: 'assistant', label: 'AI Usage', icon: Sparkles },
+  { id: 'assistant', label: 'AI & Usage', icon: Sparkles },
   { id: 'backup', label: 'Data & Backup', icon: Database },
   { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: Keyboard },
   { id: 'accessibility', label: 'Accessibility', icon: Accessibility },
@@ -71,6 +73,8 @@ export const SettingsView: React.FC = () => {
   } = useApp();
 
   const { settingsRequested, setSettingsRequested } = useAssistant();
+  const { user, syncing, syncProfileToCloud, saveCloudProfilePatch } = useAuth();
+  const profileAvatarSrc = user?.photoURL || preferences.googleAccount?.photoURL || (legacyCalendar ? '' : USER_AVATAR_URL);
   const resetDialog=React.useRef<HTMLDialogElement>(null);
   const [selected,setSelected]=useState<WipeSection[]>([]);
   const categories=Object.keys(WIPE_OPTIONS) as WipeSection[];
@@ -171,14 +175,24 @@ export const SettingsView: React.FC = () => {
               <h2 className="font-display text-[16px] font-semibold text-[var(--text-primary)]">
                 Student Profile
               </h2>
-              <div className="flex items-center gap-4">
-                {legacyCalendar ? <span aria-hidden="true" className="grid h-14 w-14 place-items-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]"><User className="h-6 w-6" /></span> : <img
-                  src={USER_AVATAR_URL}
-                  alt={preferences.name}
-                  referrerPolicy="no-referrer"
-                  className="w-14 h-14 rounded-full object-cover"
-                  style={{ border: '1px solid var(--border-subtle)' }}
-                />}
+              <GoogleAccount />
+              <div className="flex items-center gap-4 pt-1">
+                {profileAvatarSrc ? (
+                  <img
+                    src={profileAvatarSrc}
+                    alt={preferences.name}
+                    referrerPolicy="no-referrer"
+                    className="w-14 h-14 rounded-full object-cover"
+                    style={{ border: '1px solid var(--border-subtle)' }}
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="grid h-14 w-14 place-items-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]"
+                  >
+                    <User className="h-6 w-6" />
+                  </span>
+                )}
                 <div>
                   <div className="text-[14px] font-semibold text-[var(--text-primary)]">{preferences.name}</div>
                   <div className="text-[12px] text-[var(--text-muted)]">{preferences.email}</div>
@@ -189,6 +203,7 @@ export const SettingsView: React.FC = () => {
                   <label className="block text-[12px] text-[var(--text-muted)] mb-1">Display Name</label>
                   <input
                     type="text"
+                    maxLength={120}
                     value={preferences.name}
                     onChange={(e) => updatePreferences({ name: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg text-[13px]"
@@ -199,6 +214,7 @@ export const SettingsView: React.FC = () => {
                   <label className="block text-[12px] text-[var(--text-muted)] mb-1">Academic Email</label>
                   <input
                     type="email"
+                    maxLength={254}
                     value={preferences.email}
                     onChange={(e) => updatePreferences({ email: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg text-[13px]"
@@ -209,6 +225,7 @@ export const SettingsView: React.FC = () => {
                   <label className="block text-[12px] text-[var(--text-muted)] mb-1">Major / Concentration</label>
                   <input
                     type="text"
+                    maxLength={160}
                     value={preferences.major}
                     onChange={(e) => updatePreferences({ major: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg text-[13px]"
@@ -216,7 +233,48 @@ export const SettingsView: React.FC = () => {
                   />
                 </div>
               </div>
-              {legacyCalendar && <><GoogleAccount /><button onClick={()=>updatePreferences({onboarding:"open"})}>Profile setup</button></>}
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                {user && (
+                  <button
+                    type="button"
+                    disabled={syncing}
+                    onClick={() => void syncProfileToCloud()}
+                    className="px-3.5 py-2 rounded-lg text-[12.5px] font-medium disabled:opacity-60 transition-opacity hover:opacity-95"
+                    style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
+                  >
+                    {syncing ? 'Syncing profile…' : 'Save & Sync Profile to Google'}
+                  </button>
+                )}
+                {user?.displayName && preferences.name.trim() !== user.displayName.trim() && (
+                  <button
+                    type="button"
+                    disabled={syncing}
+                    onClick={() => {
+                      const googleName = user.displayName?.trim();
+                      if (!googleName) return;
+                      updatePreferences({ name: googleName });
+                      void saveCloudProfilePatch({ displayName: googleName }).then(() => {
+                        pushToast(`Synced name from Google (${googleName})`);
+                      });
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-60 transition-colors"
+                    style={surfaceStyle}
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Use Google name ({user.displayName})
+                  </button>
+                )}
+                {legacyCalendar && (
+                  <button
+                    type="button"
+                    onClick={() => updatePreferences({ onboarding: 'open' })}
+                    className="px-3 py-2 rounded-lg text-[12.5px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]"
+                    style={surfaceStyle}
+                  >
+                    Profile setup
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

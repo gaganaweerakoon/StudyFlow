@@ -29,6 +29,12 @@ import { AchievementsView } from './components/views/AchievementsView';
 import { SettingsView } from './components/views/SettingsView';
 import { AssistantProvider, type DesktopHistory, type DesktopUsage } from './assistant/AssistantContext';
 import { FloatingAssistant } from './assistant/FloatingAssistant';
+import { isTauri } from '@tauri-apps/api/core';
+import { AuthProvider, useAuth } from './firebase/AuthContext';
+import { AuthProfileBridge } from './firebase/AuthProfileBridge';
+import { resolveAuthGateState } from './firebase/authGateLogic';
+import { AuthLandingPage, AuthLoadingScreen } from './components/auth/AuthLandingPage';
+import { ErrorBoundary } from './components/shell/ErrorBoundary';
 
 const StudyFlowShell: React.FC = () => {
   const { route, preferences } = useApp();
@@ -107,13 +113,47 @@ const StudyFlowShell: React.FC = () => {
   );
 };
 
-export default function App({ workspace, desktopUsage, desktopHistory }: { workspace?: WorkspacePersistence; desktopUsage?: DesktopUsage; desktopHistory?: DesktopHistory }) {
+const AuthenticatedAppGate: React.FC<{
+  desktopUsage?: DesktopUsage;
+  desktopHistory?: DesktopHistory;
+}> = ({ desktopUsage, desktopHistory }) => {
+  const { preferences } = useApp();
+  const { user, authReady } = useAuth();
+
+  const gateState = resolveAuthGateState({
+    desktopMode: isTauri(),
+    authReady,
+    hasFirebaseUser: Boolean(user),
+    hasDesktopGoogleAccount: Boolean(preferences.googleAccount),
+  });
+
+  if (gateState === 'loading') {
+    return <AuthLoadingScreen />;
+  }
+
+  if (gateState === 'locked') {
+    return <AuthLandingPage />;
+  }
+
   return (
-    <AppProvider workspace={workspace}>
+    <>
       <PublishCompanionCalendar />
       <AssistantProvider desktopUsage={desktopUsage} desktopHistory={desktopHistory}>
         <StudyFlowShell />
       </AssistantProvider>
-    </AppProvider>
+    </>
+  );
+};
+
+export default function App({ workspace, desktopUsage, desktopHistory }: { workspace?: WorkspacePersistence; desktopUsage?: DesktopUsage; desktopHistory?: DesktopHistory }) {
+  return (
+    <ErrorBoundary>
+      <AppProvider workspace={workspace}>
+        <AuthProvider>
+          <AuthProfileBridge />
+          <AuthenticatedAppGate desktopUsage={desktopUsage} desktopHistory={desktopHistory} />
+        </AuthProvider>
+      </AppProvider>
+    </ErrorBoundary>
   );
 }

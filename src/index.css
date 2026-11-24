@@ -252,3 +252,209 @@ select option {
   background-color: var(--bg-surface);
   color: var(--text-primary);
 }
+
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Rich Notes Markdown Typography — inherits original/Unicode font family cleanly */
+.note-markdown {
+  font-family: var(--note-font-family, var(--font-body));
+  color: var(--text-primary);
+  line-height: 1.72;
+  font-size: 14.5px;
+  overflow-wrap: anywhere;
+}
+
+.note-markdown > * + * {
+  margin-top: 0.9em;
+}
+
+.note-markdown h1,
+.note-markdown h2,
+.note-markdown h3,
+.note-markdown h4 {
+  font-family: inherit;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.32;
+  text-wrap: balance;
+}
+
+.note-markdown h1 {
+  font-size: 1.55em;
+  margin-top: 1.4em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.note-markdown h2 {
+  font-size: 1.28em;
+  margin-top: 1.35em;
+}
+
+.note-markdown h3 {
+  font-size: 1.1em;
+  margin-top: 1.15em;
+}
+
+.note-markdown h4 {
+  font-size: 1em;
+  color: var(--text-secondary);
+}
+
+.note-markdown > :first-child {
+  margin-top: 0;
+}
+
+.note-markdown p {
+  margin: 0;
+}
+
+.note-markdown strong {
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.note-markdown ul {
+  list-style: disc;
+  padding-inline-start: 1.45em;
+}
+
+.note-markdown ol {
+  list-style: decimal;
+  padding-inline-start: 1.55em;
+}
+
+.note-markdown li + li {
+  margin-top: 0.3em;
+}
+
+.note-markdown li > input[type='checkbox'] {
+  accent-color: var(--accent);
+  margin-inline-end: 0.45em;
+  vertical-align: middle;
+}
+
+.note-markdown hr {
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  margin: 1.4em 0;
+}
+
+.note-markdown blockquote {
+  margin: 1em 0;
+  padding: 0.75em 1em;
+  border-radius: 10px;
+  background-color: var(--bg-surface-subtle);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.note-markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background-color: var(--bg-surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  padding: 0.12em 0.38em;
+}
+
+.note-markdown pre {
+  background-color: var(--bg-surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 0.85em 1em;
+  overflow-x: auto;
+  line-height: 1.55;
+}
+
+.note-markdown pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: 12.5px;
+}
+
+.note-markdown a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.note-markdown .note-table-wrap,
+.pip-markdown .note-table-wrap {
+  margin: 1em 0;
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background-color: var(--bg-surface);
+}
+
+.note-markdown table,
+.pip-markdown table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  font-size: 0.91em;
+  line-height: 1.5;
+}
+
+.note-markdown thead,
+.pip-markdown thead {
+  background-color: var(--bg-surface-subtle);
+}
+
+.note-markdown th,
+.note-markdown td,
+.pip-markdown th,
+.pip-markdown td {
+  border-bottom: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  padding: 0.55em 0.85em;
+  text-align: start;
+  vertical-align: top;
+}
+
+.note-markdown th:last-child,
+.note-markdown td:last-child,
+.pip-markdown th:last-child,
+.pip-markdown td:last-child {
+  border-right: 0;
+}
+
+.note-markdown tbody tr:last-child td,
+.pip-markdown tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.note-markdown tbody tr:nth-child(even),
+.pip-markdown tbody tr:nth-child(even) {
+  background-color: color-mix(in srgb, var(--bg-surface-subtle) 45%, transparent);
+}
+
+.note-markdown th,
+.pip-markdown th {
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.note-markdown .katex,
+.pip-markdown .katex {
+  font-size: 1.03em;
+}
+
+.note-markdown .katex-display,
+.pip-markdown .katex-display {
+  margin: 0.9em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.45em 0.25em;
+}

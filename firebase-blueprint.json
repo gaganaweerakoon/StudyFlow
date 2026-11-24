@@ -1,0 +1,85 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private Google-authenticated student profile and synced StudyFlow preferences.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID matching the document ID."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Student display name."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 254,
+          "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+          "description": "Google account email address (PII, owner-only)."
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "Google profile photo URL or empty string."
+        },
+        "major": {
+          "type": "string",
+          "maxLength": 160,
+          "description": "Student major or concentration."
+        },
+        "theme": {
+          "type": "string",
+          "enum": ["light", "dark", "midnight", "ocean", "forest", "warm"],
+          "description": "Selected StudyFlow visual theme."
+        },
+        "accentColor": {
+          "type": "string",
+          "maxLength": 16,
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "description": "Hex accent color."
+        },
+        "density": {
+          "type": "string",
+          "enum": ["compact", "comfortable"],
+          "description": "Workspace UI density preference."
+        },
+        "dailyGoalHours": {
+          "type": "number",
+          "description": "Daily study goal in hours (0.5 to 24)."
+        },
+        "weeklyGoalHours": {
+          "type": "number",
+          "description": "Weekly study goal in hours (1 to 168)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp set on profile creation (immutable)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp updated on every profile write."
+        }
+      },
+      "required": ["uid", "displayName", "email", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Owner-only student profile and synced preferences document keyed by Firebase Auth UID."
+    }
+  }
+}
