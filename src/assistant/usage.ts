@@ -1,4 +1,4 @@
-import { CHAT_LIMITS, isModelId, isProvider, type Provider, type ReplyLimit, type TokenUsage } from './protocol';
+import { CHAT_LIMITS, isModelId, type Provider, type ReplyLimit, type TokenUsage } from './protocol';
 import { localDay, validTimeZone } from './workspaceContext';
 
 export interface AssistantSettings {
@@ -38,11 +38,9 @@ export function readSettings(): AssistantSettings {
   const saved = read(settingsKey);
   if (!saved) return defaults;
   const models: AssistantSettings['models'] = {};
-  for (const id of ['openai', 'gemini', 'claude'] as const) {
-    if (isModelId(saved.models?.[id])) models[id] = saved.models[id];
-  }
+  if (isModelId(saved.models?.gemini)) models.gemini = saved.models.gemini;
   return {
-    provider: isProvider(saved.provider) ? saved.provider : defaults.provider,
+    provider: 'gemini',
     maxOutput: CHAT_LIMITS.response.some(limit => limit === saved.maxOutput) ? saved.maxOutput : defaults.maxOutput,
     dailyLimit: Number.isInteger(saved.dailyLimit) && saved.dailyLimit >= 0 && saved.dailyLimit <= 1_000_000
       ? saved.dailyLimit : defaults.dailyLimit,

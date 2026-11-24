@@ -4,6 +4,7 @@ import {
   CHAT_LIMITS,
   NOTES_RESTRUCTURE_ENDPOINT,
   OVERVIEW_ENDPOINT,
+  PROVIDERS,
   STATUS_ENDPOINT,
   SYSTEM_PROMPT,
   type ChatEvent,
@@ -47,6 +48,32 @@ export async function fetchDashboardOverview(
   key: string | undefined,
   signal?: AbortSignal,
 ): Promise<{ overview: DashboardAiOverview; usage?: TokenUsage }> {
+  if (isTauri()) {
+    let text = '';
+    let usage: TokenUsage | undefined;
+    for await (const event of sendChat({
+      provider: 'gemini',
+      model: payload.model ?? PROVIDERS.gemini.model,
+      prompt: 'Generate the dashboard study overview from the workspace diagnostics.',
+      context: payload.diagnosticsJson,
+      clientContext: payload.clockLabel,
+      history: [],
+      studyGeneration: 'overview',
+      maxOutput: 16384,
+    }, key, signal ?? new AbortController().signal)) {
+      if (event.type === 'text') text += event.text;
+      if (event.type === 'usage') usage = event.usage;
+      if (event.type === 'error') throw new Error(event.message);
+      if (event.type === 'done' && event.truncated) throw new Error('Gemini cut off the study overview. Try again.');
+    }
+    const overview: DashboardAiOverview = JSON.parse(text);
+    if (!overview || typeof overview.headline !== 'string' || typeof overview.summary !== 'string' ||
+        typeof overview.focusPriority !== 'string' || typeof overview.scheduleTip !== 'string' ||
+        !Array.isArray(overview.advice)) {
+      throw new Error('Gemini returned an invalid study overview.');
+    }
+    return { overview: { ...overview, generatedAt: new Date().toISOString() }, usage };
+  }
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (key) headers.Authorization = `Bearer ${key}`;
   const response = await fetch(OVERVIEW_ENDPOINT, {

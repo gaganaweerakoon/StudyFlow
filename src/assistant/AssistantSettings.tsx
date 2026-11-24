@@ -1,26 +1,18 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { BarChart3, KeyRound, Table2 } from 'lucide-react';
 import { useAssistant } from './AssistantContext';
-import { PROVIDERS, isModelId, isProvider, type Provider } from './protocol';
+import { GEMINI_MODELS, PROVIDERS, isModelId } from './protocol';
 import { filterUsageEntries, summarizeUsageEntries } from './usageAnalytics';
 import { UsageDetailsModal } from './UsageDetailsModal';
 import './assistant.css';
 
 const timezones = [...new Set(['Asia/Colombo', 'UTC', ...Intl.supportedValuesOf('timeZone')])].sort();
 
-const MODEL_CHOICES: Record<Provider, string[]> = {
-  openai: ['gpt-4.1-mini', 'gpt-4.1', 'gpt-5-mini', 'gpt-5.4-mini', 'gpt-6.2-sol', 'gpt-6.2-astra'],
-  gemini: ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-4-hydrogen', 'gemini-4-carbon', 'gemini-4-neon', 'gemini-4-argon'],
-  claude: ['claude-haiku-5-5', 'claude-haiku-4-5'],
-};
-
 function ProviderSettings() {
   const assistant = useAssistant();
   const { provider, models } = assistant.settings;
   const [key, setKey] = useState('');
   const [model, setModel] = useState(assistant.model);
-  const choices = MODEL_CHOICES[provider];
-  const [custom, setCustom] = useState(!choices.includes(assistant.model));
   const [message, setMessage] = useState('');
   const connected = assistant.configured.includes(provider);
   const [pending, setPending] = useState(false);
@@ -68,18 +60,10 @@ function ProviderSettings() {
     <form onSubmit={submit} className="pip-settings-form">
       <label>
         Model
-        <select value={custom ? 'custom' : model} onChange={event => {
-          const value = event.target.value;
-          setCustom(value === 'custom');
-          if (value !== 'custom') setModel(value);
-        }}>
-          {choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}
-          <option value="custom">Custom model</option>
+        <select value={model} onChange={event => setModel(event.target.value)}>
+          {GEMINI_MODELS.map(choice => <option key={choice} value={choice}>{choice}</option>)}
         </select>
       </label>
-      {custom && <label>Custom model ID
-        <input value={model} maxLength={100} onChange={event => setModel(event.target.value)} />
-      </label>}
       <label>
         API key
         <input
@@ -113,20 +97,11 @@ export function AssistantSettings() {
     <section className="pip-settings">
       <div className="pip-settings-heading"><h2><KeyRound size={18} /> AI Connection</h2></div>
       <p>{assistant.keyStorage === 'windows'
-        ? 'API keys are saved per provider in Windows Credential Manager.'
+        ? 'Your Gemini API key is saved in Windows Credential Manager.'
         : assistant.keyStorage === 'loading' ? 'Checking for saved API keys…' : 'Keys stay in memory for this tab.'}
-        {' '}Messages, selected workspace context, and attached PDFs, documents, or images go to your chosen provider.</p>
+        {' '}Messages, selected workspace context, and attached PDFs, documents, or images go to Gemini.</p>
       {assistant.keyStorageError && <p role="status">{assistant.keyStorageError}</p>}
       {!assistant.available && <p role="status">Open StudyFlow at localhost to enter a key and use the assistant.</p>}
-      <label>
-        Provider
-        <select value={settings.provider} onChange={event => {
-          const provider = event.target.value;
-          if (isProvider(provider)) assistant.updateSettings({ ...settings, provider });
-        }}>
-          {Object.entries(PROVIDERS).map(([id, item]) => <option key={id} value={id}>{item.label}</option>)}
-        </select>
-      </label>
       <div className="pip-settings-form">
         <label>Default response language
           <select value={settings.language ?? ''} onChange={event => assistant.updateSettings({ ...settings, language: event.target.value || undefined })}>

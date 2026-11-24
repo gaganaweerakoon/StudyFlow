@@ -549,6 +549,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         status = 'stopped';
         setNotice('Reply stopped. The provider may still count part of this request.');
       } else {
+        setDraft((current) => current || typed);
+        setAttachments((current) => current.length ? current : currentAttachments);
         errorMessage =
           error instanceof Error && !(error instanceof TypeError)
             ? error.message

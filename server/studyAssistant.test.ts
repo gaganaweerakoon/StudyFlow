@@ -6,43 +6,17 @@ import { studyAssistant } from './studyAssistant.ts';
 
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
 
-const openaiEvents = [
-  { type: 'response.output_text.delta', delta: 'Start with ' },
-  { type: 'response.output_text.delta', delta: '**chemistry**.' },
-  { type: 'response.completed', response: { usage: {
-    input_tokens: 130, input_tokens_details: { cached_tokens: 12 }, output_tokens: 11, total_tokens: 141,
-  } } },
-];
 const geminiEvents = [
   { candidates: [{ content: { parts: [{ thought: true, text: 'private reasoning' }, { text: 'Start with ' }] } }] },
   { candidates: [{ content: { parts: [{ text: '**chemistry**.' }] }, finishReason: 'STOP' }],
     usageMetadata: { promptTokenCount: 130, cachedContentTokenCount: 12, candidatesTokenCount: 8, thoughtsTokenCount: 3, totalTokenCount: 141 } },
 ];
-const claudeEvents = [
-  { type: 'message_start', message: { usage: { input_tokens: 110, cache_creation_input_tokens: 8, cache_read_input_tokens: 12, output_tokens: 0 } } },
-  { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Start with ' } },
-  { type: 'content_block_delta', delta: { type: 'text_delta', text: '**chemistry**.' } },
-  { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 11 } },
-  { type: 'message_stop' },
-];
-
 function geminiSse(events: object[]) {
   const body = events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('');
   return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
 }
 
-function sse(events: object[]) {
-  const text = events.map(event => `event: message\r\ndata: ${JSON.stringify(event)}`).join('\r\n\r\n');
-  const chunks = text.match(/.{1,13}|\r|\n/g) ?? [];
-  return new Response(new ReadableStream({
-    start(controller) {
-      for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk));
-      controller.close();
-    },
-  }), { headers: { 'Content-Type': 'text/event-stream' } });
-}
-
-test('the localhost assistant streams images, context, and normalized usage through each provider', async t => {
+test('the localhost assistant streams images, context, and normalized usage through Gemini', async t => {
   const server = await createServer({
     configFile: false, plugins: [studyAssistant()], server: { host: '127.0.0.1', port: 0, watch: null, hmr: false },
   });
@@ -56,14 +30,12 @@ test('the localhost assistant streams images, context, and normalized usage thro
   t.mock.method(globalThis, 'fetch', (url: string, init: RequestInit) => {
     if (url.startsWith(origin)) return realFetch(url, init);
     calls.push({ url, headers: new Headers(init.headers), body: JSON.parse(String(init.body)) });
-    if (url.startsWith('https://api.openai.com/')) return sse(openaiEvents);
     if (url.startsWith('https://generativelanguage.googleapis.com/')) {
       if (calls.at(-1)?.body.tools) return geminiSse([
         { candidates: [{ content: { parts: [{ functionCall: { name: 'create_event', args: { title: 'Chemistry', date: '2026-11-24', startHour: 7, durationHours: 1 } } }] }, finishReason: 'STOP' }] },
       ]);
       return geminiSse(geminiEvents);
     }
-    if (url.startsWith('https://api.anthropic.com/')) return sse(claudeEvents);
     throw new Error('Unexpected upstream');
   });
 
@@ -84,8 +56,8 @@ test('the localhost assistant streams images, context, and normalized usage thro
     });
   }
 
-  for (const provider of Object.keys(PROVIDERS) as Provider[]) {
-    const response = await call(provider);
+  {
+    const response = await call('gemini');
     assert.equal(response.status, 200);
     assert.match(response.headers.get('Content-Type') ?? '', /ndjson/);
     const raw = await response.text();
@@ -98,36 +70,31 @@ test('the localhost assistant streams images, context, and normalized usage thro
     assert.equal(events.at(-1)?.type, 'done');
   }
 
-  const [gemini, openai, claude] = calls;
-  assert.equal(openai.headers.get('authorization'), `Bearer ${key}`);
-  assert.equal(openai.body.max_output_tokens, 650);
-  assert.equal(openai.body.store, false);
-  assert.ok(openai.body.input[1].content[1].image_url.endsWith(png));
-  assert.match(openai.body.input[1].content[0].text, /Open task: Chemistry/);
+  const [gemini] = calls;
   assert.equal(gemini.headers.get('x-goog-api-key'), key);
   assert.ok(!gemini.url.includes(key));
   assert.equal(gemini.body.generationConfig.maxOutputTokens, 650);
   assert.equal(gemini.body.contents[0].role, 'model');
   assert.equal(gemini.body.contents[1].parts[1].inlineData.data, png);
-  assert.equal(claude.headers.get('x-api-key'), key);
-  assert.equal(claude.body.max_tokens, 650);
-  assert.equal(claude.body.messages[1].content[1].source.data, png);
+  assert.match(gemini.body.contents[1].parts[0].text, /Open task: Chemistry/);
 
-  assert.equal((await call('openai', {}, 'https://unrelated.example')).status, 403);
-  assert.equal((await call('openai', {}, origin, '')).status, 401);
-  assert.equal((await call('openai', { context: 'x'.repeat(120001) })).status, 400);
-  assert.equal((await call('openai', { image: { ...base.image, mime: 'image/jpeg' } })).status, 400);
-  assert.equal((await call('gemini', { model: '../wrong-host' })).status, 400);
-  assert.equal(calls.length, 3);
+  assert.equal((await call('gemini', {}, 'https://unrelated.example')).status, 403);
+  assert.equal((await call('gemini', {}, origin, '')).status, 401);
+  assert.equal((await call('gemini', { context: 'x'.repeat(120001) })).status, 400);
+  assert.equal((await call('gemini', { image: { ...base.image, mime: 'image/jpeg' } })).status, 400);
+  assert.equal((await call('gemini', { model: 'gemini-3.1-flash-lite' })).status, 400);
+  assert.equal((await call('openai', { model: PROVIDERS.gemini.model })).status, 400);
+  assert.equal((await call('claude', { model: PROVIDERS.gemini.model })).status, 400);
+  assert.equal(calls.length, 1);
   const structured = await call('gemini', {
-    model: 'gemini-3.1-flash-lite',
+    model: 'gemini-3.5-flash-lite',
     studyGeneration: 'flashcards',
     image: undefined,
     history: [],
     context: 'Selected source text',
   });
   await structured.text();
-  const generation = calls[3].body;
+  const generation = calls[1].body;
   assert.equal(generation.generationConfig.responseMimeType, 'application/json');
   assert.deepEqual(generation.generationConfig.responseJsonSchema.properties.items.items.required, ['front', 'back']);
   assert.match(generation.systemInstruction.parts[0].text, /Do not greet/);

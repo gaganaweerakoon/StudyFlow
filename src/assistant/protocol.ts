@@ -1,5 +1,9 @@
+import geminiModels from './geminiModels.json';
+
+export const GEMINI_MODELS: readonly string[] = geminiModels;
+
 export const PROVIDERS = {
-  gemini: { label: 'Gemini', model: 'gemini-4-hydrogen' },
+  gemini: { label: 'Gemini', model: GEMINI_MODELS[0] },
   openai: { label: 'OpenAI', model: 'gpt-4.1-mini' },
   claude: { label: 'Claude', model: 'claude-haiku-5-5' },
 } as const;
@@ -77,7 +81,7 @@ export interface ChatDocument {
   pdfBase64?: string;
 }
 
-export type StudyGenerationKind = 'flashcards' | 'practice' | 'syllabus' | 'grading';
+export type StudyGenerationKind = 'flashcards' | 'practice' | 'syllabus' | 'grading' | 'overview';
 
 export interface ChatRequest {
   provider: Provider;
@@ -115,5 +119,5 @@ export function isProvider(value: unknown): value is Provider {
 }
 
 export function isModelId(value: unknown): value is string {
-  return typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/.test(value);
+  return typeof value === 'string' && GEMINI_MODELS.includes(value);
 }

@@ -426,12 +426,16 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
           ? rawCat
           : 'weekly';
       const subjectId = resolveSubjectId(edit.subjectId, app) || undefined;
-      const milestones = Array.isArray(edit.milestones)
-        ? edit.milestones
-            .filter((m): m is string => typeof m === 'string' && Boolean(m.trim()))
-            .slice(0, 10)
-            .map((m) => ({ id: `ms-${crypto.randomUUID()}`, label: m.trim(), date: deadline, done: false }))
-        : [];
+      const steps: unknown[] = Array.isArray(edit.milestoneSteps)
+        ? edit.milestoneSteps
+        : Array.isArray(edit.milestones) ? edit.milestones : [];
+      const milestones = steps.slice(0, 30).flatMap((step) => {
+        const fields = step && typeof step === 'object' ? step as Record<string, unknown> : {};
+        const rawLabel = typeof step === 'string' ? step : fields.title;
+        const label = typeof rawLabel === 'string' ? rawLabel.trim().slice(0, 180) : '';
+        const date = typeof fields.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fields.date) ? fields.date : deadline;
+        return label ? [{ id: `ms-${crypto.randomUUID()}`, label, date, done: false }] : [];
+      });
       return {
         action,
         title: `Add goal “${title}” (${target} ${unit})`,
@@ -446,8 +450,42 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       };
     }
 
+    if (action === 'update_goal' || action === 'update_goal_milestone') {
+      const goal = app.goals.find((item) => item.id === (action === 'update_goal' ? edit.id : edit.goalId));
+      if (!goal) return;
+      const milestone = action === 'update_goal_milestone' ? goal.milestones.find((item) => item.id === edit.id) : undefined;
+      if (action === 'update_goal_milestone' && !milestone) return;
+      const rawDate = action === 'update_goal' ? edit.deadline : edit.date;
+      const date = typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : undefined;
+      if (!title && !date) return;
+      const label = milestone?.label ?? goal.title;
+      return {
+        action,
+        title: `Update “${label}”`,
+        success: `Updated “${label}”.`,
+        route: 'goals',
+        routeLabel: 'Open Goals',
+        apply: (current) => {
+          const live = current.goals.find((item) => item.id === goal.id);
+          if (!live) return false;
+          if (!milestone) {
+            current.updateGoal(live.id, { title: title || live.title, deadline: date ?? live.deadline });
+            return true;
+          }
+          if (!live.milestones.some((item) => item.id === milestone.id)) return false;
+          current.updateGoal(live.id, {
+            milestones: live.milestones.map((item) => item.id === milestone.id
+              ? { ...item, label: title || item.label, date: date ?? item.date }
+              : item),
+          });
+          return true;
+        },
+      };
+    }
+
     if (action === 'add_goal_milestone' && title) {
       const goalNeedle = typeof edit.goalId === 'string' ? edit.goalId.trim() : '';
+      if (!goalNeedle) return;
       const goal =
         app.goals.find((g) => g.id === goalNeedle) ??
         app.goals.find(
@@ -466,6 +504,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
         apply: (current) => {
           const live = current.goals.find((g) => g.id === goal.id);
           if (!live) return false;
+          if (live.milestones.some((item) => item.label.toLowerCase() === title.toLowerCase())) return true;
           const nextMilestones = [
             ...(live.milestones ?? []),
             { id: `ms-${crypto.randomUUID()}`, label: title, date, done: false },

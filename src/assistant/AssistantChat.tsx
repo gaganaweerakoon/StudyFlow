@@ -21,7 +21,6 @@ import {
   FileSpreadsheet,
   FileText,
   Image as ImageIcon,
-  ImagePlus,
   Layers,
   Loader2,
   Maximize2,
@@ -914,33 +913,6 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                     >
                       <Paperclip size={15} />
                       {!floating && <span>Attach PDF / file</span>}
-                    </button>
-
-                    <button
-                      type="button"
-                      className="pip-icon"
-                      aria-label="Generate image from message"
-                      title={
-                        assistant.settings.provider === 'claude'
-                          ? 'Choose OpenAI or Gemini to generate images'
-                          : 'Generate an image from your message'
-                      }
-                      disabled={
-                        !configured ||
-                        assistant.busy ||
-                        assistant.cooldown > 0 ||
-                        processing ||
-                        !assistant.available ||
-                        !assistant.draft.trim() ||
-                        hasAttachments ||
-                        assistant.settings.provider === 'claude'
-                      }
-                      onClick={() => {
-                        follow.current = true;
-                        void assistant.send(true);
-                      }}
-                    >
-                      <ImagePlus size={16} />
                     </button>
 
                     {hasImage && (

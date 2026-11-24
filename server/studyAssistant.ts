@@ -9,7 +9,6 @@ import {
   PROVIDERS,
   STATUS_ENDPOINT,
   isModelId,
-  isProvider,
   type ChatEvent,
   type ChatRequest,
 } from '../src/assistant/protocol.ts';
@@ -47,7 +46,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function isRequest(value: unknown): value is ChatRequest {
-  if (!isObject(value) || !isProvider(value.provider) || !isModelId(value.model)) return false;
+  if (!isObject(value) || value.provider !== 'gemini' || !isModelId(value.model)) return false;
   const { prompt, context, history, image, maxOutput } = value;
   if (
     typeof prompt !== 'string' ||
@@ -82,7 +81,7 @@ function isRequest(value: unknown): value is ChatRequest {
   if (value.clientContext !== undefined && (typeof value.clientContext !== 'string' || value.clientContext.length > 300)) {
     return false;
   }
-  if (value.generateImage !== undefined && typeof value.generateImage !== 'boolean') return false;
+  if (value.generateImage !== undefined && value.generateImage !== false) return false;
 
   if (value.documents !== undefined) {
     if (!Array.isArray(value.documents) || value.documents.length > CHAT_LIMITS.maxDocuments) return false;

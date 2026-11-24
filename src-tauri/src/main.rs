@@ -71,7 +71,7 @@ fn assistant_saved_providers() -> Result<Option<Vec<&'static str>>, String> {
     #[cfg(windows)]
     {
         let mut providers = Vec::new();
-        for provider in ["openai", "gemini", "claude"] {
+        for provider in ["gemini"] {
             if credentials::read(provider)?.is_some() {
                 providers.push(provider);
             }
@@ -84,6 +84,9 @@ fn assistant_saved_providers() -> Result<Option<Vec<&'static str>>, String> {
 
 #[tauri::command]
 fn update_assistant_key(provider: String, key: Option<String>) -> Result<(), String> {
+    if provider != "gemini" {
+        return Err("Only Gemini credentials are supported.".into());
+    }
     #[cfg(windows)]
     return credentials::update(&provider, key);
     #[cfg(not(windows))]

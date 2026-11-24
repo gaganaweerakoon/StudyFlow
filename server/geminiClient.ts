@@ -1,3 +1,4 @@
+import studySchemas from '../src/assistant/studySchemas.json' with { type: 'json' };
 import 'dotenv/config';
 import { GoogleGenAI } from '@google/genai';
 import type { TokenUsage } from '../src/assistant/protocol.ts';
@@ -388,36 +389,6 @@ export interface DashboardOverviewRequest {
   model?: string;
 }
 
-const DASHBOARD_OVERVIEW_SCHEMA = {
-  type: 'object',
-  required: ['headline', 'summary', 'focusPriority', 'scheduleTip', 'advice'],
-  properties: {
-    headline: { type: 'string', description: 'Crisp 5-10 word headline summarizing the student’s study state today.' },
-    summary: { type: 'string', description: '2 concise sentences analyzing their real workload, deadlines, progress, and weak spots.' },
-    focusPriority: { type: 'string', description: 'Single highest-leverage subject/task/exam to work on next.' },
-    scheduleTip: { type: 'string', description: 'Concrete scheduling recommendation referencing their real open time slots or workload.' },
-    advice: {
-      type: 'array',
-      description: '2 to 3 concrete, actionable recommendations.',
-      items: {
-        type: 'object',
-        required: ['title', 'detail', 'impact', 'actionType', 'actionLabel'],
-        properties: {
-          title: { type: 'string' },
-          detail: { type: 'string' },
-          impact: { type: 'string', enum: ['high', 'medium', 'quick'] },
-          actionType: {
-            type: 'string',
-            enum: ['ask_pip', 'open_planner', 'open_flashcards', 'open_practice', 'open_tasks', 'open_notes', 'start_focus'],
-          },
-          actionLabel: { type: 'string', description: 'Short 2-4 word button label (e.g., "Schedule with Pip", "Review Due Cards", "Start Practice Test").' },
-          prompt: { type: 'string', description: 'When actionType is ask_pip, a concrete prompt to send to Pip so Pip executes or coaches immediately.' },
-        },
-      },
-    },
-  },
-};
-
 export async function generateDashboardOverview(
   request: DashboardOverviewRequest,
   apiKey: string,
@@ -452,7 +423,7 @@ export async function generateDashboardOverview(
     config: {
       systemInstruction,
       responseMimeType: 'application/json',
-      responseJsonSchema: DASHBOARD_OVERVIEW_SCHEMA,
+      responseJsonSchema: studySchemas.overview,
       abortSignal: signal,
     },
   });

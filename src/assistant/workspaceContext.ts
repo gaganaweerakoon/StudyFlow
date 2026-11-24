@@ -277,7 +277,7 @@ export function workspaceContext(
         target,
         unit,
         deadline,
-        milestonesCount: milestones?.length ?? 0,
+        milestones: milestones?.slice(0, 30).map(({ id, label, date, done }) => ({ id, label: clip(label), date, done })),
       })),
     );
   }
