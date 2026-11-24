@@ -28,6 +28,21 @@ class MainActivity : Activity() {
         }
     }
 
+    private inner class DeepFocusBridge {
+        @JavascriptInterface
+        fun enabled(): Boolean {
+            val manager = getSystemService(android.view.accessibility.AccessibilityManager::class.java)
+            return manager.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                .any { it.resolveInfo.serviceInfo.packageName == packageName &&
+                    it.resolveInfo.serviceInfo.name == DeepFocusService::class.java.name }
+        }
+
+        @JavascriptInterface
+        fun request() = runOnUiThread {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+    }
+
     private inner class WidgetBridge {
         @JavascriptInterface
         fun update(snapshot: String) {
@@ -138,6 +153,7 @@ class MainActivity : Activity() {
             addJavascriptInterface(AlarmBridge(this@MainActivity), "StudyFlowAlarms")
             addJavascriptInterface(UsageBridge(), "StudyFlowUsage")
             addJavascriptInterface(WidgetBridge(), "StudyFlowWidget")
+            addJavascriptInterface(DeepFocusBridge(), "StudyFlowDeepFocus")
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
