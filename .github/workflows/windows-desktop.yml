@@ -2,6 +2,8 @@ name: Windows desktop build
 
 on:
   workflow_dispatch:
+  push:
+    branches: [build/windows-789e35e]
 # Cancel superseded builds when source files are committed in quick succession.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
