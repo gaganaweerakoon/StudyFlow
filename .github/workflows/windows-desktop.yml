@@ -2,6 +2,8 @@ name: Windows desktop build
 
 on:
   workflow_dispatch:
+  push:
+    branches: [build/windows-gemini-b7ed3b7]
 # Cancel superseded builds when source files are committed in quick succession.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -32,6 +34,10 @@ jobs:
         run: node --import tsx --test src/utils/studyLogic.test.ts src/utils/workspaceMetrics.test.ts server/studyAssistant.test.ts
       - name: Test Rust storage and Pip
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml -p studyflow-storage -p studyflow-assistant -p studyflow-local-companion
+      - name: Verify Gemini with the native desktop transport
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: cargo run --locked --manifest-path src-tauri/Cargo.toml --example gemini_smoke
       - name: Build the installer
         env:
           STUDYFLOW_GOOGLE_CLIENT_ID: ${{ secrets.STUDYFLOW_GOOGLE_CLIENT_ID }}
