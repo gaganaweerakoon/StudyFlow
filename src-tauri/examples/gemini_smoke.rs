@@ -9,28 +9,42 @@ fn main() -> Result<(), String> {
     let models: Vec<&str> =
         serde_json::from_str(include_str!("../../src/assistant/geminiModels.json"))
             .expect("valid model catalog");
+    let mut failures = Vec::new();
     for model in models {
         let cases = [
             ("chat", "Reply briefly with the word chemistry.", None, false),
             ("flashcards", "Make one flashcard. Source: Water contains hydrogen and oxygen.", Some("flashcards"), false),
-            ("workspace", "Call create_goal to add a goal named CI Chemistry with one milestone named Day 1 due 2026-12-01. This is a dry run.", None, true),
+            ("workspace", "Call create_goal to add a goal named CI Chemistry with one milestone named Day 1 due 2026-12-01.", None, true),
         ];
         for (label, prompt, generation, tools) in cases {
-            let request = serde_json::from_value(json!({
-                "provider":"gemini","model":model,"prompt":prompt,"context":"","history":[],
-                "maxOutput":16384,"workspaceActions":tools,"studyGeneration":generation
-            })).map_err(|_| "Invalid smoke test fixture.")?;
-            let events = std::cell::RefCell::new(Vec::<Value>::new());
-            tauri::async_runtime::block_on(studyflow_assistant::stream(
-                request, key.trim().to_owned(), |event| {
-                    events.borrow_mut().push(event);
-                    Ok(())
-                },
-            )).map_err(|error| format!("{model} {label}: {error}"))?;
-            let events = events.into_inner();
-            if let Some(error) = events.iter().find(|event| event["type"] == "error") {
-                let status = error["status"].as_u64().unwrap_or_default();
-                return Err(format!("{model} {label}: Gemini request failed (status {status})."));
+            let mut events = Vec::new();
+            let mut failure = None;
+            for attempt in 0..3 {
+                let request = serde_json::from_value(json!({
+                    "provider":"gemini","model":model,"prompt":prompt,"context":"","history":[],
+                    "maxOutput":16384,"workspaceActions":tools,"studyGeneration":generation
+                })).map_err(|_| "Invalid smoke test fixture.")?;
+                let received = std::cell::RefCell::new(Vec::<Value>::new());
+                let result = tauri::async_runtime::block_on(studyflow_assistant::stream(
+                    request, key.trim().to_owned(), |event| {
+                        received.borrow_mut().push(event);
+                        Ok(())
+                    },
+                ));
+                events = received.into_inner();
+                let error = events.iter().find(|event| event["type"] == "error");
+                failure = result.err().or_else(|| error.map(|event| {
+                    format!("{} (status {})", event["message"].as_str().unwrap_or("Request failed"),
+                            event["status"].as_u64().unwrap_or_default())
+                }));
+                if !error.is_some_and(|event| event["status"] == 503) || attempt == 2 {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_secs(3 * (attempt + 1)));
+            }
+            if let Some(error) = failure {
+                failures.push(format!("{model} {label}: {error}"));
+                continue;
             }
             let finished = events.last().is_some_and(|event| {
                 event["type"] == "done" && event["truncated"] != true
@@ -52,10 +66,11 @@ fn main() -> Result<(), String> {
                 _ => text.to_lowercase().contains("chemistry"),
             };
             if !finished || !valid {
-                return Err(format!("{model} {label}: unusable response."));
+                failures.push(format!("{model} {label}: unusable response."));
+                continue;
             }
             println!("{model} {label}: passed");
         }
     }
-    Ok(())
+    if failures.is_empty() { Ok(()) } else { Err(failures.join("\n")) }
 }

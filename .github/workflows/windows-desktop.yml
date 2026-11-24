@@ -37,7 +37,10 @@ jobs:
       - name: Verify Gemini with the native desktop transport
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: cargo run --locked --manifest-path src-tauri/Cargo.toml --example gemini_smoke
+        run: |
+          $status = curl.exe --silent --show-error --max-time 15 --output NUL --write-out "%{http_code}" "https://generativelanguage.googleapis.com/v1beta/models"
+          Write-Host "Gemini endpoint HTTP status without credentials: $status"
+          cargo run --locked --manifest-path src-tauri/Cargo.toml --example gemini_smoke
       - name: Build the installer
         env:
           STUDYFLOW_GOOGLE_CLIENT_ID: ${{ secrets.STUDYFLOW_GOOGLE_CLIENT_ID }}
