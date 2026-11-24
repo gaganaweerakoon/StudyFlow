@@ -70,6 +70,7 @@ function AndroidCompanion() {
     try { return JSON.parse(localStorage.getItem(storageKey) ?? 'null'); } catch { return null; }
   });
   const [busy, setBusy] = useState(false);
+  const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState('');
   const [diagnostic, setDiagnostic] = useState('');
   const [attemptedPc, setAttemptedPc] = useState('');
@@ -148,6 +149,7 @@ function AndroidCompanion() {
       // PC processes the command on its next 1-second check.
       window.setTimeout(() => void pull(true), 1200);
     } catch (error) {
+      setConnected(false);
       setStatus(error instanceof Error ? error.message : String(error));
     }
   }
@@ -177,10 +179,12 @@ function AndroidCompanion() {
       }
       if (result) captureFocus(result);
       setDiagnostic(result?.diagnostic ?? '');
+      setConnected(true);
       setLastSync(Date.now());
       if (!silent) setStatus('Calendar and focus synced.');
     } catch (error) {
       if (latestPair.current?.token === credentials.token) {
+        setConnected(false);
         if (!silent) setStatus(error instanceof Error ? error.message : String(error));
         setDiagnostic((error as { diagnostic?: string })?.diagnostic ?? '');
       }
@@ -232,7 +236,8 @@ function AndroidCompanion() {
           }
           captureFocus(result);
           setDiagnostic(result.diagnostic ?? '');
-          setLastSync(Date.now());
+          setConnected(true);
+      setLastSync(Date.now());
           setStatus('Calendar and focus synced.');
         } catch (failure) {
           setStatus(failure instanceof Error ? failure.message : String(failure));
@@ -340,7 +345,8 @@ ${diagnostic}`).then(
   return (
     <MobileCompanionApp installed live={{
       isPaired: Boolean(pair),
-      pcName: pair?.pc ?? 'StudyFlow PC',
+      connected,
+      pcName: pair?.userName || 'StudyFlow PC',
       profileName: pair?.userName,
       calendar: pair?.calendar,
       lastSync,
@@ -356,6 +362,7 @@ ${diagnostic}`).then(
       onPair: () => setOffline(false),
       onForget: () => {
         save(null);
+        setConnected(false);
         setLastSync(0);
         setPcFocus(undefined);
         setDiagnostic('');
