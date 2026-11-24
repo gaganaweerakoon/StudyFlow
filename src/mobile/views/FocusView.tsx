@@ -21,6 +21,7 @@ export const FocusView: React.FC = () => {
     subjects,
     connection,
     startFocusForBlock,
+    startCustomFocus,
     pauseFocus,
     resumeFocus,
     finishFocus,
@@ -34,6 +35,8 @@ export const FocusView: React.FC = () => {
     setPermission,
   } = useCompanion();
 
+  const [customSubject, setCustomSubject] = React.useState('');
+  const [customMinutes, setCustomMinutes] = React.useState(25);
   const subjectMap = new Map(subjects.map((s) => [s.id, s]));
   const activeSubject = subjectMap.get(focus.subjectId);
 
@@ -98,7 +101,7 @@ export const FocusView: React.FC = () => {
               style={{ backgroundColor: activeSubject?.color ?? 'var(--accent)' }}
             />
             <span style={{ color: activeSubject?.color ?? 'var(--accent)' }}>
-              {activeSubject?.code ?? 'STUDY'} · {activeSubject?.name ?? 'Study'}
+              {focus.customSubject || ((activeSubject?.code ?? 'STUDY') + ' · ' + (activeSubject?.name ?? 'Study'))}
             </span>
           </div>
           <h2 className="font-display text-[calc(17px*var(--sf-font-scale,1))] font-semibold text-[var(--text-primary)] leading-snug mt-0.5 truncate">
@@ -152,7 +155,7 @@ export const FocusView: React.FC = () => {
               }}
             >
               <CloudOff className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" />
-              <span>Offline · will sync when connected.</span>
+              <span>{focus.origin === 'phone' ? 'Local timer · PC import not supported yet' : 'Offline · reconnect to sync'}</span>
             </div>
           )}
         </div>
@@ -271,6 +274,24 @@ export const FocusView: React.FC = () => {
       </header>
 
       {timerBlock}
+
+      {liveMode && (focus.phase === 'idle' || focus.phase === 'completed') && (
+        <section className="rounded-xl p-4 space-y-3 border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+          <h2 className="font-semibold">Custom focus timer</h2>
+          <p className="text-xs text-[var(--text-muted)]">Works offline. Enter a subject and duration. Sessions are currently stored on this phone.</p>
+          <form className="space-y-3" onSubmit={e => { e.preventDefault(); startCustomFocus(customSubject, customMinutes); }}>
+            <label className="block text-xs">Subject
+              <input required maxLength={100} value={customSubject} onChange={e => setCustomSubject(e.target.value)} placeholder="e.g. Chemistry"
+                className="mt-1 block w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-3 py-2 text-sm"/>
+            </label>
+            <label className="block text-xs">Duration (minutes)
+              <input required type="number" min={1} max={720} value={customMinutes} onChange={e => setCustomMinutes(Number(e.target.value))}
+                className="mt-1 block w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-3 py-2 text-sm"/>
+            </label>
+            <button type="submit" className="w-full rounded-lg py-3 font-semibold bg-[var(--accent)] text-[var(--accent-fg)]">Start custom timer</button>
+          </form>
+        </section>
+      )}
 
       {/* Screen Time Section (Inside Focus) */}
       <section
