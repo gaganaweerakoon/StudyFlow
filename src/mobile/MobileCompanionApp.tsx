@@ -61,6 +61,8 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
     setActiveTab,
     nowAbsMin,
     connection,
+    profileName,
+    blocks,
     focus,
     settings,
     viewport,
@@ -114,6 +116,32 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
     window.addEventListener('studyflow-open-focus', openFocus);
     return () => window.removeEventListener('studyflow-open-focus', openFocus);
   }, [installed, setActiveTab]);
+
+  // Publish one presentation snapshot for the native widget and status notification.
+  // No pairing credentials or PC hostname are included.
+  useEffect(() => {
+    if (!installed) return;
+    const bridge = (window as unknown as { StudyFlowWidget?: { update(snapshot: string): void } }).StudyFlowWidget;
+    if (!bridge) return;
+    const now = new Date();
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (now.getDay() + 6) % 7);
+    const events = blocks.filter(b => b.type === 'study').map(b => {
+      const start = new Date(monday);
+      start.setDate(start.getDate() + b.dayIndex);
+      start.setMinutes(b.startMin);
+      return { title: b.title, start: start.getTime(), end: start.getTime() + b.durationMin * 60000 };
+    }).filter(e => e.end > now.getTime()).sort((a, b) => a.start - b.start).slice(0, 24);
+    const running = focus.phase === 'focus' || focus.phase === 'break';
+    const stopwatch = focus.origin === 'pc' && focus.pcMode === 'Stopwatch';
+    bridge.update(JSON.stringify({
+      updatedAt: now.getTime(), syncLabel: connection.lastSyncedLabel,
+      profileName: profileName ?? '', theme: settings.theme, accent: settings.accentColor,
+      focus: { title: focus.sessionTitle, phase: focus.phase, running, stopwatch,
+        seconds: stopwatch ? focus.elapsedActiveSeconds : focus.secondsLeft, total: focus.totalSeconds },
+      events,
+    }));
+  }, [installed, blocks, connection.lastSyncedLabel, profileName, settings.theme, settings.accentColor,
+    focus.phase, focus.sessionTitle, focus.origin, focus.pcMode, focus.secondsLeft, focus.elapsedActiveSeconds, focus.totalSeconds]);
 
   // Android system Back navigation via Escape key
   useEffect(() => {
