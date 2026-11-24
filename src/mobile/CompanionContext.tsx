@@ -300,7 +300,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
 
   const [settings, setSettings] = useState<CompanionSettingsState>(() => {
     const defaults: CompanionSettingsState = {
-      theme: 'light', accentColor: '#4F46E5',
+      theme: 'light', accentColor: '#4F46E5', deepFocus: false,
       defaultAdvanceNotice: 15, defaultRingAtStart: true,
       defaultRemindAtBedtime: true, defaultWakeAtEnd: true,
     };
@@ -309,6 +309,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
       const saved = JSON.parse(localStorage.getItem('studyflow.phone.appearance') || 'null');
       if (saved && typeof saved === 'object') return {
         ...defaults,
+        deepFocus: saved.deepFocus === true,
         theme: ['light', 'dark', 'midnight', 'ocean', 'forest', 'warm'].includes(saved.theme) ? saved.theme : defaults.theme,
         accentColor: /^#[0-9A-Fa-f]{6}$/.test(saved.accentColor) ? saved.accentColor : defaults.accentColor,
       };
@@ -319,9 +320,9 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
   useEffect(() => {
     if (!live) return;
     localStorage.setItem('studyflow.phone.appearance', JSON.stringify({
-      theme: settings.theme, accentColor: settings.accentColor,
+      theme: settings.theme, accentColor: settings.accentColor, deepFocus: settings.deepFocus === true,
     }));
-  }, [Boolean(live), settings.theme, settings.accentColor]);
+  }, [Boolean(live), settings.theme, settings.accentColor, settings.deepFocus]);
 
   const [viewport, setViewportState] = useState<ViewportPreviewConfig>({
     widthDp: 390,
