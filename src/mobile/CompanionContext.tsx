@@ -38,6 +38,7 @@ export interface LiveCompanionData {
   profileName?: string;
   calendar?: CompanionCalendar;
   isPaired: boolean;
+  connected?: boolean;
   lastSync?: number;
   busy: boolean;
   pcFocus?: CompanionFocusUpdate;
@@ -161,6 +162,7 @@ interface CompanionContextValue {
   // Focus & screen time
   focus: CompanionFocusState;
   startFocusForBlock: (blockId?: string, origin?: 'phone' | 'pc' | 'alarm', openFullScreen?: boolean) => void;
+  startCustomFocus: (subject: string, minutes: number) => void;
   pauseFocus: () => void;
   resumeFocus: () => void;
   finishFocus: () => void;
@@ -241,7 +243,29 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
   const [activeBanner, setActiveBanner] = useState<ScheduledAlert | null>(null);
   const [activeAlarm, setActiveAlarm] = useState<ScheduledAlert | null>(null);
 
-  const [focus, setFocus] = useState<CompanionFocusState>(live ? liveInitialFocus : makeInitialFocus);
+  const [focus, setFocus] = useState<CompanionFocusState>(() => {
+    if (!live) return makeInitialFocus();
+    try {
+      const saved = JSON.parse(localStorage.getItem('studyflow.phone.localFocus') || 'null');
+      if (saved?.focus?.origin === 'phone' && saved.focus.pendingSyncWhenOnline) {
+        const f = saved.focus as CompanionFocusState;
+        const passed = f.phase === 'focus' || f.phase === 'break'
+          ? Math.max(0, Math.floor((Date.now() - Number(saved.at)) / 1000)) : 0;
+        const elapsed = Math.min(f.secondsLeft, passed);
+        return { ...f, secondsLeft: Math.max(0, f.secondsLeft - elapsed),
+          elapsedActiveSeconds: f.elapsedActiveSeconds + (f.phase === 'focus' ? elapsed : 0),
+          phase: elapsed && elapsed >= f.secondsLeft ? 'completed' : f.phase,
+          showFullScreen: false };
+      }
+    } catch { /* Invalid local state is ignored. */ }
+    return liveInitialFocus();
+  });
+  useEffect(() => {
+    if (!live) return;
+    if (focus.origin === 'phone' && focus.pendingSyncWhenOnline)
+      localStorage.setItem('studyflow.phone.localFocus', JSON.stringify({ at: Date.now(), focus }));
+    else localStorage.removeItem('studyflow.phone.localFocus');
+  }, [Boolean(live), focus]);
   const pcWasRunning = useRef(false);
   const [sessionStartEpoch, setSessionStartEpoch] = useState(0);
   const [measuredSessionUsage, setMeasuredSessionUsage] = useState<AppUsageEntry[]>([]);
@@ -250,9 +274,9 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
   const [screenTimeTab, setScreenTimeTab] = useState<'session' | 'today'>('session');
 
   const [connection, setConnection] = useState<CompanionConnectionState>(live ? {
-    isPaired: live.isPaired, pcName: live.pcName, mode: live.isPaired ? 'internet' : 'offline',
-    internetAvailable: live.isPaired, bluetoothNearby: false,
-    lastSyncedLabel: live.lastSync ? new Date(live.lastSync).toLocaleTimeString() : 'Not synced',
+    isPaired: live.isPaired, pcName: live.pcName, mode: live.connected ? 'internet' : 'offline',
+    internetAvailable: Boolean(live.connected), bluetoothNearby: false,
+    lastSyncedLabel: live.lastSync ? new Date(live.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : 'Not synced',
     pendingPcEdit: null,
   } : {
     isPaired: true,
@@ -338,13 +362,13 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
       ...prev,
       isPaired: live.isPaired,
       pcName: live.pcName,
-      mode: live.busy ? 'syncing' : live.isPaired ? 'internet' : 'offline',
-      internetAvailable: live.isPaired,
+      mode: live.busy ? 'syncing' : live.connected ? 'internet' : 'offline',
+      internetAvailable: Boolean(live.connected),
       bluetoothNearby: false,
-      lastSyncedLabel: live.lastSync ? new Date(live.lastSync).toLocaleTimeString() : 'Not synced',
+      lastSyncedLabel: live.lastSync ? new Date(live.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : 'Not synced',
       pendingPcEdit: null,
     }));
-  }, [live?.calendar, live?.pcName, live?.isPaired, live?.lastSync, live?.busy]);
+  }, [live?.calendar, live?.pcName, live?.isPaired, live?.connected, live?.lastSync, live?.busy]);
 
   useEffect(() => {
     if (!live) return;
@@ -397,7 +421,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
   // the companion protocol, not the phone clock or a simulated demo clock.
   useEffect(() => {
     const remote = live?.pcFocus;
-    if (!live?.isPaired || !remote?.focus?.timer) return;
+    if (!live?.connected || !remote?.focus?.timer) return;
     const timer = remote.focus.timer;
     const pcElapsed = timer.running
       ? Math.max(0, Math.floor((remote.serverNowMs - remote.focus.at) / 1000))
@@ -412,10 +436,14 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
       : timer.elapsedSeconds > 0
       ? timer.phase === 'break' ? 'break_paused' : 'paused'
       : 'idle';
-    setFocus(prev => ({
+    setFocus(prev => {
+      // Preserve a locally running timer if Windows reports no active session.
+      if (prev.origin === 'phone' && prev.pendingSyncWhenOnline && phase === 'idle') return prev;
+      return ({
       ...prev,
       sessionId: timer.calendarSessionId ?? 'pc-timer',
       subjectId: 'synced-study',
+      customSubject: undefined,
       sessionTitle: timer.taskTitle || 'PC Focus Timer',
       phase,
       origin: 'pc',
@@ -428,7 +456,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
       startedAtAbsMin: currentAbsoluteMinute(),
       pendingSyncWhenOnline: false,
       showBreakSheet: false,
-    }));
+    }); });
     if (timer.running && !pcWasRunning.current) {
       setActiveTabState('focus');
       if (timer.phase === 'focus') showPhoneToast('Focus started on your PC · timer synchronized');
@@ -436,23 +464,26 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
     }
     if (!timer.running && timer.elapsedSeconds === 0) setSessionStartEpoch(0);
     pcWasRunning.current = timer.running;
-  }, [live?.pcFocus, live?.isPaired]);
+  }, [live?.pcFocus, live?.connected]);
 
   // Live 1-second timer tick when focus or break is actively running
   useEffect(() => {
     if (focus.phase !== 'focus' && focus.phase !== 'break') return;
+    let lastTick = Date.now();
     const interval = window.setInterval(() => {
+      const step = Math.max(1, Math.floor((Date.now() - lastTick) / 1000));
+      lastTick = Date.now();
       setFocus((prev) => {
         if (prev.phase !== 'focus' && prev.phase !== 'break') return prev;
         if (prev.origin === 'pc' && prev.pcMode === 'Stopwatch') {
-          return { ...prev, elapsedActiveSeconds: prev.elapsedActiveSeconds + 1 };
+          return { ...prev, elapsedActiveSeconds: prev.elapsedActiveSeconds + step };
         }
-        if (prev.secondsLeft <= 1) {
+        if (prev.secondsLeft <= step) {
           if (prev.phase === 'focus') {
             return {
               ...prev,
               secondsLeft: 0,
-              elapsedActiveSeconds: prev.elapsedActiveSeconds + 1,
+              elapsedActiveSeconds: prev.elapsedActiveSeconds + prev.secondsLeft,
               phase: 'paused',
               showBreakSheet: true,
             };
@@ -465,9 +496,9 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
         }
         return {
           ...prev,
-          secondsLeft: prev.secondsLeft - 1,
+          secondsLeft: prev.secondsLeft - step,
           elapsedActiveSeconds:
-            prev.phase === 'focus' ? prev.elapsedActiveSeconds + 1 : prev.elapsedActiveSeconds,
+            prev.phase === 'focus' ? prev.elapsedActiveSeconds + step : prev.elapsedActiveSeconds,
         };
       });
     }, 1000);
@@ -692,7 +723,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
           startMin: fromAbsMin(nowAbsMin).minuteOfDay, durationMin: 25, advanceNoticeMin: 0,
           ringAtStart: false, focusIntervalMin: 25, remindAtBedtime: false, wakeAtEnd: false };
 
-      if (live?.isPaired && live.onFocusCommand) {
+      if (live?.connected && live.onFocusCommand) {
         live.onFocusCommand('start', target.id === 'local-focus' ? '' : target.id);
         setActiveTab('focus');
         showPhoneToast('Start request sent to PC');
@@ -739,8 +770,24 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
     [activeAlarm, blocks, connection.mode, connection.pcName, nowAbsMin, setActiveTab, showPhoneToast, live]
   );
 
+  const startCustomFocus = useCallback((subject: string, minutes: number) => {
+    const title = subject.trim();
+    if (!title || !Number.isInteger(minutes) || minutes < 1 || minutes > 720) return;
+    if (focus.phase !== 'idle' && focus.phase !== 'completed') return;
+    setSessionStartEpoch(Date.now());
+    setFocus({
+      ...liveInitialFocus(), sessionId: 'phone-' + crypto.randomUUID(),
+      sessionTitle: title, customSubject: title, subjectId: 'synced-study',
+      phase: 'focus', origin: 'phone', intervalMinutes: minutes,
+      totalSeconds: minutes * 60, secondsLeft: minutes * 60,
+      startedAtAbsMin: currentAbsoluteMinute(), pendingSyncWhenOnline: true,
+    });
+    setActiveTab('focus');
+    showPhoneToast('Custom timer started on this phone');
+  }, [focus.phase, setActiveTab, showPhoneToast]);
+
   const pauseFocus = useCallback(() => {
-    if (live?.isPaired && live.onFocusCommand) {
+    if (live?.connected && live.onFocusCommand && focus.origin === 'pc') {
       live.onFocusCommand('pause'); showPhoneToast('Pause request sent to PC'); return;
     }
     setFocus((prev) => ({
@@ -748,10 +795,10 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
       phase: prev.phase === 'break' ? 'break_paused' : 'paused',
       pendingSyncWhenOnline: connection.mode === 'offline' ? true : prev.pendingSyncWhenOnline,
     }));
-  }, [connection.mode, live, showPhoneToast]);
+  }, [connection.mode, live, showPhoneToast, focus.origin]);
 
   const resumeFocus = useCallback(() => {
-    if (live?.isPaired && live.onFocusCommand) {
+    if (live?.connected && live.onFocusCommand && focus.origin === 'pc') {
       live.onFocusCommand('resume'); showPhoneToast('Resume request sent to PC'); return;
     }
     setFocus((prev) => ({
@@ -759,11 +806,18 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
       phase: prev.phase === 'break_paused' ? 'break' : 'focus',
       pendingSyncWhenOnline: connection.mode === 'offline' ? true : prev.pendingSyncWhenOnline,
     }));
-  }, [connection.mode, live, showPhoneToast]);
+  }, [connection.mode, live, showPhoneToast, focus.origin]);
 
   const finishFocus = useCallback(() => {
-    if (live?.isPaired && live.onFocusCommand) {
+    if (live?.connected && live.onFocusCommand && focus.origin === 'pc') {
       live.onFocusCommand('complete'); showPhoneToast('Finish request sent to PC; rate it on Windows'); return;
+    }
+    if (live && focus.origin === 'phone' && focus.elapsedActiveSeconds > 0) {
+      try {
+        const key = 'studyflow.phone.unsyncedFocus';
+        const queue = JSON.parse(localStorage.getItem(key) || '[]') as unknown[];
+        localStorage.setItem(key, JSON.stringify([...queue, { ...focus, completedAt: new Date().toISOString() }]));
+      } catch { showPhoneToast('Could not save the local session'); return; }
     }
     setFocus((prev) => ({
       ...prev,
@@ -773,15 +827,15 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
       startedAtAbsMin: null,
       showFullScreen: false,
       showBreakSheet: false,
-      pendingSyncWhenOnline: connection.mode === 'offline' ? true : false,
+      pendingSyncWhenOnline: false,
     }));
     showPhoneToast(live
-      ? 'Focus session completed locally (PC syncing not yet supported)'
+      ? 'Focus session saved on phone · PC import not supported yet'
       : connection.mode === 'offline'
         ? 'Session saved locally · will sync when connected'
         : 'Focus session completed & synced'
     );
-  }, [connection.mode, showPhoneToast, live]);
+  }, [connection.mode, showPhoneToast, live, focus]);
 
   const startBreakInterval = useCallback(() => {
     setActiveBanner(null);
@@ -1183,6 +1237,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
     triggerTestAlarm,
     focus,
     startFocusForBlock,
+    startCustomFocus,
     pauseFocus,
     resumeFocus,
     finishFocus,
