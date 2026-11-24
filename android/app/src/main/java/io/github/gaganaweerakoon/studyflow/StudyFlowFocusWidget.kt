@@ -101,7 +101,7 @@ class StudyFlowFocusWidget : AppWidgetProvider() {
             val colors = palette(json.optString("theme"))
             val accent = runCatching { Color.parseColor(json.optString("accent", "#4F46E5")) }.getOrDefault(0xff4f46e5.toInt())
             val sync = json.optString("syncLabel")
-            val syncText = if (sync.isBlank() || sync == "Not synced") "↻ —" else "↻ " + sync.replace(Regex(":\\d{2}(?=\\s|$)"), "")
+            val syncText = if (sync.isBlank() || sync == "Not synced") "↻ —" else "↻ " + sync
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, StudyFlowFocusWidget::class.java))
             ids.forEach { id ->
