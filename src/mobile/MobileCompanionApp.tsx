@@ -135,12 +135,12 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
     const stopwatch = focus.origin === 'pc' && focus.pcMode === 'Stopwatch';
     bridge.update(JSON.stringify({
       updatedAt: now.getTime(), syncLabel: connection.lastSyncedLabel,
-      profileName: profileName ?? '', theme: settings.theme, accent: settings.accentColor,
+      profileName: profileName ?? '', theme: settings.theme, accent: settings.accentColor, deepFocus: settings.deepFocus === true,
       focus: { title: focus.sessionTitle, phase: focus.phase, running, stopwatch,
         seconds: stopwatch ? focus.elapsedActiveSeconds : focus.secondsLeft, total: focus.totalSeconds },
       events,
     }));
-  }, [installed, blocks, connection.lastSyncedLabel, profileName, settings.theme, settings.accentColor,
+  }, [installed, blocks, connection.lastSyncedLabel, profileName, settings.theme, settings.accentColor, settings.deepFocus,
     focus.phase, focus.sessionTitle, focus.origin, focus.pcMode, focus.secondsLeft, focus.elapsedActiveSeconds, focus.totalSeconds]);
 
   // Android system Back navigation via Escape key
