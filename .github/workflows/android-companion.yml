@@ -3,7 +3,7 @@ name: Android companion preview
 on:
   workflow_dispatch:
   push:
-    branches: [mobile-companion-integration]
+    branches: [mobile-companion-integration, mobile-widget-status-update]
     paths:
       - .github/workflows/**
       - android/**
