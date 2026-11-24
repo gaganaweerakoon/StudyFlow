@@ -52,6 +52,7 @@ export interface ChapterItem {
   id: string;
   title: string;
   topics: TopicItem[];
+  archived?: boolean;
 }
 
 export interface Subject {
@@ -69,6 +70,7 @@ export interface Subject {
   currentGrade: string;
   targetGrade: string;
   chapters: ChapterItem[];
+  archived?: boolean;
 }
 
 export type SessionStatus = 'upcoming' | 'completed' | 'missed';
@@ -100,6 +102,14 @@ export interface StudySession {
   location?: string;
 }
 
+export interface GoalMilestone {
+  id: string;
+  label: string;
+  done: boolean;
+  date: string;
+  taskId?: string;
+}
+
 export interface GoalItem {
   completedAt?: string;
   id: string;
@@ -110,14 +120,17 @@ export interface GoalItem {
   target: number;
   unit: string;
   deadline: string;
-  milestones: { id: string; label: string; done: boolean; date: string }[];
+  milestones: GoalMilestone[];
 }
 
 export interface NoteAttachment {
   id: string;
   name: string;
-  type: 'pdf' | 'slide' | 'sheet';
+  type: 'pdf' | 'slide' | 'sheet' | 'doc' | 'markdown' | 'text' | 'image' | 'file';
   size: string;
+  markdown?: string;
+  originalFont?: string;
+  uploadedAt?: string;
 }
 
 export interface PdfHighlight {
@@ -130,6 +143,8 @@ export interface PdfHighlight {
 
 export interface NoteItem {
   pdf?: import('../notes/pdf').PdfSource;
+  originalFont?: string;
+  fontMode?: 'original' | 'unicode' | 'sans' | 'serif' | 'mono';
   id: string;
   folderId: string;
   subjectId: string;

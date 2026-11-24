@@ -23,6 +23,7 @@ import type {
   Subject,
   TaskItem,
   ThemeId,
+  TopicItem,
 } from '../types/studyflow';
 import {
   INITIAL_ACHIEVEMENTS,
@@ -141,11 +142,20 @@ interface AppContextValue {
   subjects: Subject[];
   appendChapters: (id:string, chapters:Subject["chapters"]) => void;
   addSubject: (s: Omit<Subject, 'id' | 'chapters'>) => void;
+  updateSubject: (subjectId: string, patch: Partial<Omit<Subject, 'id' | 'chapters'>>) => void;
+  deleteSubject: (subjectId: string) => void;
+  toggleArchiveSubject: (subjectId: string) => void;
+  toggleArchiveChapter: (subjectId: string, chapterId: string) => void;
+  addChapter: (subjectId: string, title: string, topicTitles?: string[]) => void;
+  updateChapter: (subjectId: string, chapterId: string, title: string) => void;
+  deleteChapter: (subjectId: string, chapterId: string) => void;
+  addTopic: (subjectId: string, chapterId: string, title: string, difficulty?: TopicItem['difficulty']) => void;
+  deleteTopic: (subjectId: string, chapterId: string, topicId: string) => void;
   toggleTopicCompletion: (subjectId: string, chapterId: string, topicId: string) => void;
   updateTopicConfidence: (subjectId: string, chapterId: string, topicId: string, confidence: number) => void;
 
   tasks: TaskItem[];
-  addTask: (t: Omit<TaskItem, 'id'>) => void;
+  addTask: (t: Omit<TaskItem, 'id'>) => string;
   updateTask: (id: string, patch: Partial<TaskItem>) => void;
   deleteTasks: (ids: string[]) => void;
   toggleTaskStatus: (id: string) => void;
@@ -159,14 +169,20 @@ interface AppContextValue {
   goals: GoalItem[];
   addGoal: (g: Omit<GoalItem, 'id'>) => void;
   updateGoal: (id: string, patch: Partial<GoalItem>) => void;
+  deleteGoal: (id: string) => void;
 
   folders: NoteFolder[];
   notes: NoteItem[];
   deleteNote: (id: string) => void;
   updateNote: (id: string, patch: Partial<NoteItem>) => void;
-  createNote: (subjectId: string, folderId: string, draft?: Pick<NoteItem, 'title' | 'content'>) => string;
+  createNote: (
+    subjectId: string,
+    folderId: string,
+    draft?: Partial<Pick<NoteItem, 'title' | 'content' | 'attachments' | 'pdf' | 'originalFont' | 'fontMode' | 'tags'>>
+  ) => string;
 
   decks: FlashcardDeck[];
+  addDeck: (deck: Omit<FlashcardDeck, 'id' | 'lastReviewed' | 'retentionRate'>) => string;
   flashcards: FlashcardItem[];
   addFlashcard: (card: Omit<FlashcardItem, 'id' | 'intervalDays' | 'easeFactor' | 'dueToday' | 'mastery'>) => void;
   reviewFlashcard: (cardId: string, rating: ReviewRating) => void;
@@ -291,7 +307,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [goals, setGoals] = useState<GoalItem[]>(initial?.goals ?? (desktop ? [] : INITIAL_GOALS));
   const [folders] = useState<NoteFolder[]>(initial?.folders ?? (desktop ? [{ id: 'notes', name: 'Notes' }] : INITIAL_FOLDERS));
   const [notes, setNotes] = useState<NoteItem[]>(initial?.notes ?? (desktop ? [] : INITIAL_NOTES));
-  const [decks] = useState<FlashcardDeck[]>(initial?.decks ?? (desktop ? [{ id: 'review', title: 'General Review', subjectId: '', description: '', lastReviewed: '', retentionRate: 0 }] : INITIAL_DECKS));
+  const [decks, setDecks] = useState<FlashcardDeck[]>(initial?.decks ?? (desktop ? [{ id: 'review', title: 'General Review', subjectId: '', description: '', lastReviewed: '', retentionRate: 0 }] : INITIAL_DECKS));
   const [storedFlashcards, setFlashcards] = useState<FlashcardItem[]>(initial?.flashcards ?? (desktop ? [] : INITIAL_FLASHCARDS));
   const [exams, setExams] = useState<ExamItem[]>(initial?.exams ?? (desktop ? [] : INITIAL_EXAMS));
   const [quizzes, setQuizzes] = useState<PracticeQuiz[]>(initial?.quizzes ?? (desktop ? [] : INITIAL_QUIZZES));
@@ -690,11 +706,180 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     []
   );
 
+  const toggleArchiveSubject = useCallback(
+    (subjectId: string) => {
+      setSubjects((prev) =>
+        prev.map((sub) => {
+          if (sub.id !== subjectId) return sub;
+          const nextArchived = !sub.archived;
+          pushToast(nextArchived ? `Archived ${sub.code}` : `Restored ${sub.code}`);
+          return { ...sub, archived: nextArchived };
+        })
+      );
+    },
+    [pushToast]
+  );
+
+  const toggleArchiveChapter = useCallback(
+    (subjectId: string, chapterId: string) => {
+      setSubjects((prev) =>
+        prev.map((sub) => {
+          if (sub.id !== subjectId) return sub;
+          return {
+            ...sub,
+            chapters: sub.chapters.map((ch) => {
+              if (ch.id !== chapterId) return ch;
+              const nextArchived = !ch.archived;
+              pushToast(nextArchived ? `Archived chapter "${ch.title}"` : `Restored chapter "${ch.title}"`);
+              return { ...ch, archived: nextArchived };
+            }),
+          };
+        })
+      );
+    },
+    [pushToast]
+  );
+
+  const addChapter = useCallback(
+    (subjectId: string, title: string, topicTitles: string[] = []) => {
+      const cleanTitle = title.trim();
+      if (!cleanTitle) return;
+      const cleanTopics = topicTitles
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .map((t) => ({
+          id: `tp-${crypto.randomUUID()}`,
+          title: t,
+          completed: false,
+          difficulty: 'medium' as const,
+          confidence: 3,
+          revisionStatus: 'not_started' as const,
+        }));
+      const newChapter = {
+        id: `ch-${crypto.randomUUID()}`,
+        title: cleanTitle,
+        topics: cleanTopics,
+      };
+      setSubjects((prev) =>
+        prev.map((sub) =>
+          sub.id === subjectId ? { ...sub, chapters: [...sub.chapters, newChapter] } : sub
+        )
+      );
+      pushToast(`Added chapter "${cleanTitle}"`);
+    },
+    [pushToast]
+  );
+
+  const addTopic = useCallback(
+    (subjectId: string, chapterId: string, title: string, difficulty: TopicItem['difficulty'] = 'medium') => {
+      const cleanTitle = title.trim();
+      if (!cleanTitle) return;
+      const newTopic: TopicItem = {
+        id: `tp-${crypto.randomUUID()}`,
+        title: cleanTitle,
+        completed: false,
+        difficulty,
+        confidence: 3,
+        revisionStatus: 'not_started',
+      };
+      setSubjects((prev) =>
+        prev.map((sub) => {
+          if (sub.id !== subjectId) return sub;
+          return {
+            ...sub,
+            chapters: sub.chapters.map((ch) =>
+              ch.id === chapterId ? { ...ch, topics: [...ch.topics, newTopic] } : ch
+            ),
+          };
+        })
+      );
+      pushToast(`Added topic "${cleanTitle}"`);
+    },
+    [pushToast]
+  );
+
+  const deleteTopic = useCallback(
+    (subjectId: string, chapterId: string, topicId: string) => {
+      setSubjects((prev) =>
+        prev.map((sub) => {
+          if (sub.id !== subjectId) return sub;
+          return {
+            ...sub,
+            chapters: sub.chapters.map((ch) =>
+              ch.id === chapterId
+                ? { ...ch, topics: ch.topics.filter((tp) => tp.id !== topicId) }
+                : ch
+            ),
+          };
+        })
+      );
+      pushToast('Topic removed');
+    },
+    [pushToast]
+  );
+
+  const updateSubject = useCallback(
+    (subjectId: string, patch: Partial<Omit<Subject, 'id' | 'chapters'>>) => {
+      setSubjects((prev) =>
+        prev.map((sub) => (sub.id === subjectId ? { ...sub, ...patch } : sub))
+      );
+      pushToast('Subject updated');
+    },
+    [pushToast]
+  );
+
+  const deleteSubject = useCallback(
+    (subjectId: string) => {
+      setSubjects((prev) => prev.filter((sub) => sub.id !== subjectId));
+      setSelectedSubjectId((curr) => (curr === subjectId ? null : curr));
+      pushToast('Subject deleted');
+    },
+    [pushToast]
+  );
+
+  const updateChapter = useCallback(
+    (subjectId: string, chapterId: string, title: string) => {
+      const cleanTitle = title.trim();
+      if (!cleanTitle) return;
+      setSubjects((prev) =>
+        prev.map((sub) => {
+          if (sub.id !== subjectId) return sub;
+          return {
+            ...sub,
+            chapters: sub.chapters.map((ch) =>
+              ch.id === chapterId ? { ...ch, title: cleanTitle } : ch
+            ),
+          };
+        })
+      );
+      pushToast('Chapter updated');
+    },
+    [pushToast]
+  );
+
+  const deleteChapter = useCallback(
+    (subjectId: string, chapterId: string) => {
+      setSubjects((prev) =>
+        prev.map((sub) => {
+          if (sub.id !== subjectId) return sub;
+          return {
+            ...sub,
+            chapters: sub.chapters.filter((ch) => ch.id !== chapterId),
+          };
+        })
+      );
+      pushToast('Chapter deleted');
+    },
+    [pushToast]
+  );
+
   // Task mutations
   const addTask = useCallback(
     (t: Omit<TaskItem, 'id'>) => {
-      setTasks((prev) => [{ ...t, id: `tsk-${Date.now()}` }, ...prev]);
+      const id = `tsk-${crypto.randomUUID()}`;
+      setTasks((prev) => [{ ...t, id }, ...prev]);
       pushToast(`Task created: ${t.title}`);
+      return id;
     },
     [pushToast]
   );
@@ -810,13 +995,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     }));
   }, []);
 
+  const deleteGoal = useCallback((id: string) => {
+    setGoals(previous => previous.filter(goal => goal.id !== id));
+    pushToast('Goal removed');
+  }, [pushToast]);
+
   // Notes mutations
   const updateNote = useCallback((id: string, patch: Partial<NoteItem>) => {
     setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
   }, []);
 
   const createNote = useCallback(
-    (subjectId: string, folderId: string, draft?: Pick<NoteItem, 'title' | 'content'>) => {
+    (
+      subjectId: string,
+      folderId: string,
+      draft?: Partial<Pick<NoteItem, 'title' | 'content' | 'attachments' | 'pdf' | 'originalFont' | 'fontMode' | 'tags'>>
+    ) => {
       const id = `note-${crypto.randomUUID()}`;
       const newNote: NoteItem = {
         id,
@@ -825,10 +1019,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         title: draft?.title ?? 'Untitled Study Note',
         updatedAt: 'Just now',
         pinned: false,
-        tags: ['Draft'],
+        tags: draft?.tags ?? ['Draft'],
         content: draft?.content ?? '',
         linkedResources: [],
-        attachments: [],
+        attachments: draft?.attachments ?? [],
+        pdf: draft?.pdf,
+        originalFont: draft?.originalFont,
+        fontMode: draft?.fontMode,
         pdfHighlights: [],
       };
       setNotes((prev) => [newNote, ...prev]);
@@ -840,6 +1037,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   );
 
   // Flashcards mutations
+  const addDeck = useCallback(
+    (deck: Omit<FlashcardDeck, 'id' | 'lastReviewed' | 'retentionRate'>) => {
+      const id = `deck-${crypto.randomUUID()}`;
+      setDecks((prev) => [
+        {
+          ...deck,
+          id,
+          lastReviewed: 'Just created',
+          retentionRate: 0,
+        },
+        ...prev,
+      ]);
+      pushToast(`Deck created: ${deck.title}`);
+      return id;
+    },
+    [pushToast]
+  );
+
   const addFlashcard = useCallback(
     (card: Omit<FlashcardItem, 'id' | 'intervalDays' | 'easeFactor' | 'dueToday' | 'mastery'>) => {
       setFlashcards((prev) => [
@@ -1011,6 +1226,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         subjects,
         appendChapters: (id, chapters) => setSubjects(prev=>prev.map(s=>s.id===id ? {...s, chapters:[...s.chapters,...chapters]} : s)),
         addSubject,
+        updateSubject,
+        deleteSubject,
+        toggleArchiveSubject,
+        toggleArchiveChapter,
+        addChapter,
+        updateChapter,
+        deleteChapter,
+        addTopic,
+        deleteTopic,
         toggleTopicCompletion,
         updateTopicConfidence,
         tasks,
@@ -1026,12 +1250,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         goals,
         addGoal,
         updateGoal,
+        deleteGoal,
         folders,
         notes,
         deleteNote: id => setNotes(prev => prev.filter(note => note.id !== id)),
         updateNote,
         createNote,
         decks,
+        addDeck,
         flashcards,
         addFlashcard,
         reviewFlashcard,

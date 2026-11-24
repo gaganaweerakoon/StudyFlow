@@ -53,7 +53,7 @@ export const INITIAL_DASHBOARD_WIDGETS: DashboardWidgetConfig[] = [
   { id: 'today_schedule', label: "Today's Study Schedule", visible: true },
   { id: 'quick_focus', label: 'Quick-Start Focus Timer', visible: true },
   { id: 'subject_progress', label: 'Subject Progress', visible: true },
-  { id: 'upcoming_exams', label: 'Upcoming Exams', visible: true },
+  { id: 'upcoming_exams', label: 'Upcoming Sessions', visible: true },
   { id: 'recent_notes', label: 'Recent Notes', visible: true },
   { id: 'ai_insight', label: 'Productivity Insight', visible: true },
 ];

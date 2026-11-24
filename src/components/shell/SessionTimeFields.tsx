@@ -23,24 +23,45 @@ export function SessionTimeFields({ startHour = 15, durationHours = 1.5 }: { sta
   const elapsed = [Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)} h` : '', minutes % 60 ? `${minutes % 60} min` : ''].filter(Boolean).join(' ');
 
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <label className="grid gap-1">Start time
-        <select name="start-minute" className="min-w-0 rounded-lg border border-[var(--border-subtle)] p-2"
-          value={start} onChange={event => {
+    <div className="grid grid-cols-2 gap-2.5 text-[12px]">
+      <label className="grid gap-1">
+        <span className="font-medium text-[var(--text-secondary)]">Start time</span>
+        <select
+          name="start-minute"
+          className="min-w-0 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-subtle)] px-2.5 py-1.5 text-[12.5px] font-mono-num text-[var(--text-primary)]"
+          value={start}
+          onChange={event => {
             const next = Number(event.target.value);
             setStart(next);
             setEnd((next + minutes) % dayMinutes);
-          }}>
-          {items.map(value => <option key={value} value={value}>{formatHourLabel(value / 60)}</option>)}
+          }}
+        >
+          {items.map(value => (
+            <option key={value} value={value}>
+              {formatHourLabel(value / 60)}
+            </option>
+          ))}
         </select>
       </label>
-      <label className="grid gap-1">End time
-        <select name="end-minute" className="min-w-0 rounded-lg border border-[var(--border-subtle)] p-2"
-          value={end} onChange={event => setEnd(Number(event.target.value))}>
-          {items.map(value => <option key={value} value={value}>{formatHourLabel(value / 60)}</option>)}
+      <label className="grid gap-1">
+        <span className="font-medium text-[var(--text-secondary)]">End time</span>
+        <select
+          name="end-minute"
+          className="min-w-0 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-subtle)] px-2.5 py-1.5 text-[12.5px] font-mono-num text-[var(--text-primary)]"
+          value={end}
+          onChange={event => setEnd(Number(event.target.value))}
+        >
+          {items.map(value => (
+            <option key={value} value={value}>
+              {formatHourLabel(value / 60)}
+            </option>
+          ))}
         </select>
       </label>
-      <p className="col-span-2 text-[var(--text-secondary)]">{elapsed}{end <= start ? ' · Ends next day' : ''}</p>
+      <p className="col-span-2 text-[11.5px] font-mono-num text-[var(--text-muted)]">
+        Duration: {elapsed}
+        {end <= start ? ' · Ends next day' : ''}
+      </p>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { X, Star, CheckCircle2 } from 'lucide-react';
 import { localDay } from '../../assistant/workspaceContext';
 import { useApp } from '../../context/AppContext';
-import type { Priority, GoalItem } from '../../types/studyflow';
+import type { Priority, GoalItem, GoalMilestone } from '../../types/studyflow';
 
 import { CalendarBlockFields, readCalendarBlockFields, RepeatWeekdays } from './CalendarBlockFields';
 
@@ -15,6 +15,7 @@ export const QuickModals: React.FC = () => {
     setActiveModal,
     legacyCalendar,
     subjects,
+    tasks,
     decks,
     addTask,
     addSubject,
@@ -50,8 +51,21 @@ export const QuickModals: React.FC = () => {
   // Goal form
   const [goalTitle, setGoalTitle] = useState('');
   const [goalCategory, setGoalCategory] = useState<GoalItem['category']>('weekly');
+  const [goalSubject, setGoalSubject] = useState('');
   const [goalTarget, setGoalTarget] = useState(10);
   const [goalUnit, setGoalUnit] = useState('hrs');
+  const [goalDeadline, setGoalDeadline] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return legacyCalendar ? localDay(d) : '2026-12-05';
+  });
+  const [goalDraftMilestones, setGoalDraftMilestones] = useState<
+    (GoalMilestone & { createAsTask?: boolean; dueIso?: string })[]
+  >([]);
+  const [goalMsLabel, setGoalMsLabel] = useState('');
+  const [goalMsDate, setGoalMsDate] = useState(legacyCalendar ? localDay() : '2026-11-28');
+  const [goalMsCreateTask, setGoalMsCreateTask] = useState(false);
+  const [goalExistingTaskId, setGoalExistingTaskId] = useState('');
 
   // Flashcard form
   const [fcDeck, setFcDeck] = useState(decks[0]?.id ?? 'deck-cs');
@@ -162,24 +176,123 @@ export const QuickModals: React.FC = () => {
     closeModal();
   };
 
+  const formatShortMilestoneDate = (iso: string) => {
+    if (!iso) return 'No date';
+    const d = new Date(`${iso}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const handleAddDraftMilestone = () => {
+    const label = goalMsLabel.trim();
+    if (!label) return;
+    setGoalDraftMilestones((prev) => [
+      ...prev,
+      {
+        id: `ms-${crypto.randomUUID()}`,
+        label,
+        done: false,
+        date: formatShortMilestoneDate(goalMsDate),
+        dueIso: goalMsDate,
+        createAsTask: goalMsCreateTask,
+      },
+    ]);
+    setGoalMsLabel('');
+    setGoalMsCreateTask(false);
+  };
+
+  const handleLinkDraftTask = (taskId: string) => {
+    if (!taskId) return;
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    if (goalDraftMilestones.some((m) => m.taskId === task.id)) return;
+    setGoalDraftMilestones((prev) => [
+      ...prev,
+      {
+        id: `ms-${crypto.randomUUID()}`,
+        label: task.title,
+        done: task.status === 'done',
+        date: task.dueLabel || formatShortMilestoneDate(task.dueDate),
+        taskId: task.id,
+      },
+    ]);
+    setGoalExistingTaskId('');
+  };
+
   const handleGoalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!goalTitle.trim() || goalTarget <= 0) {
       setFormError('Please enter a goal title and positive target.');
       return;
     }
+
+    const pendingDrafts = [...goalDraftMilestones];
+    if (goalMsLabel.trim()) {
+      pendingDrafts.push({
+        id: `ms-${crypto.randomUUID()}`,
+        label: goalMsLabel.trim(),
+        done: false,
+        date: formatShortMilestoneDate(goalMsDate),
+        dueIso: goalMsDate,
+        createAsTask: goalMsCreateTask,
+      });
+    }
+
+    const resolvedMilestones: GoalMilestone[] = pendingDrafts.map((item) => {
+      if (item.createAsTask && !item.taskId) {
+        const dueIso = item.dueIso || goalDeadline;
+        const createdTaskId = addTask({
+          title: item.label,
+          subjectId: goalSubject || subjects[0]?.id || '',
+          dueDate: dueIso,
+          dueLabel: formatShortMilestoneDate(dueIso),
+          priority: 'medium',
+          status: 'todo',
+          estimatedMinutes: 45,
+          description: `Created from goal: ${goalTitle.trim()}`,
+          subtasks: [],
+        });
+        return {
+          id: item.id,
+          label: item.label,
+          done: false,
+          date: item.date,
+          taskId: createdTaskId,
+        };
+      }
+      return {
+        id: item.id,
+        label: item.label,
+        done: item.done,
+        date: item.date,
+        ...(item.taskId ? { taskId: item.taskId } : {}),
+      };
+    });
+
+    const formattedDeadline = goalDeadline
+      ? new Date(`${goalDeadline}T12:00:00`).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })
+      : 'No deadline';
+
     addGoal({
       title: goalTitle.trim(),
       category: goalCategory,
+      ...(goalSubject ? { subjectId: goalSubject } : {}),
       current: 0,
       target: goalTarget,
-      unit: goalUnit,
-      deadline: 'Dec 5, 2026',
-      milestones: [
-        { id: `ms-${Date.now()}`, label: 'Complete first milestone checkpoint', done: false, date: 'Nov 28' },
-      ],
+      unit: goalUnit.trim() || 'units',
+      deadline: formattedDeadline,
+      milestones: resolvedMilestones,
     });
     setGoalTitle('');
+    setGoalSubject('');
+    setGoalDraftMilestones([]);
+    setGoalMsLabel('');
+    setGoalMsCreateTask(false);
+    setGoalExistingTaskId('');
     closeModal();
   };
 
@@ -513,7 +626,7 @@ export const QuickModals: React.FC = () => {
             )}
 
             {activeModal === 'create_goal' && (
-              <form onSubmit={handleGoalSubmit} className="p-5 space-y-3.5">
+              <form onSubmit={handleGoalSubmit} className="p-5 space-y-3.5 max-h-[80dvh] overflow-y-auto">
                 <div>
                   <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
                     Goal Title
@@ -528,12 +641,17 @@ export const QuickModals: React.FC = () => {
                     autoFocus
                   />
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
                       Category
                     </label>
-                    <select value={goalCategory} onChange={(e) => setGoalCategory(e.target.value as GoalItem['category'])} className="w-full px-2 py-2 rounded-lg text-[13px]" style={inputStyle}>
+                    <select
+                      value={goalCategory}
+                      onChange={(e) => setGoalCategory(e.target.value as GoalItem['category'])}
+                      className="w-full px-2.5 py-2 rounded-lg text-[13px]"
+                      style={inputStyle}
+                    >
                       <option value="daily">Daily</option>
                       <option value="weekly">Weekly</option>
                       <option value="subject">Subject</option>
@@ -544,22 +662,206 @@ export const QuickModals: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
+                      Subject (optional)
+                    </label>
+                    <select
+                      value={goalSubject}
+                      onChange={(e) => setGoalSubject(e.target.value)}
+                      className="w-full px-2.5 py-2 rounded-lg text-[13px]"
+                      style={inputStyle}
+                    >
+                      <option value="">All / General</option>
+                      {subjects.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.code} · {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
                       Target
                     </label>
-                    <input type="number" min={1} value={goalTarget} onChange={(e) => setGoalTarget(Number(e.target.value))} className="w-full px-2.5 py-2 rounded-lg text-[13px] font-mono-num" style={inputStyle} />
+                    <input
+                      type="number"
+                      min={1}
+                      value={goalTarget}
+                      onChange={(e) => setGoalTarget(Number(e.target.value))}
+                      className="w-full px-2.5 py-2 rounded-lg text-[13px] font-mono-num"
+                      style={inputStyle}
+                    />
                   </div>
                   <div>
                     <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
                       Unit
                     </label>
-                    <input type="text" value={goalUnit} onChange={(e) => setGoalUnit(e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-[13px]" style={inputStyle} />
+                    <input
+                      type="text"
+                      value={goalUnit}
+                      onChange={(e) => setGoalUnit(e.target.value)}
+                      className="w-full px-2.5 py-2 rounded-lg text-[13px]"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
+                      Deadline
+                    </label>
+                    <input
+                      type="date"
+                      value={goalDeadline}
+                      onChange={(e) => setGoalDeadline(e.target.value)}
+                      className="w-full px-2 py-2 rounded-lg text-[12.5px]"
+                      style={inputStyle}
+                    />
                   </div>
                 </div>
+
+                {/* Optional Milestones & Linked Tasks */}
+                <div
+                  className="pt-3 space-y-2.5"
+                  style={{ borderTop: '1px solid var(--border-subtle)' }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                      Milestones & Tasks (optional)
+                    </span>
+                    <span className="text-[11px] text-[var(--text-muted)] font-mono-num">
+                      {goalDraftMilestones.length} added
+                    </span>
+                  </div>
+
+                  {goalDraftMilestones.length > 0 && (
+                    <div className="space-y-1.5">
+                      {goalDraftMilestones.map((ms) => (
+                        <div
+                          key={ms.id}
+                          className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-[12px]"
+                          style={{
+                            backgroundColor: 'var(--bg-surface-subtle)',
+                            border: '1px solid var(--border-subtle)',
+                          }}
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-[var(--text-primary)]">{ms.label}</div>
+                            <div className="text-[11px] text-[var(--text-muted)]">
+                              {ms.taskId
+                                ? 'Linked task'
+                                : ms.createAsTask
+                                  ? 'New task'
+                                  : 'Milestone'}{' '}
+                              · {ms.date}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setGoalDraftMilestones((prev) => prev.filter((item) => item.id !== ms.id))
+                            }
+                            aria-label={`Remove ${ms.label}`}
+                            className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] shrink-0"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-12 gap-2">
+                    <input
+                      type="text"
+                      value={goalMsLabel}
+                      onChange={(e) => setGoalMsLabel(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddDraftMilestone();
+                        }
+                      }}
+                      placeholder="Add milestone or new task..."
+                      className="col-span-7 px-2.5 py-1.5 rounded-lg text-[12.5px]"
+                      style={inputStyle}
+                    />
+                    <input
+                      type="date"
+                      value={goalMsDate}
+                      onChange={(e) => setGoalMsDate(e.target.value)}
+                      className="col-span-5 px-2 py-1.5 rounded-lg text-[12px]"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)] cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={goalMsCreateTask}
+                        onChange={(e) => setGoalMsCreateTask(e.target.checked)}
+                        className="accent-[var(--accent)]"
+                      />
+                      Also create as a Task
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleAddDraftMilestone}
+                      disabled={!goalMsLabel.trim()}
+                      className="px-2.5 py-1 rounded-lg text-[12px] font-medium disabled:opacity-40 hover:bg-[var(--bg-surface-hover)]"
+                      style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
+                    >
+                      + Add item
+                    </button>
+                  </div>
+
+                  {tasks.filter((t) => !goalDraftMilestones.some((m) => m.taskId === t.id)).length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={goalExistingTaskId}
+                        onChange={(e) => setGoalExistingTaskId(e.target.value)}
+                        aria-label="Link existing task"
+                        className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-[12px]"
+                        style={inputStyle}
+                      >
+                        <option value="">Link an existing task...</option>
+                        {tasks
+                          .filter((t) => !goalDraftMilestones.some((m) => m.taskId === t.id))
+                          .map((t) => {
+                            const s = subjects.find((sub) => sub.id === t.subjectId);
+                            return (
+                              <option key={t.id} value={t.id}>
+                                {s ? `${s.code} · ` : ''}
+                                {t.title} ({t.dueLabel})
+                              </option>
+                            );
+                          })}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleLinkDraftTask(goalExistingTaskId)}
+                        disabled={!goalExistingTaskId}
+                        className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium disabled:opacity-40 hover:bg-[var(--bg-surface-hover)] whitespace-nowrap"
+                        style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
+                      >
+                        Link Task
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" onClick={closeModal} className="px-3.5 py-1.5 rounded-lg text-[13px] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="px-3.5 py-1.5 rounded-lg text-[13px] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]"
+                  >
                     Cancel
                   </button>
-                  <button type="submit" className="px-4 py-1.5 rounded-lg text-[13px] font-medium" style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 rounded-lg text-[13px] font-medium"
+                    style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
+                  >
                     Save Goal
                   </button>
                 </div>
