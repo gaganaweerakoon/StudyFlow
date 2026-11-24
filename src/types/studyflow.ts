@@ -236,6 +236,9 @@ export interface PracticeQuiz {
 }
 
 export interface FocusHistoryItem {
+  startedAtMs?: number;
+  endedAtMs?: number;
+  source?: 'pc' | 'phone';
   calendarSessionId?: string | null;
   id: string;
   subjectId: string;

@@ -46,6 +46,7 @@ import {
 import type { snapshotWriter } from '../desktop/storage';
 import { chooseLegacyBackup, legacyOccurrences, mapLegacyWorkspace, type LegacyArchive } from '../desktop/legacy';
 import { localDay } from '../assistant/workspaceContext';
+import { resolveOfflineFocus, validOfflineRecord, type OfflineFocusRecord, type OfflineReceipts } from '../companion/offlineFocus';
 import { scheduleFlashcardReview, type ReviewRating } from '../utils/studyLogic';
 
 export interface ToastMessage {
@@ -54,6 +55,8 @@ export interface ToastMessage {
 }
 
 export interface FocusTimerState {
+  startedAtMs?: number;
+  mobileRunId?: string;
   calendarSessionId?: string | null;
   mode: 'Pomodoro' | 'Countdown' | 'Stopwatch' | 'Custom';
   phase: 'focus' | 'break';
@@ -70,11 +73,13 @@ export interface FocusTimerState {
 }
 
 export type PhoneFocusAction = {
-  action: 'start' | 'pause' | 'resume' | 'reset' | 'complete';
+  action: 'start' | 'pause' | 'resume' | 'reset' | 'complete' | 'offline_sync';
   sessionId?: string;
+  record?: OfflineFocusRecord;
 };
 
 export interface UserPreferences {
+  offlineFocusReceipts?: OfflineReceipts;
   onboarding?: 'open'|'later'|'complete';
   focusScene?: string;
   focusTrack?: string;
@@ -375,7 +380,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const focusClock = useMemo(() => ({ at: Date.now(), timer: focusTimer }), [
     focusTimer.running, focusTimer.mode, focusTimer.phase, focusTimer.totalSeconds,
     focusTimer.subjectId, focusTimer.taskTitle, focusTimer.calendarSessionId, focusTimer.cycleCount, focusTimer.miniVisible,
-    focusTimer.completionModalOpen, focusTimer.lastCompletedMinutes,
+    focusTimer.completionModalOpen, focusTimer.lastCompletedMinutes, focusTimer.startedAtMs, focusTimer.mobileRunId,
     focusTimer.running ? undefined : focusTimer.secondsLeft,
     focusTimer.running ? undefined : focusTimer.elapsedSeconds,
   ]);
@@ -490,6 +495,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       ...prev,
       mode,
       phase: 'focus',
+      startedAtMs: undefined, mobileRunId: undefined,
       running: false,
       secondsLeft: mins * 60,
       totalSeconds: Math.max(60, mins * 60),
@@ -502,19 +508,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     setFocusTimer(prev => {
       const useDefault = !prev.running && prev.phase === 'focus' && prev.elapsedSeconds === 0 &&
         (prev.mode === 'Stopwatch' || prev.secondsLeft === prev.totalSeconds) && prev.calendarSessionId !== null;
-      if (!useDefault) return { ...prev, running: !prev.running };
-      return { ...prev, running: true, calendarSessionId: current?.id,
+      if (!useDefault) return { ...prev, running: !prev.running,
+        startedAtMs: !prev.running && prev.elapsedSeconds === 0 ? Date.now() : prev.startedAtMs };
+      return { ...prev, running: true, startedAtMs: Date.now(), mobileRunId: undefined, calendarSessionId: current?.id,
         subjectId: current?.subjectId ?? '', taskTitle: current?.title ?? '' };
     });
   }, [sessions]);
 
   const applyPhoneFocusAction = useCallback((command: PhoneFocusAction) => {
+    if (command.action === 'offline_sync') {
+      const record = command.record;
+      if (!validOfflineRecord(record)) return;
+      const prior = preferences.offlineFocusReceipts?.[record.id];
+      if (prior === 'imported' || prior === 'pc-wins' || prior === 'adopted' && record.state !== 'completed') return;
+      const now = Date.now();
+      const decision = resolveOfflineFocus(record, focusTimer, focusHistory, now);
+      const subject = subjects.find(s => s.id === record.subjectId) ??
+        subjects.find(s => s.name.toLowerCase() === record.subjectName.toLowerCase() ||
+          s.code.toLowerCase() === record.subjectName.toLowerCase());
+      if (decision === 'imported' && record.state === 'completed') {
+        setFocusHistory(prev => prev.some(h => h.id === record.id) ? prev : [{
+          id: record.id, subjectId: subject?.id ?? '', taskTitle: record.title,
+          calendarSessionId: record.calendarSessionId ?? null, mode: 'Custom',
+          durationMinutes: Math.max(1, Math.round(record.elapsedSeconds / 60)),
+          completedAt: localDay(new Date(record.endedAt)), qualityRating: 3,
+          startedAtMs: record.startedAt, endedAtMs: record.endedAt, source: 'phone',
+        }, ...prev]);
+        setFocusTimer(prev => prev.mobileRunId !== record.id ? prev : {
+          ...prev, running: false, elapsedSeconds: 0, secondsLeft: prev.totalSeconds,
+          completionModalOpen: false, startedAtMs: undefined, mobileRunId: undefined,
+        });
+      } else if (decision === 'adopted') {
+        setFocusTimer(prev => ({
+          ...prev, mode: 'Custom', phase: 'focus',
+          secondsLeft: record.remainingSeconds, totalSeconds: record.totalSeconds,
+          elapsedSeconds: record.elapsedSeconds, running: record.state === 'running',
+          subjectId: subject?.id ?? '', taskTitle: record.title,
+          calendarSessionId: record.calendarSessionId ?? null,
+          startedAtMs: record.startedAt, mobileRunId: record.id, completionModalOpen: false,
+        }));
+      }
+      setPreferences(prev => ({ ...prev, offlineFocusReceipts: Object.fromEntries(
+        Object.entries({ ...prev.offlineFocusReceipts, [record.id]: decision }).slice(-256)
+      ) }));
+      return;
+    }
     const session = command.sessionId ? sessions.find(item => item.id === command.sessionId) : undefined;
     setFocusTimer(prev => {
       switch (command.action) {
         case 'start': {
           if (prev.running) return prev;
           return { ...prev, running: true, completionModalOpen: false,
+            startedAtMs: prev.elapsedSeconds === 0 ? Date.now() : prev.startedAtMs,
             ...(session ? { calendarSessionId: session.id, subjectId: session.subjectId ?? '',
               taskTitle: session.title } : {}) };
         }
@@ -522,10 +567,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
           return prev.running ? { ...prev, running: false } : prev;
         case 'resume':
           return !prev.running && !prev.completionModalOpen
-            ? { ...prev, running: true } : prev;
+            ? { ...prev, running: true, startedAtMs: prev.startedAtMs ?? Date.now() } : prev;
         case 'reset':
           return { ...prev, running: false, elapsedSeconds: 0, completionModalOpen: false,
-            secondsLeft: prev.mode === 'Stopwatch' ? 0 : prev.totalSeconds };
+            startedAtMs: undefined, mobileRunId: undefined, secondsLeft: prev.mode === 'Stopwatch' ? 0 : prev.totalSeconds };
         case 'complete': {
           if (prev.completionModalOpen) return prev;
           const minutes = prev.mode === 'Stopwatch'
@@ -538,12 +583,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
           return prev;
       }
     });
-  }, [sessions]);
+  }, [sessions, subjects, focusTimer, focusHistory, preferences.offlineFocusReceipts]);
 
   const resetFocusTimer = useCallback(() => {
     setFocusTimer((prev) => ({
       ...prev,
       running: false,
+      startedAtMs: undefined, mobileRunId: undefined,
       secondsLeft: prev.mode === 'Stopwatch' ? 0 : prev.totalSeconds,
       elapsedSeconds: 0,
     }));
@@ -576,7 +622,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     (rating: number) => {
       setFocusHistory((prev) => [
         {
-          id: `fh-${Date.now()}`,
+          id: focusTimer.mobileRunId || `fh-${Date.now()}`,
+          startedAtMs: focusTimer.startedAtMs ?? Date.now() - focusTimer.lastCompletedMinutes * 60000,
+          endedAtMs: Date.now(), source: focusTimer.mobileRunId ? 'phone' : 'pc',
           subjectId: focusTimer.subjectId,
           taskTitle: focusTimer.taskTitle,
           calendarSessionId: focusTimer.calendarSessionId ?? null,
@@ -592,13 +640,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         ...prev,
         completionModalOpen: false,
         cycleCount: prev.cycleCount + 1,
+        startedAtMs: undefined, mobileRunId: undefined,
         phase: prev.phase === 'focus' ? 'break' : 'focus',
         secondsLeft: prev.phase === 'focus' ? 5 * 60 : prev.totalSeconds,
         elapsedSeconds: 0,
       }));
       pushToast(`Focus session logged (+60 XP)`);
     },
-    [focusTimer.lastCompletedMinutes, focusTimer.mode, focusTimer.subjectId, focusTimer.taskTitle, focusTimer.calendarSessionId, pushToast, workspace]
+    [focusTimer.lastCompletedMinutes, focusTimer.mode, focusTimer.subjectId, focusTimer.taskTitle, focusTimer.calendarSessionId, focusTimer.startedAtMs, focusTimer.mobileRunId, pushToast, workspace]
   );
 
   const dismissFocusCompletion = useCallback(() => {

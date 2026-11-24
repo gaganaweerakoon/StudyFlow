@@ -211,7 +211,7 @@ impl Companion {
     }
 
     pub fn publish_focus(&mut self, focus: Value) -> Result<(), String> {
-        if !focus.is_object() || focus.to_string().len() > 4096
+        if !focus.is_object() || focus.to_string().len() > 65536
             || !focus["at"].is_number() || !focus["timer"].is_object() {
             return Err("Invalid StudyFlow focus snapshot.".into());
         }
@@ -344,14 +344,9 @@ impl Server {
         let calendar = json!({ "revision": now, "events": events, "paired": true });
         let focus = self.focus.clone().unwrap_or(Value::Null);
         let configured_name = focus["profileName"].as_str().unwrap_or("").trim();
-        let username = if !configured_name.is_empty() && configured_name != "Student" {
+        let username = if !configured_name.is_empty() {
             configured_name.chars().take(64).collect::<String>()
-        } else {
-            std::env::var("USERNAME")
-                .or_else(|_| std::env::var("USER"))
-                .unwrap_or_else(|_| "Student".into())
-                .chars().take(64).collect()
-        };
+        } else { "Student".into() };
         let server_now_ms = now.saturating_mul(1000);
         let proposed = request["token"].as_str().filter(|token| {
             token.len() == 64 && token.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -422,7 +417,7 @@ impl Server {
                 self.last_sync = Some(now);
                 if request["action"] == "focus_control" {
                     let Some(command) = request["command"].as_str().filter(|command| {
-                        matches!(*command, "start" | "pause" | "resume" | "reset" | "complete")
+                        matches!(*command, "start" | "pause" | "resume" | "reset" | "complete" | "offline_sync")
                     }) else {
                         return json!({ "error": "Unknown focus command." });
                     };
@@ -432,7 +427,22 @@ impl Server {
                     let session_id = request["sessionId"].as_str()
                         .filter(|id| id.len() <= 128)
                         .unwrap_or("");
-                    self.focus_commands.push(json!({ "action": command, "sessionId": session_id }));
+                    if command == "offline_sync" {
+                        let record = &request["record"];
+                        let Some(id) = record["id"].as_str().filter(|id| id.starts_with("phone-") && id.len() == 42) else {
+                            return json!({ "error": "Invalid offline focus identity." });
+                        };
+                        if !record.is_object() || record.to_string().len() > 1500
+                            || !record["startedAt"].is_number() || !record["endedAt"].is_number()
+                            || !matches!(record["state"].as_str(), Some("running" | "paused" | "completed")) {
+                            return json!({ "error": "Invalid offline focus record." });
+                        }
+                        if !self.focus_commands.iter().any(|queued| queued["record"]["id"].as_str() == Some(id)) {
+                            self.focus_commands.push(json!({ "action": command, "record": record }));
+                        }
+                    } else {
+                        self.focus_commands.push(json!({ "action": command, "sessionId": session_id }));
+                    }
                     return json!({ "accepted": true, "focus": focus, "serverNowMs": server_now_ms, "userName": username });
                 }
                 json!({ "calendar": calendar, "focus": focus, "serverNowMs": server_now_ms, "userName": username })

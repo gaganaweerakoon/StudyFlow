@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ThemeId } from '../types/studyflow';
 import type { CompanionCalendar, CompanionFocusCommand, CompanionFocusUpdate } from '../companion/client';
+import { ACTIVE_KEY, phoneRecord, queueOfflineRecord } from '../companion/offlineFocus';
 import {
   buildAlertSchedule,
   findExactAlertAtTime,
@@ -37,6 +38,7 @@ export interface LiveCompanionData {
   pcName: string;
   profileName?: string;
   calendar?: CompanionCalendar;
+  subjects?: CompanionSubject[];
   isPaired: boolean;
   connected?: boolean;
   lastSync?: number;
@@ -82,7 +84,7 @@ function calendarToBlocks(calendar?: CompanionCalendar): ScheduleBlock[] {
     if (day < -1 || day > 7) return [];
     return [{
       id: event.id, revision: calendar.revision, type: event.type, title: event.title,
-      subjectId: event.type === 'study' ? 'synced-study' : undefined,
+      subjectId: event.type === 'study' ? event.subjectId || 'synced-study' : undefined,
       dayIndex: day, startMin: date.getHours() * 60 + date.getMinutes(),
       durationMin: event.durationMinutes, advanceNoticeMin: (event.alarms?.advanceNoticeMin ?? 0) as AdvanceNoticeOption,
       ringAtStart: Boolean(event.alarms?.ringAtStart),
@@ -246,7 +248,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
   const [focus, setFocus] = useState<CompanionFocusState>(() => {
     if (!live) return makeInitialFocus();
     try {
-      const saved = JSON.parse(localStorage.getItem('studyflow.phone.localFocus') || 'null');
+      const saved = JSON.parse(localStorage.getItem(ACTIVE_KEY) || 'null');
       if (saved?.focus?.origin === 'phone' && saved.focus.pendingSyncWhenOnline) {
         const f = saved.focus as CompanionFocusState;
         const passed = f.phase === 'focus' || f.phase === 'break'
@@ -262,9 +264,13 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
   });
   useEffect(() => {
     if (!live) return;
-    if (focus.origin === 'phone' && focus.pendingSyncWhenOnline)
-      localStorage.setItem('studyflow.phone.localFocus', JSON.stringify({ at: Date.now(), focus }));
-    else localStorage.removeItem('studyflow.phone.localFocus');
+    if (focus.origin === 'phone' && focus.pendingSyncWhenOnline) {
+      if (focus.phase === 'completed') {
+        const record = phoneRecord(focus, 'completed', Date.now());
+        if (record && record.elapsedSeconds > 0) queueOfflineRecord(record);
+        localStorage.removeItem(ACTIVE_KEY);
+      } else localStorage.setItem(ACTIVE_KEY, JSON.stringify({ at: Date.now(), focus }));
+    } else localStorage.removeItem(ACTIVE_KEY);
   }, [Boolean(live), focus]);
   const pcWasRunning = useRef(false);
   const [sessionStartEpoch, setSessionStartEpoch] = useState(0);
@@ -439,12 +445,15 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
       : 'idle';
     setFocus(prev => {
       // Preserve a locally running timer if Windows reports no active session.
-      if (prev.origin === 'phone' && prev.pendingSyncWhenOnline && phase === 'idle') return prev;
+      if (prev.origin === 'phone' && prev.pendingSyncWhenOnline && prev.localRunId && prev.phase !== 'completed') {
+        const receipt = remote.focus?.offlineReceipts?.[prev.localRunId];
+        if (!receipt && timer.mobileRunId !== prev.localRunId) return prev;
+      }
       return ({
       ...prev,
       sessionId: timer.calendarSessionId ?? 'pc-timer',
-      subjectId: 'synced-study',
-      customSubject: undefined,
+      subjectId: timer.subjectId || 'synced-study',
+      localRunId: undefined, startedAtMs: undefined, customSubject: undefined,
       sessionTitle: timer.taskTitle || 'PC Focus Timer',
       phase,
       origin: 'pc',
@@ -485,8 +494,8 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
               ...prev,
               secondsLeft: 0,
               elapsedActiveSeconds: prev.elapsedActiveSeconds + prev.secondsLeft,
-              phase: 'paused',
-              showBreakSheet: true,
+              phase: prev.origin === 'phone' && prev.localRunId ? 'completed' : 'paused',
+              showBreakSheet: !(prev.origin === 'phone' && prev.localRunId),
             };
           }
           return {
@@ -744,17 +753,18 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
       if (live) setSessionStartEpoch(Date.now());
       setFocus({
         sessionId: target.id,
+        ...(live ? { localRunId: 'phone-' + crypto.randomUUID(), startedAtMs: Date.now() } : {}),
         subjectId: target.subjectId ?? 'chem210',
         sessionTitle: target.title,
         phase: 'focus',
-        origin,
+        origin: live ? 'phone' : origin,
         intervalMinutes: intervalMin,
         breakMinutes: 5,
         totalSeconds: intervalMin * 60,
         secondsLeft: intervalMin * 60,
         elapsedActiveSeconds: 0,
         startedAtAbsMin: startMinute,
-        pendingSyncWhenOnline: connection.mode === 'offline',
+        pendingSyncWhenOnline: Boolean(live) || connection.mode === 'offline',
         showFullScreen: openFullScreen,
         showBreakSheet: false,
       });
@@ -772,20 +782,22 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
   );
 
   const startCustomFocus = useCallback((subject: string, minutes: number) => {
-    const title = subject.trim();
+    const chosen = live?.subjects?.find(s => s.id === subject || s.name.toLowerCase() === subject.trim().toLowerCase());
+    const title = chosen?.name ?? subject.trim();
     if (!title || !Number.isInteger(minutes) || minutes < 1 || minutes > 720) return;
     if (focus.phase !== 'idle' && focus.phase !== 'completed') return;
     setSessionStartEpoch(Date.now());
+    const id = 'phone-' + crypto.randomUUID();
     setFocus({
-      ...liveInitialFocus(), sessionId: 'phone-' + crypto.randomUUID(),
-      sessionTitle: title, customSubject: title, subjectId: 'synced-study',
+      ...liveInitialFocus(), sessionId: id, localRunId: id, startedAtMs: Date.now(),
+      sessionTitle: title, customSubject: title, subjectId: chosen?.id || 'synced-study',
       phase: 'focus', origin: 'phone', intervalMinutes: minutes,
       totalSeconds: minutes * 60, secondsLeft: minutes * 60,
       startedAtAbsMin: currentAbsoluteMinute(), pendingSyncWhenOnline: true,
     });
     setActiveTab('focus');
     showPhoneToast('Custom timer started on this phone');
-  }, [focus.phase, setActiveTab, showPhoneToast]);
+  }, [focus.phase, setActiveTab, showPhoneToast, live?.subjects]);
 
   const pauseFocus = useCallback(() => {
     if (live?.connected && live.onFocusCommand && focus.origin === 'pc') {
@@ -815,9 +827,9 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
     }
     if (live && focus.origin === 'phone' && focus.elapsedActiveSeconds > 0) {
       try {
-        const key = 'studyflow.phone.unsyncedFocus';
-        const queue = JSON.parse(localStorage.getItem(key) || '[]') as unknown[];
-        localStorage.setItem(key, JSON.stringify([...queue, { ...focus, completedAt: new Date().toISOString() }]));
+        const record = phoneRecord(focus, 'completed', Date.now());
+        if (!record) throw new Error('Missing session identity');
+        queueOfflineRecord(record);
       } catch { showPhoneToast('Could not save the local session'); return; }
     }
     setFocus((prev) => ({
@@ -831,7 +843,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
       pendingSyncWhenOnline: false,
     }));
     showPhoneToast(live
-      ? 'Focus session saved on phone · PC import not supported yet'
+      ? 'Focus session saved on phone · pending Windows sync'
       : connection.mode === 'offline'
         ? 'Session saved locally · will sync when connected'
         : 'Focus session completed & synced'
@@ -1224,7 +1236,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
     jumpToAbsMin,
     advanceClockMinutes,
     resetDemoState,
-    subjects: live ? LIVE_SUBJECTS : COMPANION_SUBJECTS,
+    subjects: live ? (live.subjects?.length ? live.subjects : LIVE_SUBJECTS) : COMPANION_SUBJECTS,
     blocks,
     updateBlock,
     scheduledAlerts,

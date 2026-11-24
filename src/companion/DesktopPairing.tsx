@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { QrCode, Smartphone } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -15,6 +15,7 @@ function calendarEvents(sessions: StudySession[]): CompanionEvent[] {
     return [{
       id: session.id,
       title: session.title,
+      subjectId: session.subjectId,
       startAt: start.toISOString(),
       durationMinutes,
       type: session.blockType ?? (session.countsTowardStudy === false ? 'free' : 'study'),
@@ -24,21 +25,32 @@ function calendarEvents(sessions: StudySession[]): CompanionEvent[] {
 }
 
 export function PublishCompanionCalendar() {
-  const { sessions, focusClock, preferences, applyPhoneFocusAction } = useApp();
+  const { sessions, subjects, focusClock, preferences, applyPhoneFocusAction, saveWorkspace } = useApp();
+  const commandHandler = useRef(applyPhoneFocusAction);
+  commandHandler.current = applyPhoneFocusAction;
 
   // The desktop timer is authoritative. Publish immediately when its phase,
   // running state, subject, or time anchor changes, not just once a minute.
   useEffect(() => {
     if (!isTauri()) return;
-    const publish = () => void invoke('local_companion', {
-      action: 'publish',
-      events: calendarEvents(sessions),
-      focus: { ...focusClock, profileName: preferences.name },
-    }).catch(() => {});
-    publish();
-    const interval = window.setInterval(publish, 30_000);
-    return () => window.clearInterval(interval);
-  }, [sessions, focusClock, preferences.name]);
+    let active = true;
+    const publish = async () => {
+      try {
+        // Only acknowledge offline records after the corresponding workspace is saved.
+        await saveWorkspace();
+        if (!active) return;
+        await invoke('local_companion', {
+          action: 'publish', events: calendarEvents(sessions),
+          focus: { ...focusClock, profileName: preferences.name, offlineSyncVersion: 1,
+            offlineReceipts: preferences.offlineFocusReceipts,
+            subjects: subjects.filter(s => !s.archived).slice(0, 100).map(({ id, code, name, color }) => ({ id, code, name, color })) },
+        });
+      } catch { /* The next publish retries. */ }
+    };
+    void publish();
+    const interval = window.setInterval(() => void publish(), 30_000);
+    return () => { active = false; window.clearInterval(interval); };
+  }, [sessions, subjects, focusClock, preferences.name, preferences.offlineFocusReceipts, saveWorkspace]);
 
   // Phone commands are authenticated and queued by the TLS companion service.
   // Drain them on the desktop UI thread so the real React timer state changes.
@@ -52,7 +64,7 @@ export function PublishCompanionCalendar() {
       pending = true;
       try {
         const commands = await invoke<Command[]>('local_companion', { action: 'focus_commands' });
-        if (active) for (const command of commands) applyPhoneFocusAction(command);
+        if (active) for (const command of commands) commandHandler.current(command);
       } catch {
         // The local companion may not be initialized until the PC is paired.
       } finally {
@@ -62,7 +74,7 @@ export function PublishCompanionCalendar() {
     void receive();
     const interval = window.setInterval(() => void receive(), 1000);
     return () => { active = false; window.clearInterval(interval); };
-  }, [applyPhoneFocusAction]);
+  }, []);
 
   return null;
 }
@@ -71,7 +83,7 @@ interface LinkStatus { pc: string; phone: string | null; lastSync: number | null
 interface Invitation { qr: string; seconds: number }
 
 export function DesktopPairing() {
-  const { sessions, focusClock, preferences } = useApp();
+  const { sessions, subjects, focusClock, preferences } = useApp();
   const [link, setLink] = useState<LinkStatus>();
   const [qr, setQr] = useState<Invitation>();
   const [busy, setBusy] = useState(false);
@@ -102,7 +114,7 @@ export function DesktopPairing() {
     setStatus('');
     try {
       if (action === 'invite') {
-        setQr(await invoke<Invitation>('local_companion', { action, events: calendarEvents(sessions), focus: { ...focusClock, profileName: preferences.name } }));
+        setQr(await invoke<Invitation>('local_companion', { action, events: calendarEvents(sessions), focus: { ...focusClock, profileName: preferences.name, offlineSyncVersion: 1, offlineReceipts: preferences.offlineFocusReceipts, subjects: subjects.filter(s => !s.archived).slice(0, 100).map(({ id, code, name, color }) => ({ id, code, name, color })) } }));
       } else if (action === 'test') {
         const result = await invoke<{ pc: string; addresses: string[]; port: number }>('local_companion', { action });
         setStatus(`${result.pc} is listening on TCP ${result.port}. Local addresses: ${result.addresses.join(', ') || 'none found'}. The phone must be able to reach one of these addresses.`);

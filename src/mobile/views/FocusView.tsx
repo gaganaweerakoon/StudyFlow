@@ -166,7 +166,7 @@ export const FocusView: React.FC = () => {
               }}
             >
               <CloudOff className="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" />
-              <span>{focus.origin === 'phone' ? 'Local timer · PC import not supported yet' : 'Offline · reconnect to sync'}</span>
+              <span>{focus.origin === 'phone' ? 'Local timer · will sync when connected' : 'Offline · reconnect to sync'}</span>
             </div>
           )}
         </div>
@@ -303,11 +303,12 @@ export const FocusView: React.FC = () => {
       {liveMode && (focus.phase === 'idle' || focus.phase === 'completed') && (
         <section className="rounded-xl p-4 space-y-3 border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
           <h2 className="font-semibold">Custom focus timer</h2>
-          <p className="text-xs text-[var(--text-muted)]">Works offline. Enter a subject and duration. Sessions are currently stored on this phone.</p>
+          <p className="text-xs text-[var(--text-muted)]">Works offline. Select a subject and duration. Windows will reconcile your session on reconnect.</p>
           <form className="space-y-3" onSubmit={e => { e.preventDefault(); startCustomFocus(customSubject, customMinutes); }}>
             <label className="block text-xs">Subject
-              <input required maxLength={100} value={customSubject} onChange={e => setCustomSubject(e.target.value)} placeholder="e.g. Chemistry"
+              <input required list="studyflow-subjects" maxLength={100} value={customSubject} onChange={e => setCustomSubject(e.target.value)} placeholder="e.g. Chemistry"
                 className="mt-1 block w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-3 py-2 text-sm"/>
+              <datalist id="studyflow-subjects">{subjects.filter(s => s.id !== "synced-study").map(s => <option key={s.id} value={s.name}/>)}</datalist>
             </label>
             <label className="block text-xs">Duration (minutes)
               <input required type="number" min={1} max={720} value={customMinutes} onChange={e => setCustomMinutes(Number(e.target.value))}

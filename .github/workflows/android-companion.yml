@@ -49,7 +49,7 @@ jobs:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
       - run: bun install --frozen-lockfile
       - run: bun run lint
-      - run: node --import tsx --test src/mobile/companionLogic.test.ts server/companion/relay.test.mjs
+      - run: node --import tsx --test src/mobile/companionLogic.test.ts src/companion/offlineFocus.test.ts server/companion/relay.test.mjs
       - run: node node_modules/vite/bin/vite.js build --config vite.android.config.ts
       - run: gradle -p android :app:assembleDebug
       - uses: actions/upload-artifact@v4

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { relayRequest, type CompanionCalendar, type CompanionFocusUpdate, type CompanionFocusSnapshot, type CompanionFocusCommand } from '../../src/companion/client';
 import { MobileCompanionApp } from '../../src/mobile/MobileCompanionApp';
 import { deviceAlerts } from '../../src/companion/alarms';
+import { readOfflineQueue, readActiveOfflineRecord, removeAcknowledgedOfflineRecords, type OfflineFocusRecord } from '../../src/companion/offlineFocus';
 import { QrCode } from 'lucide-react';
 import logo from './studyflow-icon.svg';
 import './index.css';
@@ -16,6 +17,7 @@ declare global {
       scan(): void;
       request(id: string, endpoint: string, token: string | null): void;
       control(id: string, endpoint: string, token: string, command: CompanionFocusCommand, sessionId: string): void;
+      syncFocus(id: string, endpoint: string, token: string, record: string): void;
     };
     StudyFlowAlarms?: {
       status(): string;
@@ -28,7 +30,7 @@ declare global {
 
 const storageKey = 'studyflow.companion.phone';
 const pendingKey = 'studyflow.companion.pending';
-type PhonePair = { token: string; calendar?: CompanionCalendar } & (
+type PhonePair = { token: string; calendar?: CompanionCalendar; subjects?: CompanionFocusSnapshot['subjects'] } & (
   { origin: string; endpoint?: never; pc?: never; userName?: string } | { origin?: never; endpoint: string; pc: string; userName?: string }
 );
 interface LocalReply {
@@ -37,7 +39,7 @@ interface LocalReply {
   focus?: CompanionFocusSnapshot | null; serverNowMs?: number; userName?: string;
 }
 
-function localRequest(endpoint: string, token: string | null, command?: CompanionFocusCommand, sessionId = ''): Promise<LocalReply> {
+function localRequest(endpoint: string, token: string | null, command?: CompanionFocusCommand, sessionId = '', record?: OfflineFocusRecord): Promise<LocalReply> {
   const bridge = window.StudyFlowPairing;
   if (!bridge) return Promise.reject(new Error('Open the installed StudyFlow app to pair.'));
   return new Promise((resolve, reject) => {
@@ -58,7 +60,8 @@ function localRequest(endpoint: string, token: string | null, command?: Companio
       window.removeEventListener('studyflow-pairing-result', result);
     }
     window.addEventListener('studyflow-pairing-result', result);
-    if (command && token) bridge.control(id, endpoint, token, command, sessionId);
+    if (record && token) bridge.syncFocus(id, endpoint, token, JSON.stringify(record));
+    else if (command && token) bridge.control(id, endpoint, token, command, sessionId);
     else bridge.request(id, endpoint, token);
   });
 }
@@ -118,6 +121,7 @@ function AndroidCompanion() {
   }, [pair, alarmStatus?.exact]);
 
   function captureFocus(reply: LocalReply) {
+    if (reply.focus?.offlineReceipts) removeAcknowledgedOfflineRecords(reply.focus.offlineReceipts);
     if (reply.serverNowMs && Object.prototype.hasOwnProperty.call(reply, 'focus')) {
       setPcFocus({
         focus: reply.focus ?? null, serverNowMs: reply.serverNowMs, receivedAtMs: Date.now(),
@@ -174,10 +178,20 @@ function AndroidCompanion() {
       if (!calendar) throw new Error('The PC did not return a calendar.');
       if (latestPair.current?.token !== credentials.token) return;
       if (JSON.stringify(calendar.events) !== JSON.stringify(credentials.calendar?.events) ||
-          (result?.userName && result.userName !== credentials.userName)) {
-        save({ ...credentials, calendar, userName: result?.userName || credentials.userName });
+          (result?.userName && result.userName !== credentials.userName) ||
+          (result?.focus?.subjects && JSON.stringify(result.focus.subjects) !== JSON.stringify(credentials.subjects))) {
+        save({ ...credentials, calendar, userName: result?.userName || credentials.userName, subjects: result?.focus?.subjects ?? credentials.subjects });
       }
       if (result) captureFocus(result);
+      if (credentials.endpoint && result?.focus?.offlineSyncVersion === 1) {
+        const receipts = result.focus.offlineReceipts ?? {};
+        const active = readActiveOfflineRecord();
+        const record = active && !receipts[active.id] ? active : readOfflineQueue()[0];
+        if (record) {
+          try { await localRequest(credentials.endpoint, credentials.token, undefined, '', record); }
+          catch { /* Keep the record locally until Windows acknowledges it. */ }
+        }
+      }
       setDiagnostic(result?.diagnostic ?? '');
       setConnected(true);
       setLastSync(Date.now());
@@ -349,6 +363,7 @@ ${diagnostic}`).then(
       pcName: pair?.userName || 'StudyFlow PC',
       profileName: pair?.userName,
       calendar: pair?.calendar,
+      subjects: pair?.subjects,
       lastSync,
       busy,
       onSync: () => void pull(),

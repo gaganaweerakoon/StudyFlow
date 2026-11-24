@@ -85,6 +85,18 @@ class MainActivity : Activity() {
 
     private inner class PairingBridge {
         @JavascriptInterface
+        fun syncFocus(id: String, endpoint: String, token: String, record: String) {
+            if (id.length > 64 || endpoint.length > 2048 || token.length != 64 || record.length > 1500) return
+            pairingWorker.execute {
+                val result = try {
+                    LocalCompanion.request(endpoint, token, "offline_sync", null, record)
+                } catch (error: Exception) {
+                    JSONObject().put("error", error.message ?: "Could not sync offline focus.")
+                }
+                emit("studyflow-pairing-result", result.put("id", id))
+            }
+        }
+        @JavascriptInterface
         fun scan() = runOnUiThread {
             try {
                 IntentIntegrator(this@MainActivity)

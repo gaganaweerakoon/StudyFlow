@@ -74,6 +74,8 @@ export type FocusPhase = 'idle' | 'focus' | 'paused' | 'break' | 'break_paused' 
 export type FocusOrigin = 'phone' | 'pc' | 'alarm';
 
 export interface CompanionFocusState {
+  localRunId?: string;
+  startedAtMs?: number;
   sessionId: string;
   subjectId: string;
   customSubject?: string;

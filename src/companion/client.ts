@@ -1,6 +1,7 @@
 export interface CompanionEvent {
   id: string;
   title: string;
+  subjectId?: string;
   startAt: string;
   durationMinutes: number;
   type: import('../types/studyflow').ScheduleBlockType;
@@ -41,6 +42,9 @@ export async function relayRequest<T>(origin: string, path: string, method: stri
 export interface CompanionFocusSnapshot {
   at: number;
   timer: import('../context/AppContext').FocusTimerState;
+  subjects?: import('../mobile/types').CompanionSubject[];
+  offlineSyncVersion?: number;
+  offlineReceipts?: import('./offlineFocus').OfflineReceipts;
 }
 export interface CompanionFocusUpdate {
   focus: CompanionFocusSnapshot | null;
