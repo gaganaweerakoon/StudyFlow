@@ -131,6 +131,7 @@ export interface AndroidPermissionsState {
 
 export interface CompanionSettingsState {
   theme: ThemeId;
+  deepFocus?: boolean;
   accentColor: string;
   defaultAdvanceNotice: AdvanceNoticeOption;
   defaultRingAtStart: boolean;
