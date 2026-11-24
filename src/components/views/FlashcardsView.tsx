@@ -1,5 +1,5 @@
-import {StudyGeneration} from '../../notes/StudyGeneration';
-import React, { useState } from 'react';
+import { StudyGeneration } from '../../notes/StudyGeneration';
+import React, { lazy, Suspense, useState } from 'react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -17,10 +17,14 @@ import {
   CheckCircle2,
   ArrowLeft,
   Lightbulb,
+  Sparkles,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAssistant } from '../../assistant/AssistantContext';
 import { localDay } from '../../assistant/workspaceContext';
 import type { ReviewRating } from '../../utils/studyLogic';
+
+const AssistantMarkdown = lazy(() => import('../../assistant/AssistantMarkdown'));
 
 const REVIEW_HISTORY = [
   { day: 'Mon', reviewed: 32 },
@@ -34,6 +38,7 @@ const REVIEW_HISTORY = [
 
 export const FlashcardsView: React.FC = () => {
   const { decks, flashcards, subjects, legacyCalendar, cardReviews, reviewFlashcard, setActiveModal, pushToast } = useApp();
+  const { askPip } = useAssistant();
 
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
   const [cardIndex, setCardIndex] = useState(0);
@@ -162,8 +167,10 @@ export const FlashcardsView: React.FC = () => {
                     <span>Prompt · {deck?.title}</span>
                     <span className="font-mono-num capitalize">{currentCard.mastery}</span>
                   </div>
-                  <div className="font-display text-[20px] font-medium text-[var(--text-primary)] leading-snug text-center px-4">
-                    {currentCard.front}
+                  <div className="font-display text-[19px] font-medium text-[var(--text-primary)] leading-snug text-center px-4 note-markdown">
+                    <Suspense fallback={<span>{currentCard.front}</span>}>
+                      <AssistantMarkdown text={currentCard.front} />
+                    </Suspense>
                   </div>
                   <div className="flex items-center justify-between text-[12px] text-[var(--text-muted)]">
                     <span>{showHint && currentCard.hint ? `Hint: ${currentCard.hint}` : 'Click card to flip'}</span>
@@ -188,8 +195,10 @@ export const FlashcardsView: React.FC = () => {
                       Current interval: {currentCard.intervalDays}d
                     </span>
                   </div>
-                  <div className="text-[16px] text-[var(--text-primary)] leading-relaxed whitespace-pre-line text-center px-4">
-                    {currentCard.back}
+                  <div className="text-[15.5px] text-[var(--text-primary)] leading-relaxed text-center px-4 note-markdown overflow-y-auto max-h-[210px]">
+                    <Suspense fallback={<span>{currentCard.back}</span>}>
+                      <AssistantMarkdown text={currentCard.back} />
+                    </Suspense>
                   </div>
                   <div className="text-center text-[11.5px] text-[var(--text-muted)]">
                     Select how well you recalled this card below
@@ -285,7 +294,6 @@ export const FlashcardsView: React.FC = () => {
 
   return (
     <div className="space-y-4 pb-6">
-      <StudyGeneration/>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-[19px] font-semibold text-[var(--text-primary)]">
@@ -296,15 +304,40 @@ export const FlashcardsView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setActiveModal('create_flashcard')}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium"
-          style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
-        >
-          <Plus className="w-3.5 h-3.5" /> Add Flashcard
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              askPip(
+                'Generate 6 active-recall flashcards from my notes and save them into the best matching deck (or create a new deck if needed).',
+                { openFloating: true },
+              )
+            }
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]"
+            style={{ border: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-surface)' }}
+          >
+            <Sparkles className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} /> Ask Pip
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveModal('create_flashcard')}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap"
+            style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Flashcard
+          </button>
+        </div>
       </div>
+
+      <StudyGeneration
+        onDeckSaved={(deckId) => {
+          setActiveDeckId(deckId);
+          setCardIndex(0);
+          setFlipped(false);
+          setSessionDone(false);
+          setReviewedInSession(0);
+        }}
+      />
 
       {/* Deck Library */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

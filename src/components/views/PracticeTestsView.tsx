@@ -1,6 +1,6 @@
-import {useAssistant} from '../../assistant/AssistantContext';
-import {StudyGeneration} from '../../notes/StudyGeneration';
-import React, { useState, useEffect } from 'react';
+import { useAssistant } from '../../assistant/AssistantContext';
+import { StudyGeneration } from '../../notes/StudyGeneration';
+import React, { lazy, Suspense, useState, useEffect } from 'react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -17,10 +17,13 @@ import {
   ArrowLeft,
   AlertTriangle,
   Play,
+  Sparkles,
 } from 'lucide-react';
 import type { PracticeAttempt } from '../../types/studyflow';
 import { useApp } from '../../context/AppContext';
 import { formatTimerSeconds, gradePracticeTest } from '../../utils/studyLogic';
+
+const AssistantMarkdown = lazy(() => import('../../assistant/AssistantMarkdown'));
 
 export const PracticeTestsView: React.FC = () => {
   const { quizzes, subjects, recordQuizScore, pushToast, notes, setSelectedNoteId, setRoute } = useApp();
@@ -30,7 +33,7 @@ export const PracticeTestsView: React.FC = () => {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [secondsLeft, setSecondsLeft] = useState(900);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
-  const {generate}=useAssistant();
+  const { generate, askPip } = useAssistant();
   const [grading,setGrading]=useState(false);
   const [gradingError,setGradingError]=useState('');
   const [marks,setMarks]=useState<Record<string,{correct:boolean;feedback:string}>>({});
@@ -146,11 +149,26 @@ export const PracticeTestsView: React.FC = () => {
               ({result.correctCount}/{result.totalCount} marks)
             </span>
           </div>
-          <div className="md:text-right text-[12.5px]">
+          <div className="md:text-right text-[12.5px] space-y-1.5">
             {result.weakTopics.length > 0 ? (
-              <div className="text-amber-600 dark:text-amber-400">
-                Focus next: <strong className="font-semibold">{result.weakTopics.join(', ')}</strong>
-              </div>
+              <>
+                <div className="text-amber-600 dark:text-amber-400">
+                  Focus next: <strong className="font-semibold">{result.weakTopics.join(', ')}</strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    askPip(
+                      `I just scored ${result.scorePercent}% on "${activeQuiz.title}" with weak topics: ${result.weakTopics.join(', ')}. Give me targeted advice and schedule a 45-minute review session or make flashcards for these weak topics.`,
+                      { openFloating: true },
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11.5px] font-medium whitespace-nowrap"
+                  style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }}
+                >
+                  <Sparkles className="w-3 h-3" /> Ask Pip to coach weak topics
+                </button>
+              </>
             ) : (
               <div className="text-emerald-600 dark:text-emerald-400 font-medium">
                 Strong mastery across all tested topics
@@ -196,9 +214,11 @@ export const PracticeTestsView: React.FC = () => {
             return (
               <div key={q.id} className="p-4 space-y-1.5">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="text-[13.5px] font-medium text-[var(--text-primary)]">
+                  <div className="text-[13.5px] font-medium text-[var(--text-primary)] note-markdown">
                     <span className="font-mono-num text-[var(--text-muted)] mr-2">Q{idx + 1}.</span>
-                    {q.prompt}
+                    <Suspense fallback={<span>{q.prompt}</span>}>
+                      <AssistantMarkdown text={q.prompt} />
+                    </Suspense>
                   </div>
                   {isCorrect ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
@@ -217,9 +237,13 @@ export const PracticeTestsView: React.FC = () => {
                     </span>
                   )}
                 </div>
-                <p className="text-[12px] text-[var(--text-muted)]">{q.explanation}</p>
-                {q.rubric && <p className="text-xs">Rubric · {q.rubric}</p>}
-                {marks[q.id] && <p className="text-xs">Pip feedback · {marks[q.id].feedback}</p>}
+                <div className="text-[12px] text-[var(--text-muted)] note-markdown">
+                  <Suspense fallback={<span>{q.explanation}</span>}>
+                    <AssistantMarkdown text={q.explanation} />
+                  </Suspense>
+                </div>
+                {q.rubric && <p className="text-xs text-[var(--text-secondary)]">Rubric · {q.rubric}</p>}
+                {marks[q.id] && <p className="text-xs text-[var(--accent)]">Pip feedback · {marks[q.id].feedback}</p>}
               </div>
             );
           })}
@@ -278,9 +302,11 @@ export const PracticeTestsView: React.FC = () => {
               <span>Topic: {q.topic}</span>
             </div>
 
-            <h2 className="font-display text-[17px] font-medium text-[var(--text-primary)] leading-snug">
-              {q.prompt}
-            </h2>
+            <div className="font-display text-[17px] font-medium text-[var(--text-primary)] leading-snug note-markdown">
+              <Suspense fallback={<span>{q.prompt}</span>}>
+                <AssistantMarkdown text={q.prompt} />
+              </Suspense>
+            </div>
 
             {q.type !== 'short' && q.options ? (
               <div className="space-y-2.5">
@@ -452,15 +478,31 @@ export const PracticeTestsView: React.FC = () => {
 
   return (
     <div className="space-y-4 pb-6">
-      <StudyGeneration quiz/>
-      <div>
-        <h1 className="font-display text-[19px] font-semibold text-[var(--text-primary)]">
-          Practice Tests
-        </h1>
-        <p className="text-[12.5px] text-[var(--text-muted)]">
-          Timed mock assessments with instant topic diagnostics and weak-area recommendations
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="font-display text-[19px] font-semibold text-[var(--text-primary)]">
+            Practice Tests
+          </h1>
+          <p className="text-[12.5px] text-[var(--text-muted)]">
+            Timed mock assessments with instant topic diagnostics and weak-area recommendations
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() =>
+            askPip(
+              'Create a 5-question mixed practice test from my study notes so I can check my readiness.',
+              { openFloating: true },
+            )
+          }
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]"
+          style={{ border: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-surface)' }}
+        >
+          <Sparkles className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} /> Ask Pip for a Quiz
+        </button>
       </div>
+
+      <StudyGeneration quiz onQuizCreated={(id) => startQuiz(id)} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {quizzes.map((qz) => {
