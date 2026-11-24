@@ -1,3 +1,4 @@
+import { PROVIDERS } from '../src/assistant/protocol.ts';
 import studySchemas from '../src/assistant/studySchemas.json' with { type: 'json' };
 import 'dotenv/config';
 import { GoogleGenAI } from '@google/genai';
@@ -174,7 +175,7 @@ export async function* streamNotesRestructure(
   signal: AbortSignal,
 ): AsyncGenerator<RestructureEvent> {
   const ai = createGeminiClient(apiKey);
-  const model = request.model || 'gemini-4-hydrogen';
+  const model = request.model || PROVIDERS.gemini.model;
   const figures = request.figures ?? [];
   const filterImages = request.filterUnwantedImages !== false && figures.length > 0;
   const normalizeLanguage = Boolean(request.normalizeLanguage);
@@ -398,7 +399,7 @@ export async function generateDashboardOverview(
   usage?: TokenUsage;
 }> {
   const ai = createGeminiClient(apiKey);
-  const model = request.model || 'gemini-4-hydrogen';
+  const model = request.model || PROVIDERS.gemini.model;
 
   const systemInstruction = [
     'You are Pip, the academic productivity coach in StudyFlow.',

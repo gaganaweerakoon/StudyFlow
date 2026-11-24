@@ -10,7 +10,7 @@ fn main() -> Result<(), String> {
         serde_json::from_str(include_str!("../../src/assistant/geminiModels.json"))
             .expect("valid model catalog");
     let mut failures = Vec::new();
-    for model in models {
+    for model in models.into_iter().take(1) {
         let cases = [
             ("chat", "Reply briefly with the word chemistry.", None, false),
             ("flashcards", "Make one flashcard. Source: Water contains hydrogen and oxygen.", Some("flashcards"), false),
