@@ -33,8 +33,19 @@ export const FocusView: React.FC = () => {
     sessionScreenTimeApps,
     todayScreenTimeApps,
     setPermission,
+    settings,
+    updateSettings,
   } = useCompanion();
 
+  const deepBridge = (window as unknown as { StudyFlowDeepFocus?: { enabled(): boolean; request(): void } }).StudyFlowDeepFocus;
+  const [deepAllowed, setDeepAllowed] = React.useState(false);
+  React.useEffect(() => {
+    const check = () => setDeepAllowed(deepBridge?.enabled() === true);
+    check();
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', check);
+    return () => { window.removeEventListener('focus', check); document.removeEventListener('visibilitychange', check); };
+  }, [deepBridge]);
   const [customSubject, setCustomSubject] = React.useState('');
   const [customMinutes, setCustomMinutes] = React.useState(25);
   const subjectMap = new Map(subjects.map((s) => [s.id, s]));
@@ -274,6 +285,20 @@ export const FocusView: React.FC = () => {
       </header>
 
       {timerBlock}
+
+      {liveMode && (
+        <section className="rounded-xl p-4 space-y-2 border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+          <label className="flex items-center justify-between gap-3">
+            <span className="font-semibold">Deep focus mode</span>
+            <input type="checkbox" checked={settings.deepFocus === true}
+              onChange={e => updateSettings({ deepFocus: e.target.checked })}/>
+          </label>
+          <p className="text-xs text-[var(--text-muted)]">Warns when you switch to another app during an active focus interval. Android accessibility permission is needed; StudyFlow only observes the foreground app package, never screen contents or text. It does not block apps.</p>
+          {settings.deepFocus && !deepAllowed && <button type="button" onClick={() => deepBridge?.request()}
+            className="rounded-lg px-3 py-2 text-sm bg-[var(--accent)] text-[var(--accent-fg)]">Enable Android accessibility access</button>}
+          {settings.deepFocus && deepAllowed && <p className="text-xs text-[var(--text-secondary)]">Ready · warnings enabled during focus.</p>}
+        </section>
+      )}
 
       {liveMode && (focus.phase === 'idle' || focus.phase === 'completed') && (
         <section className="rounded-xl p-4 space-y-3 border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
