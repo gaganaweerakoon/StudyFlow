@@ -1,6 +1,6 @@
 import { readGeneratedCards, readGeneratedQuestions } from '../notes/generatedStudyItems';
 import type { useApp } from '../context/AppContext';
-import type { ExamItem, GoalItem, NavRoute, StudyLabLanguage, StudySession, TaskItem } from '../types/studyflow';
+import type { ExamItem, GoalItem, NavRoute, StudySession, TaskItem } from '../types/studyflow';
 import { sanitizeSvgDiagram } from './svgDiagram';
 import { analyzeSrsRetention, planMicroReviewSessions } from '../utils/srsIntelligence';
 
@@ -46,7 +46,6 @@ const VALID_ROUTES = new Set<NavRoute>([
   'exams',
   'goals',
   'analytics',
-  'lab',
   'settings',
   'assistant',
 ]);
@@ -190,7 +189,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       const targetRoute = typeof edit.route === 'string' ? (edit.route.trim() as NavRoute) : undefined;
       if (!targetRoute || !VALID_ROUTES.has(targetRoute)) return;
       const note = typeof edit.noteId === 'string' ? resolveNote(edit.noteId, app) : undefined;
-      const label = targetRoute === 'lab' ? 'Study Lab' : targetRoute.charAt(0).toUpperCase() + targetRoute.slice(1);
+      const label = targetRoute.charAt(0).toUpperCase() + targetRoute.slice(1);
       return {
         action,
         title: `Open ${label}`,
@@ -200,37 +199,6 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
         apply: (current) => {
           if (targetRoute === 'notes' && note) current.setSelectedNoteId(note.id);
           current.setRoute(targetRoute);
-          return true;
-        },
-      };
-    }
-
-    // 1b. Open Study Lab (Math/Code Playground or Whiteboard Studio)
-    if (action === 'open_study_lab') {
-      const tab = edit.tab === 'whiteboard' ? 'whiteboard' : 'playground';
-      const validLangs = new Set<StudyLabLanguage>(['math', 'python', 'javascript', 'sql', 'cpp']);
-      const language =
-        typeof edit.language === 'string' && validLangs.has(edit.language as StudyLabLanguage)
-          ? (edit.language as StudyLabLanguage)
-          : undefined;
-      const code = typeof edit.code === 'string' ? edit.code.slice(0, 12000) : undefined;
-      const rawSvg = typeof edit.svg === 'string' ? sanitizeSvgDiagram(edit.svg) : null;
-      const note = typeof edit.noteId === 'string' ? resolveNote(edit.noteId, app) : undefined;
-      return {
-        action,
-        title: `Open Study Lab · ${tab === 'whiteboard' ? 'Whiteboard Studio' : 'Math & Code Playground'}${title ? ` (${title})` : ''}`,
-        success: `Opened Study Lab ${tab === 'whiteboard' ? 'Whiteboard Studio' : 'Math & Code Playground'}.`,
-        route: 'lab',
-        routeLabel: 'Open Study Lab',
-        apply: (current) => {
-          current.openStudyLab({
-            tab,
-            language,
-            code,
-            svg: rawSvg ?? undefined,
-            title,
-            targetNoteId: note?.id,
-          });
           return true;
         },
       };

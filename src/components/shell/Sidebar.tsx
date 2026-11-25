@@ -11,7 +11,6 @@ import {
   Layers,
   ClipboardCheck,
   GraduationCap,
-  FlaskConical,
   BarChart3,
   Bot,
   Award,
@@ -71,7 +70,6 @@ export const Sidebar: React.FC = () => {
         { id: 'flashcards', label: 'Flashcards', icon: Layers, count: dueCardsCount },
         { id: 'practice', label: 'Practice Tests', icon: ClipboardCheck },
         { id: 'exams', label: 'Exams', icon: GraduationCap },
-        { id: 'lab', label: 'Study Lab', icon: FlaskConical },
       ],
     },
     {

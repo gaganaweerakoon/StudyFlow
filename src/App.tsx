@@ -24,7 +24,6 @@ import { NotesView } from './components/views/NotesView';
 import { FlashcardsView } from './components/views/FlashcardsView';
 import { PracticeTestsView } from './components/views/PracticeTestsView';
 import { ExamsView } from './components/views/ExamsView';
-import { StudyLabView } from './components/views/StudyLabView';
 import { AnalyticsView } from './components/views/AnalyticsView';
 import { AiAssistantView } from './components/views/AiAssistantView';
 import { AchievementsView } from './components/views/AchievementsView';
@@ -63,8 +62,6 @@ const StudyFlowShell: React.FC = () => {
         return <PracticeTestsView />;
       case 'exams':
         return <ExamsView />;
-      case 'lab':
-        return <StudyLabView />;
       case 'analytics':
         return <AnalyticsView />;
       case 'assistant':

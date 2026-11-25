@@ -5,22 +5,59 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "title": { "type": "string", "description": "Title of the calendar event or study block." },
-        "date": { "type": "string", "description": "Local start date in YYYY-MM-DD format." },
-        "startHour": { "type": "number", "description": "Start time as 24-hour decimal (e.g., 9.5 for 09:30, 14 for 14:00, 19.25 for 19:15)." },
-        "startTime": { "type": "string", "description": "Optional alternative start time in HH:MM 24-hour format (e.g., '14:30')." },
-        "durationHours": { "type": "number", "description": "Duration in hours (e.g., 1, 1.5, 2). Defaults to 1 if omitted." },
-        "subjectId": { "type": "string", "description": "Optional matching subject ID or subject code from workspace context." },
-        "blockType": { "type": "string", "enum": ["study", "sleep", "free"], "description": "Block category. Defaults to 'study'." },
-        "location": { "type": "string", "description": "Optional room or location." },
-        "notes": { "type": "string", "description": "Optional session agenda or study notes." },
+        "title": {
+          "type": "string",
+          "description": "Title of the calendar event or study block."
+        },
+        "date": {
+          "type": "string",
+          "description": "Local start date in YYYY-MM-DD format."
+        },
+        "startHour": {
+          "type": "number",
+          "description": "Start time as 24-hour decimal (e.g., 9.5 for 09:30, 14 for 14:00, 19.25 for 19:15)."
+        },
+        "startTime": {
+          "type": "string",
+          "description": "Optional alternative start time in HH:MM 24-hour format (e.g., '14:30')."
+        },
+        "durationHours": {
+          "type": "number",
+          "description": "Duration in hours (e.g., 1, 1.5, 2). Defaults to 1 if omitted."
+        },
+        "subjectId": {
+          "type": "string",
+          "description": "Optional matching subject ID or subject code from workspace context."
+        },
+        "blockType": {
+          "type": "string",
+          "enum": [
+            "study",
+            "sleep",
+            "free"
+          ],
+          "description": "Block category. Defaults to 'study'."
+        },
+        "location": {
+          "type": "string",
+          "description": "Optional room or location."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional session agenda or study notes."
+        },
         "weekdays": {
           "type": "array",
           "description": "Optional repeating weekdays using Monday=0 through Sunday=6. Include all 7 for daily recurrence.",
-          "items": { "type": "integer" }
+          "items": {
+            "type": "integer"
+          }
         }
       },
-      "required": ["title", "date"]
+      "required": [
+        "title",
+        "date"
+      ]
     }
   },
   {
@@ -29,18 +66,56 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Existing session ID from workspace context." },
-        "scope": { "type": "string", "enum": ["occurrence", "series"], "description": "Required when editing a recurring event." },
-        "title": { "type": "string" },
-        "date": { "type": "string", "description": "YYYY-MM-DD" },
-        "startHour": { "type": "number" },
-        "startTime": { "type": "string", "description": "HH:MM" },
-        "durationHours": { "type": "number" },
-        "subjectId": { "type": "string" },
-        "blockType": { "type": "string", "enum": ["study", "sleep", "free"] },
-        "weekdays": { "type": "array", "items": { "type": "integer" } }
+        "id": {
+          "type": "string",
+          "description": "Existing session ID from workspace context."
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "occurrence",
+            "series"
+          ],
+          "description": "Required when editing a recurring event."
+        },
+        "title": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string",
+          "description": "YYYY-MM-DD"
+        },
+        "startHour": {
+          "type": "number"
+        },
+        "startTime": {
+          "type": "string",
+          "description": "HH:MM"
+        },
+        "durationHours": {
+          "type": "number"
+        },
+        "subjectId": {
+          "type": "string"
+        },
+        "blockType": {
+          "type": "string",
+          "enum": [
+            "study",
+            "sleep",
+            "free"
+          ]
+        },
+        "weekdays": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
       },
-      "required": ["id"]
+      "required": [
+        "id"
+      ]
     }
   },
   {
@@ -49,11 +124,29 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Existing session ID from workspace context." },
-        "title": { "type": "string", "description": "Event title if ID is not known." },
-        "date": { "type": "string", "description": "Optional YYYY-MM-DD date to disambiguate matching events." },
-        "startTime": { "type": "string", "description": "Optional HH:MM 24-hour start time to disambiguate matching events." },
-        "scope": { "type": "string", "enum": ["occurrence"], "description": "For recurring events, removes this occurrence only." }
+        "id": {
+          "type": "string",
+          "description": "Existing session ID from workspace context."
+        },
+        "title": {
+          "type": "string",
+          "description": "Event title if ID is not known."
+        },
+        "date": {
+          "type": "string",
+          "description": "Optional YYYY-MM-DD date to disambiguate matching events."
+        },
+        "startTime": {
+          "type": "string",
+          "description": "Optional HH:MM 24-hour start time to disambiguate matching events."
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "occurrence"
+          ],
+          "description": "For recurring events, removes this occurrence only."
+        }
       }
     }
   },
@@ -65,12 +158,28 @@
       "properties": {
         "ids": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Optional list of specific session IDs to delete."
         },
-        "date": { "type": "string", "description": "Optional YYYY-MM-DD date to delete all matching events on that day." },
-        "titleContains": { "type": "string", "description": "Optional case-insensitive title keyword to filter events to delete." },
-        "blockType": { "type": "string", "enum": ["study", "sleep", "free"], "description": "Optional block category filter." }
+        "date": {
+          "type": "string",
+          "description": "Optional YYYY-MM-DD date to delete all matching events on that day."
+        },
+        "titleContains": {
+          "type": "string",
+          "description": "Optional case-insensitive title keyword to filter events to delete."
+        },
+        "blockType": {
+          "type": "string",
+          "enum": [
+            "study",
+            "sleep",
+            "free"
+          ],
+          "description": "Optional block category filter."
+        }
       }
     }
   },
@@ -80,14 +189,38 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "title": { "type": "string", "description": "Task title." },
-        "date": { "type": "string", "description": "Optional due date in YYYY-MM-DD format." },
-        "subjectId": { "type": "string", "description": "Optional subject ID or subject code." },
-        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
-        "estimatedMinutes": { "type": "integer", "description": "Optional estimated time in minutes." },
-        "description": { "type": "string", "description": "Optional task details." }
+        "title": {
+          "type": "string",
+          "description": "Task title."
+        },
+        "date": {
+          "type": "string",
+          "description": "Optional due date in YYYY-MM-DD format."
+        },
+        "subjectId": {
+          "type": "string",
+          "description": "Optional subject ID or subject code."
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "estimatedMinutes": {
+          "type": "integer",
+          "description": "Optional estimated time in minutes."
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional task details."
+        }
       },
-      "required": ["title"]
+      "required": [
+        "title"
+      ]
     }
   },
   {
@@ -96,13 +229,37 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Existing task ID." },
-        "title": { "type": "string" },
-        "date": { "type": "string", "description": "YYYY-MM-DD" },
-        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
-        "status": { "type": "string", "enum": ["todo", "in_progress", "done"] }
+        "id": {
+          "type": "string",
+          "description": "Existing task ID."
+        },
+        "title": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string",
+          "description": "YYYY-MM-DD"
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "todo",
+            "in_progress",
+            "done"
+          ]
+        }
       },
-      "required": ["id"]
+      "required": [
+        "id"
+      ]
     }
   },
   {
@@ -111,9 +268,16 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "ids": { "type": "array", "items": { "type": "string" } }
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       },
-      "required": ["ids"]
+      "required": [
+        "ids"
+      ]
     }
   },
   {
@@ -122,9 +286,24 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "ids": { "type": "array", "items": { "type": "string" }, "description": "Existing task IDs to delete." },
-        "titles": { "type": "array", "items": { "type": "string" }, "description": "Optional task titles to match if IDs are not known." },
-        "completedOnly": { "type": "boolean", "description": "Set true to delete all completed tasks." }
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Existing task IDs to delete."
+        },
+        "titles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional task titles to match if IDs are not known."
+        },
+        "completedOnly": {
+          "type": "boolean",
+          "description": "Set true to delete all completed tasks."
+        }
       }
     }
   },
@@ -134,15 +313,35 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "title": { "type": "string" },
-        "date": { "type": "string", "description": "Exam date in YYYY-MM-DD format." },
-        "time": { "type": "string", "description": "Optional exam time in HH:MM 24-hour format." },
-        "subjectId": { "type": "string", "description": "Optional subject ID or subject code." },
-        "room": { "type": "string" },
-        "targetGrade": { "type": "string" },
-        "weightPercent": { "type": "number" }
+        "title": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string",
+          "description": "Exam date in YYYY-MM-DD format."
+        },
+        "time": {
+          "type": "string",
+          "description": "Optional exam time in HH:MM 24-hour format."
+        },
+        "subjectId": {
+          "type": "string",
+          "description": "Optional subject ID or subject code."
+        },
+        "room": {
+          "type": "string"
+        },
+        "targetGrade": {
+          "type": "string"
+        },
+        "weightPercent": {
+          "type": "number"
+        }
       },
-      "required": ["title", "date"]
+      "required": [
+        "title",
+        "date"
+      ]
     }
   },
   {
@@ -151,17 +350,38 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "title": { "type": "string" },
-        "date": { "type": "string" },
-        "time": { "type": "string" },
-        "subjectId": { "type": "string" },
-        "room": { "type": "string" },
-        "targetGrade": { "type": "string" },
-        "weightPercent": { "type": "number" },
-        "prepProgress": { "type": "number", "description": "0 to 100." }
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "time": {
+          "type": "string"
+        },
+        "subjectId": {
+          "type": "string"
+        },
+        "room": {
+          "type": "string"
+        },
+        "targetGrade": {
+          "type": "string"
+        },
+        "weightPercent": {
+          "type": "number"
+        },
+        "prepProgress": {
+          "type": "number",
+          "description": "0 to 100."
+        }
       },
-      "required": ["id"]
+      "required": [
+        "id"
+      ]
     }
   },
   {
@@ -170,8 +390,14 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Existing exam ID." },
-        "title": { "type": "string", "description": "Exam title if ID is not known." }
+        "id": {
+          "type": "string",
+          "description": "Existing exam ID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Exam title if ID is not known."
+        }
       }
     }
   },
@@ -317,8 +543,14 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Existing goal ID." },
-        "title": { "type": "string", "description": "Goal title if ID is not known." }
+        "id": {
+          "type": "string",
+          "description": "Existing goal ID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Goal title if ID is not known."
+        }
       }
     }
   },
@@ -328,11 +560,22 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "goalId": { "type": "string", "description": "Existing goal ID or goal title." },
-        "id": { "type": "string", "description": "Milestone ID." },
-        "title": { "type": "string", "description": "Milestone label if ID is not known." }
+        "goalId": {
+          "type": "string",
+          "description": "Existing goal ID or goal title."
+        },
+        "id": {
+          "type": "string",
+          "description": "Milestone ID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Milestone label if ID is not known."
+        }
       },
-      "required": ["goalId"]
+      "required": [
+        "goalId"
+      ]
     }
   },
   {
@@ -341,12 +584,28 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "title": { "type": "string" },
-        "content": { "type": "string", "description": "Well-structured Markdown note content." },
-        "subjectId": { "type": "string", "description": "Optional subject ID or subject code." },
-        "tags": { "type": "array", "items": { "type": "string" } }
+        "title": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string",
+          "description": "Well-structured Markdown note content."
+        },
+        "subjectId": {
+          "type": "string",
+          "description": "Optional subject ID or subject code."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       },
-      "required": ["title", "content"]
+      "required": [
+        "title",
+        "content"
+      ]
     }
   },
   {
@@ -355,11 +614,20 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "title": { "type": "string" },
-        "content": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
       },
-      "required": ["id", "content"]
+      "required": [
+        "id",
+        "content"
+      ]
     }
   },
   {
@@ -368,8 +636,14 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Existing note ID." },
-        "title": { "type": "string", "description": "Note title if ID is not known." }
+        "id": {
+          "type": "string",
+          "description": "Existing note ID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Note title if ID is not known."
+        }
       }
     }
   },
@@ -379,11 +653,20 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "title": { "type": "string" },
-        "description": { "type": "string" },
-        "subjectId": { "type": "string", "description": "Optional subject ID or subject code." }
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "subjectId": {
+          "type": "string",
+          "description": "Optional subject ID or subject code."
+        }
       },
-      "required": ["title"]
+      "required": [
+        "title"
+      ]
     }
   },
   {
@@ -392,8 +675,14 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Existing deck ID." },
-        "title": { "type": "string", "description": "Deck title if ID is not known." }
+        "id": {
+          "type": "string",
+          "description": "Existing deck ID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Deck title if ID is not known."
+        }
       }
     }
   },
@@ -403,25 +692,48 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "noteId": { "type": "string", "description": "Optional source note ID or note title from workspace context." },
-        "deckId": { "type": "string", "description": "Existing deck ID to add cards to." },
-        "deckTitle": { "type": "string", "description": "If creating a new deck or matching by name, provide the deck title." },
-        "subjectId": { "type": "string", "description": "Optional subject ID or code if creating a new deck." },
+        "noteId": {
+          "type": "string",
+          "description": "Optional source note ID or note title from workspace context."
+        },
+        "deckId": {
+          "type": "string",
+          "description": "Existing deck ID to add cards to."
+        },
+        "deckTitle": {
+          "type": "string",
+          "description": "If creating a new deck or matching by name, provide the deck title."
+        },
+        "subjectId": {
+          "type": "string",
+          "description": "Optional subject ID or code if creating a new deck."
+        },
         "cards": {
           "type": "array",
           "description": "Array of flashcards with front (question/prompt) and back (concise answer).",
           "items": {
             "type": "object",
             "properties": {
-              "front": { "type": "string" },
-              "back": { "type": "string" },
-              "hint": { "type": "string" }
+              "front": {
+                "type": "string"
+              },
+              "back": {
+                "type": "string"
+              },
+              "hint": {
+                "type": "string"
+              }
             },
-            "required": ["front", "back"]
+            "required": [
+              "front",
+              "back"
+            ]
           }
         }
       },
-      "required": ["cards"]
+      "required": [
+        "cards"
+      ]
     }
   },
   {
@@ -430,29 +742,77 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "noteId": { "type": "string", "description": "Optional source note ID or title from workspace context." },
-        "title": { "type": "string", "description": "Practice test title." },
-        "subjectId": { "type": "string", "description": "Optional subject ID or subject code." },
-        "difficulty": { "type": "string", "enum": ["Standard", "Challenge", "Exam Level"] },
-        "sourceSection": { "type": "string" },
+        "noteId": {
+          "type": "string",
+          "description": "Optional source note ID or title from workspace context."
+        },
+        "title": {
+          "type": "string",
+          "description": "Practice test title."
+        },
+        "subjectId": {
+          "type": "string",
+          "description": "Optional subject ID or subject code."
+        },
+        "difficulty": {
+          "type": "string",
+          "enum": [
+            "Standard",
+            "Challenge",
+            "Exam Level"
+          ]
+        },
+        "sourceSection": {
+          "type": "string"
+        },
         "questions": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
-              "type": { "type": "string", "enum": ["mcq", "multi", "short"] },
-              "topic": { "type": "string" },
-              "prompt": { "type": "string" },
-              "options": { "type": "array", "items": { "type": "string" } },
-              "answer": { "type": "string", "description": "Exact option text for mcq, newline-separated exact options for multi, or expected concise answer for short." },
-              "explanation": { "type": "string" },
-              "rubric": { "type": "string" }
+              "type": {
+                "type": "string",
+                "enum": [
+                  "mcq",
+                  "multi",
+                  "short"
+                ]
+              },
+              "topic": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "answer": {
+                "type": "string",
+                "description": "Exact option text for mcq, newline-separated exact options for multi, or expected concise answer for short."
+              },
+              "explanation": {
+                "type": "string"
+              },
+              "rubric": {
+                "type": "string"
+              }
             },
-            "required": ["type", "prompt", "answer", "explanation"]
+            "required": [
+              "type",
+              "prompt",
+              "answer",
+              "explanation"
+            ]
           }
         }
       },
-      "required": ["questions"]
+      "required": [
+        "questions"
+      ]
     }
   },
   {
@@ -461,8 +821,14 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Existing practice test ID." },
-        "title": { "type": "string", "description": "Practice test title if ID is not known." }
+        "id": {
+          "type": "string",
+          "description": "Existing practice test ID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Practice test title if ID is not known."
+        }
       }
     }
   },
@@ -472,8 +838,14 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Existing subject ID." },
-        "title": { "type": "string", "description": "Subject code or name if ID is not known." }
+        "id": {
+          "type": "string",
+          "description": "Existing subject ID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Subject code or name if ID is not known."
+        }
       }
     }
   },
@@ -483,13 +855,35 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "taskTitle": { "type": "string", "description": "What the student will focus on." },
-        "subjectId": { "type": "string", "description": "Optional subject ID or subject code." },
-        "mode": { "type": "string", "enum": ["Pomodoro", "Countdown", "Stopwatch", "Custom"] },
-        "minutes": { "type": "integer", "description": "Optional duration in minutes (used when mode is Custom)." },
-        "autoStart": { "type": "boolean", "description": "Start ticking immediately (default true)." }
+        "taskTitle": {
+          "type": "string",
+          "description": "What the student will focus on."
+        },
+        "subjectId": {
+          "type": "string",
+          "description": "Optional subject ID or subject code."
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "Pomodoro",
+            "Countdown",
+            "Stopwatch",
+            "Custom"
+          ]
+        },
+        "minutes": {
+          "type": "integer",
+          "description": "Optional duration in minutes (used when mode is Custom)."
+        },
+        "autoStart": {
+          "type": "boolean",
+          "description": "Start ticking immediately (default true)."
+        }
       },
-      "required": ["taskTitle"]
+      "required": [
+        "taskTitle"
+      ]
     }
   },
   {
@@ -500,27 +894,29 @@
       "properties": {
         "route": {
           "type": "string",
-          "enum": ["dashboard", "planner", "subjects", "tasks", "focus", "notes", "flashcards", "practice", "exams", "goals", "analytics", "lab", "settings"]
+          "enum": [
+            "dashboard",
+            "planner",
+            "subjects",
+            "tasks",
+            "focus",
+            "notes",
+            "flashcards",
+            "practice",
+            "exams",
+            "goals",
+            "analytics",
+            "settings"
+          ]
         },
-        "noteId": { "type": "string", "description": "Optional note ID to select when opening notes." }
+        "noteId": {
+          "type": "string",
+          "description": "Optional note ID to select when opening notes."
+        }
       },
-      "required": ["route"]
-    }
-  },
-  {
-    "name": "open_study_lab",
-    "description": "Open the Study Lab page preloaded with a Math/LaTeX or Code Playground snippet (python, javascript, sql, math, cpp) or an SVG diagram on the Interactive Whiteboard.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "tab": { "type": "string", "enum": ["playground", "whiteboard"], "description": "Which Study Lab studio to open." },
-        "language": { "type": "string", "enum": ["math", "python", "javascript", "sql", "cpp"], "description": "Playground language mode." },
-        "code": { "type": "string", "description": "Initial formula or code snippet to preload." },
-        "svg": { "type": "string", "description": "Optional SVG markup to load into the Whiteboard studio." },
-        "title": { "type": "string", "description": "Short descriptive title for the snippet or diagram." },
-        "noteId": { "type": "string", "description": "Optional note ID to target when inserting results back into Notes." }
-      },
-      "required": ["tab"]
+      "required": [
+        "route"
+      ]
     }
   },
   {
@@ -529,11 +925,22 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "noteId": { "type": "string", "description": "Target note ID or note title from workspace context." },
-        "title": { "type": "string", "description": "Short heading for the diagram section." },
-        "svg": { "type": "string", "description": "Complete self-contained <svg ...>...</svg> diagram markup." }
+        "noteId": {
+          "type": "string",
+          "description": "Target note ID or note title from workspace context."
+        },
+        "title": {
+          "type": "string",
+          "description": "Short heading for the diagram section."
+        },
+        "svg": {
+          "type": "string",
+          "description": "Complete self-contained <svg ...>...</svg> diagram markup."
+        }
       },
-      "required": ["svg"]
+      "required": [
+        "svg"
+      ]
     }
   },
   {
@@ -548,21 +955,51 @@
           "items": {
             "type": "object",
             "properties": {
-              "title": { "type": "string" },
-              "date": { "type": "string", "description": "YYYY-MM-DD" },
-              "startHour": { "type": "number" },
-              "startTime": { "type": "string", "description": "HH:MM" },
-              "durationHours": { "type": "number" },
-              "subjectId": { "type": "string" },
-              "blockType": { "type": "string", "enum": ["study", "sleep", "free"] },
-              "location": { "type": "string" },
-              "notes": { "type": "string" }
+              "title": {
+                "type": "string"
+              },
+              "date": {
+                "type": "string",
+                "description": "YYYY-MM-DD"
+              },
+              "startHour": {
+                "type": "number"
+              },
+              "startTime": {
+                "type": "string",
+                "description": "HH:MM"
+              },
+              "durationHours": {
+                "type": "number"
+              },
+              "subjectId": {
+                "type": "string"
+              },
+              "blockType": {
+                "type": "string",
+                "enum": [
+                  "study",
+                  "sleep",
+                  "free"
+                ]
+              },
+              "location": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "string"
+              }
             },
-            "required": ["title", "date"]
+            "required": [
+              "title",
+              "date"
+            ]
           }
         }
       },
-      "required": ["events"]
+      "required": [
+        "events"
+      ]
     }
   },
   {
@@ -577,18 +1014,40 @@
           "items": {
             "type": "object",
             "properties": {
-              "title": { "type": "string" },
-              "date": { "type": "string", "description": "Optional due date YYYY-MM-DD" },
-              "subjectId": { "type": "string" },
-              "priority": { "type": "string", "enum": ["low", "medium", "high"] },
-              "estimatedMinutes": { "type": "integer" },
-              "description": { "type": "string" }
+              "title": {
+                "type": "string"
+              },
+              "date": {
+                "type": "string",
+                "description": "Optional due date YYYY-MM-DD"
+              },
+              "subjectId": {
+                "type": "string"
+              },
+              "priority": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              "estimatedMinutes": {
+                "type": "integer"
+              },
+              "description": {
+                "type": "string"
+              }
             },
-            "required": ["title"]
+            "required": [
+              "title"
+            ]
           }
         }
       },
-      "required": ["tasks"]
+      "required": [
+        "tasks"
+      ]
     }
   },
   {
@@ -597,8 +1056,14 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "deckId": { "type": "string", "description": "Optional specific deck ID or title to focus on." },
-        "maxBlocks": { "type": "integer", "description": "Maximum number of micro-review blocks to propose (1 to 8, default 4)." }
+        "deckId": {
+          "type": "string",
+          "description": "Optional specific deck ID or title to focus on."
+        },
+        "maxBlocks": {
+          "type": "integer",
+          "description": "Maximum number of micro-review blocks to propose (1 to 8, default 4)."
+        }
       }
     }
   },
@@ -608,20 +1073,40 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "subjectId": { "type": "string", "description": "Optional matching subject ID or code." },
-        "courseTitle": { "type": "string", "description": "Course title extracted from the syllabus." },
+        "subjectId": {
+          "type": "string",
+          "description": "Optional matching subject ID or code."
+        },
+        "courseTitle": {
+          "type": "string",
+          "description": "Course title extracted from the syllabus."
+        },
         "exams": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
-              "title": { "type": "string" },
-              "date": { "type": "string", "description": "YYYY-MM-DD" },
-              "time": { "type": "string" },
-              "room": { "type": "string" },
-              "weightPercent": { "type": "number" }
+              "title": {
+                "type": "string"
+              },
+              "date": {
+                "type": "string",
+                "description": "YYYY-MM-DD"
+              },
+              "time": {
+                "type": "string"
+              },
+              "room": {
+                "type": "string"
+              },
+              "weightPercent": {
+                "type": "number"
+              }
             },
-            "required": ["title", "date"]
+            "required": [
+              "title",
+              "date"
+            ]
           }
         },
         "tasks": {
@@ -629,13 +1114,31 @@
           "items": {
             "type": "object",
             "properties": {
-              "title": { "type": "string" },
-              "date": { "type": "string", "description": "YYYY-MM-DD" },
-              "priority": { "type": "string", "enum": ["low", "medium", "high"] },
-              "estimatedMinutes": { "type": "integer" },
-              "description": { "type": "string" }
+              "title": {
+                "type": "string"
+              },
+              "date": {
+                "type": "string",
+                "description": "YYYY-MM-DD"
+              },
+              "priority": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              "estimatedMinutes": {
+                "type": "integer"
+              },
+              "description": {
+                "type": "string"
+              }
             },
-            "required": ["title"]
+            "required": [
+              "title"
+            ]
           }
         },
         "chapters": {
@@ -643,10 +1146,19 @@
           "items": {
             "type": "object",
             "properties": {
-              "name": { "type": "string" },
-              "topics": { "type": "array", "items": { "type": "string" } }
+              "name": {
+                "type": "string"
+              },
+              "topics": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             },
-            "required": ["name"]
+            "required": [
+              "name"
+            ]
           }
         },
         "goals": {
@@ -654,11 +1166,22 @@
           "items": {
             "type": "object",
             "properties": {
-              "title": { "type": "string" },
-              "deadline": { "type": "string" },
-              "milestones": { "type": "array", "items": { "type": "string" } }
+              "title": {
+                "type": "string"
+              },
+              "deadline": {
+                "type": "string"
+              },
+              "milestones": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             },
-            "required": ["title"]
+            "required": [
+              "title"
+            ]
           }
         }
       }

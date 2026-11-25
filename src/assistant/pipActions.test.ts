@@ -858,7 +858,7 @@ test('mass additions (create_events, create_tasks, schedule_micro_reviews, impor
   assert.equal(multiMsGoal.reviewKind, 'approval');
 });
 
-test('open_study_lab and insert_note_diagram sanitize SVG and route cleanly', () => {
+test('disabled lab routes are rejected and note diagrams remain available', () => {
   const ws = createMockWorkspace();
 
   const openLab = parseWorkspaceEdit(
@@ -871,10 +871,8 @@ test('open_study_lab and insert_note_diagram sanitize SVG and route cleanly', ()
     }),
     ws,
   );
-  assert.ok(openLab);
-  assert.equal(openLab.confirmation, undefined);
-  assert.equal(openLab.apply(ws), true);
-  assert.equal(ws.route, 'lab');
+  assert.equal(openLab, undefined);
+  assert.equal(parseWorkspaceEdit(JSON.stringify({ action: 'navigate_to_view', route: 'lab' }), ws), undefined);
 
   const insertDiagram = parseWorkspaceEdit(
     JSON.stringify({

@@ -34,7 +34,7 @@ const ROUTE_META: Record<NavRoute, { group: string; title: string; actionLabel?:
   flashcards: { group: 'Learning', title: 'Flashcards', actionLabel: 'Add Card', actionModal: 'create_flashcard' },
   practice: { group: 'Learning', title: 'Practice Tests' },
   exams: { group: 'Learning', title: 'Exams', actionLabel: 'Add Exam', actionModal: 'create_exam' },
-  lab: { group: 'Learning', title: 'Study Lab' },
+  lab: { group: 'Workspace', title: 'Dashboard' },
   analytics: { group: 'Intelligence', title: 'Analytics' },
   assistant: { group: 'Intelligence', title: 'AI Assistant' },
   achievements: { group: 'Personal', title: 'Achievements' },
