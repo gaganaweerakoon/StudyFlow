@@ -2,8 +2,8 @@ name: Windows desktop build
 
 on:
   workflow_dispatch:
-  push:
-    branches: [build/windows-gemini-b7ed3b7, mobile-widget-status-update]
+
+
 # Cancel superseded builds when source files are committed in quick succession.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

@@ -1,8 +1,5 @@
-name: Point Y Windows and Android package
+name: StudyFlow Windows and Android package
 on:
-  push:
-    branches: ['review/point-y-changelog']
-    paths: ['.github/workflows/point-y-installers.yml']
   workflow_dispatch:
 permissions:
   contents: read

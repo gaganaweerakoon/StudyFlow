@@ -1,7 +1,7 @@
-name: Point Y source checks
+name: StudyFlow source checks
 on:
   push:
-    branches: ['review/point-y-changelog']
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read

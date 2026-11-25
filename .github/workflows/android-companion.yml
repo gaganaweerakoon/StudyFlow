@@ -2,20 +2,7 @@ name: Android companion preview
 
 on:
   workflow_dispatch:
-  push:
-    branches: [mobile-companion-integration, mobile-widget-status-update]
-    paths:
-      - .github/workflows/**
-      - android/**
-      - src/**
-      - src-tauri/**
-      - server/**
-      - package.json
-      - bun.lock
-      - index.html
-      - vite.config.ts
-      - vite.android.config.ts
-      - tsconfig.json
+
 
 # Cancel superseded builds when source files are committed in quick succession.
 concurrency:
