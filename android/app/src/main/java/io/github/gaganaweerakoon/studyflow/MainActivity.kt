@@ -126,7 +126,7 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun control(id: String, endpoint: String, token: String, command: String, sessionId: String) {
             if (id.length > 64 || endpoint.length > 2048 || token.length != 64 ||
-                command !in listOf("start", "pause", "resume", "reset", "complete") ||
+                command !in listOf("start", "pause", "resume", "reset", "complete", "take_break", "end_break") ||
                 sessionId.length > 128) return
             pairingWorker.execute {
                 val result = try {

@@ -22,6 +22,10 @@ import {
   resolveNextSleepSummary,
   resolveTodayStudyView,
 } from '../companionLogic';
+import {
+  formatHoursMinutesCompact,
+  getMobileBlockFocusSeconds,
+} from '../../utils/focusTimerLogic';
 
 export const TodayView: React.FC = () => {
   const {
@@ -65,6 +69,10 @@ export const TodayView: React.FC = () => {
     focus.phase === 'break_paused';
 
   const heroSubject = heroSession?.subjectId ? subjectMap.get(heroSession.subjectId) : undefined;
+  const heroRemainder =
+    heroSession && heroStatus === 'in_progress'
+      ? getMobileBlockFocusSeconds(heroSession, nowAbsMin, liveMode ? new Date().getSeconds() : 0)
+      : null;
   const activeFocusSubject = subjectMap.get(focus.subjectId);
 
   const connectionLabel = !connection.isPaired
@@ -200,7 +208,9 @@ export const TodayView: React.FC = () => {
               <span aria-hidden="true" className="text-[var(--text-muted)]">·</span>
               <span className="text-[var(--text-secondary)] truncate">
                 {focus.phase === 'break' || focus.phase === 'break_paused'
-                  ? '5-minute break'
+                  ? focus.pausedFocus
+                    ? `Break · ${formatCountdownMMSS(focus.pausedFocus.secondsLeft)} paused`
+                    : `${focus.breakMinutes}-minute break`
                   : focus.origin === 'pc'
                   ? 'Started on PC'
                   : focus.phase === 'paused'
@@ -228,9 +238,11 @@ export const TodayView: React.FC = () => {
               <p className="text-[calc(12px*var(--sf-font-scale,1))] text-[var(--text-muted)] mt-1.5">
                 {focus.pendingSyncWhenOnline
                   ? 'Offline · will sync when connected'
-                  : focus.phase === 'break'
-                  ? 'Break timer active'
-                  : `${focus.intervalMinutes}-min interval`}
+                  : focus.phase === 'break' || focus.phase === 'break_paused'
+                  ? focus.pausedFocus
+                    ? 'Session stays paused after break'
+                    : 'Break timer active'
+                  : `${formatHoursMinutesCompact(focus.intervalMinutes * 60)} interval`}
               </p>
             </div>
           </div>
@@ -309,7 +321,9 @@ export const TodayView: React.FC = () => {
               style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
             >
               <Play className="w-4 h-4" />
-              Start focus
+              {heroRemainder
+                ? `Start focus (${formatHoursMinutesCompact(heroRemainder.seconds)} left)`
+                : 'Start focus'}
             </button>
             <button
               type="button"

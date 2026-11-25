@@ -748,7 +748,7 @@ export const BreakPromptSheet: React.FC = () => {
           className="w-full min-h-[48px] rounded-xl text-[calc(14px*var(--sf-font-scale,1))] font-semibold transition-opacity hover:opacity-90"
           style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
         >
-          Start 5-minute break
+          Start {focus.breakMinutes}-minute break
         </button>
         <button
           type="button"

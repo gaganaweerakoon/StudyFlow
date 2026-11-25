@@ -73,6 +73,14 @@ export interface ScheduledAlert {
 export type FocusPhase = 'idle' | 'focus' | 'paused' | 'break' | 'break_paused' | 'completed';
 export type FocusOrigin = 'phone' | 'pc' | 'alarm';
 
+export interface CompanionPausedFocus {
+  secondsLeft: number;
+  totalSeconds: number;
+  elapsedActiveSeconds: number;
+  intervalMinutes: number;
+  startedAtAbsMin: number | null;
+}
+
 export interface CompanionFocusState {
   localRunId?: string;
   startedAtMs?: number;
@@ -89,6 +97,7 @@ export interface CompanionFocusState {
   secondsLeft: number;
   elapsedActiveSeconds: number;
   startedAtAbsMin: number | null;
+  pausedFocus?: CompanionPausedFocus;
   pendingSyncWhenOnline: boolean;
   showFullScreen: boolean;
   showBreakSheet: boolean;
@@ -134,6 +143,8 @@ export interface AndroidPermissionsState {
 export interface CompanionSettingsState {
   theme: ThemeId;
   deepFocus?: boolean;
+  breaksEnabled?: boolean;
+  defaultBreakMinutes?: number;
   accentColor: string;
   defaultAdvanceNotice: AdvanceNoticeOption;
   defaultRingAtStart: boolean;

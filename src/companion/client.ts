@@ -52,4 +52,4 @@ export interface CompanionFocusUpdate {
   serverNowMs: number;
   receivedAtMs: number;
 }
-export type CompanionFocusCommand = 'start' | 'pause' | 'resume' | 'reset' | 'complete';
+export type CompanionFocusCommand = 'start' | 'pause' | 'resume' | 'reset' | 'complete' | 'take_break' | 'end_break';

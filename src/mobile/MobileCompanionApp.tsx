@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   BatteryMedium,
+  BellRing,
   Bluetooth,
   CalendarDays,
   Home,
+  Play,
   Settings,
   SlidersHorizontal,
   Timer,
@@ -12,6 +14,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
+import { formatHoursMinutesCompact } from '../utils/focusTimerLogic';
 import { THEME_OPTIONS } from '../data/mockData';
 import { CompanionProvider, useCompanion } from './CompanionContext';
 import type { LiveCompanionData } from './CompanionContext';
@@ -63,7 +66,11 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
     connection,
     profileName,
     blocks,
+    subjects,
     focus,
+    pendingSessionPrompt,
+    switchToPendingSession,
+    dismissPendingSessionPrompt,
     settings,
     viewport,
     phoneToast,
@@ -237,6 +244,68 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
 
             {/* Quiet Top Android Notification Banner */}
             <NotificationBanner />
+
+            {/* Planned-Session Starting Prompt Banner (One-Click Switch & Start) */}
+            {pendingSessionPrompt && (
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="mx-3 mt-2 z-30 rounded-xl p-3 space-y-2 shrink-0"
+                style={{
+                  backgroundColor: 'var(--bg-elevated)',
+                  border: '1px solid var(--accent-border)',
+                  boxShadow: 'var(--shadow-floating)',
+                }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <BellRing className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--accent)' }} />
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--accent)' }}>
+                        Planned session starting
+                        {(() => {
+                          const sub = subjects.find((s) => s.id === pendingSessionPrompt.block.subjectId);
+                          return sub ? ` · ${sub.code}` : '';
+                        })()}
+                      </div>
+                      <div className="text-[13px] font-semibold text-[var(--text-primary)] truncate">
+                        {pendingSessionPrompt.block.title}
+                      </div>
+                      <div className="text-[11.5px] font-mono-num text-[var(--text-secondary)]">
+                        {formatHoursMinutesCompact(pendingSessionPrompt.remainingSeconds)} left
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={dismissPendingSessionPrompt}
+                    aria-label="Dismiss session alert"
+                    className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={switchToPendingSession}
+                    className="flex-1 min-h-[38px] px-3 rounded-lg inline-flex items-center justify-center gap-1.5 text-[12px] font-semibold"
+                    style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    Switch & Start
+                  </button>
+                  <button
+                    type="button"
+                    onClick={dismissPendingSessionPrompt}
+                    className="min-h-[38px] px-3 rounded-lg text-[12px] font-medium text-[var(--text-secondary)]"
+                    style={{ border: '1px solid var(--border-subtle)' }}
+                  >
+                    Stay
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Scalable Main Scrollable Content Area */}
             <main

@@ -86,8 +86,12 @@ export function formatDurationLabel(durationMin: number): string {
 
 export function formatCountdownMMSS(totalSeconds: number): string {
   const safe = Math.max(0, Math.floor(totalSeconds));
-  const mins = Math.floor(safe / 60);
+  const hrs = Math.floor(safe / 3600);
+  const mins = Math.floor((safe % 3600) / 60);
   const secs = safe % 60;
+  if (hrs > 0) {
+    return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 

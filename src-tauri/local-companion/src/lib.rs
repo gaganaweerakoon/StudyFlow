@@ -417,7 +417,7 @@ impl Server {
                 self.last_sync = Some(now);
                 if request["action"] == "focus_control" {
                     let Some(command) = request["command"].as_str().filter(|command| {
-                        matches!(*command, "start" | "pause" | "resume" | "reset" | "complete" | "offline_sync")
+                        matches!(*command, "start" | "pause" | "resume" | "reset" | "complete" | "take_break" | "end_break" | "offline_sync")
                     }) else {
                         return json!({ "error": "Unknown focus command." });
                     };

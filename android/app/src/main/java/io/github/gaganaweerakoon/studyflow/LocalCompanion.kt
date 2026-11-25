@@ -143,7 +143,7 @@ internal object LocalCompanion {
         }
         val context = SSLContext.getInstance("TLS").apply { init(null, arrayOf<TrustManager>(manager), null) }
         require(command == null || (token != null &&
-            command in listOf("start", "pause", "resume", "reset", "complete", "offline_sync"))) {
+            command in listOf("start", "pause", "resume", "reset", "complete", "take_break", "end_break", "offline_sync"))) {
             "Invalid focus command."
         }
         val request = JSONObject()
