@@ -31,14 +31,35 @@ import {
 } from '../../data/mockData';
 
 import { studyChart } from '../../utils/workspaceMetrics';
+import { analyzeSrsRetention, buildForgettingCurveSeries } from '../../utils/srsIntelligence';
+import { localDay } from '../../assistant/workspaceContext';
 
 const TIME_SLOTS = ['8a', '10a', '12p', '2p', '4p', '6p', '8p', '10p'];
 
 export const AnalyticsView: React.FC = () => {
-  const { subjects, sessions, focusHistory, legacyCalendar } = useApp();
+  const { subjects, sessions, focusHistory, legacyCalendar, decks, flashcards, exams, setRoute } = useApp();
   const [dateRange, setDateRange] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
   const [tableSearch, setTableSearch] = useState('');
+
+  const todayIso = localDay(new Date());
+  const filteredDecks = useMemo(
+    () => (subjectFilter === 'all' ? decks : decks.filter((d) => d.subjectId === subjectFilter)),
+    [decks, subjectFilter],
+  );
+  const filteredDeckIds = useMemo(() => new Set(filteredDecks.map((d) => d.id)), [filteredDecks]);
+  const filteredCards = useMemo(
+    () => flashcards.filter((c) => filteredDeckIds.has(c.deckId)),
+    [flashcards, filteredDeckIds],
+  );
+  const srsSummary = useMemo(
+    () => analyzeSrsRetention(filteredDecks, filteredCards, exams, subjects, todayIso),
+    [filteredDecks, filteredCards, exams, subjects, todayIso],
+  );
+  const srsCurveData = useMemo(
+    () => buildForgettingCurveSeries(filteredCards, exams, todayIso, 14),
+    [filteredCards, exams, todayIso],
+  );
 
   const surfaceStyle: React.CSSProperties = {
     backgroundColor: 'var(--bg-surface)',
@@ -413,20 +434,63 @@ export const AnalyticsView: React.FC = () => {
       {/* Row 5: (10) Revision Retention + (11) Exam Score Progression */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="rounded-xl p-4" style={surfaceStyle}>
-          <h2 className="font-display text-[14.5px] font-semibold text-[var(--text-primary)]">
-            Revision Retention Curve
-          </h2>
-          <p className="text-[12px] text-[var(--text-muted)] mb-3">Your active recall retention vs standard forgetting curve</p>
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <div>
+              <h2 className="font-display text-[14.5px] font-semibold text-[var(--text-primary)]">
+                SRS Forgetting-Curve Forecast
+              </h2>
+              <p className="text-[12px] text-[var(--text-muted)]">
+                {filteredCards.length > 0 ? (
+                  <>
+                    <span className="font-mono-num">{srsSummary.overallRetentionToday}%</span> recall today ·{' '}
+                    <span className="font-mono-num">{srsSummary.overallRetentionAtExam}%</span> at exam ·{' '}
+                    <span className="font-mono-num">{srsSummary.atRiskTotal}</span> at-risk
+                  </>
+                ) : (
+                  'Your active recall retention vs standard forgetting curve'
+                )}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRoute('flashcards')}
+              className="text-[11.5px] font-medium hover:underline whitespace-nowrap shrink-0"
+              style={{ color: 'var(--accent)' }}
+            >
+              Open SRS Lab
+            </button>
+          </div>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={legacyCalendar ? [] : ANALYTICS_RETENTION_CURVE} margin={{ top: 4, right: 10, left: -18, bottom: 0 }}>
-                <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
-                <YAxis domain={[40, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} unit="%" />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Line type="monotone" dataKey="benchmark" name="Unreviewed Baseline (%)" stroke="var(--chart-planned)" strokeDasharray="4 4" strokeWidth={2} isAnimationActive={false} />
-                <Line type="monotone" dataKey="retention" name="Your Retention (%)" stroke="#0D9488" strokeWidth={2.5} isAnimationActive={false} />
-              </LineChart>
+              {filteredCards.length > 0 ? (
+                <AreaChart data={srsCurveData} margin={{ top: 4, right: 10, left: -18, bottom: 0 }}>
+                  <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="dayLabel" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
+                  <YAxis domain={[0, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} unit="%" />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(val) => [`${val}%`, 'Projected Recall']}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="avgRetention"
+                    name="Projected Recall (%)"
+                    stroke="#0D9488"
+                    fill="color-mix(in srgb, #0D9488 18%, transparent)"
+                    strokeWidth={2.25}
+                    isAnimationActive={false}
+                  />
+                </AreaChart>
+              ) : (
+                <LineChart data={legacyCalendar ? [] : ANALYTICS_RETENTION_CURVE} margin={{ top: 4, right: 10, left: -18, bottom: 0 }}>
+                  <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
+                  <YAxis domain={[40, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} unit="%" />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Line type="monotone" dataKey="benchmark" name="Unreviewed Baseline (%)" stroke="var(--chart-planned)" strokeDasharray="4 4" strokeWidth={2} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="retention" name="Your Retention (%)" stroke="#0D9488" strokeWidth={2.5} isAnimationActive={false} />
+                </LineChart>
+              )}
             </ResponsiveContainer>
           </div>
         </div>
