@@ -49,12 +49,28 @@ export default memo(function AssistantMarkdown({
         pre: ({ children }) => {
           const child = Children.toArray(children)[0];
           if (
-            diagrams &&
-            isValidElement<{ className?: string; children?: string }>(child) &&
-            child.props.className === 'language-svg' &&
+            isValidElement<{ className?: string; children?: unknown }>(child) &&
             typeof child.props.children === 'string'
           ) {
-            return <AssistantDiagram markup={child.props.children} />;
+            const cls = (child.props.className ?? '').toLowerCase();
+            const rawCode = child.props.children.trim();
+            const isExplicitSvg = cls === 'language-svg';
+            const looksLikeSvg =
+              (cls === 'language-xml' || cls === 'language-html' || !cls) &&
+              /^(?:<\?xml[\s\S]*?\?>\s*)?<svg(?=[\s>])/i.test(rawCode);
+            if (isExplicitSvg || looksLikeSvg) {
+              const hasClosingTag = /<\/svg>\s*$/i.test(rawCode);
+              if (diagrams && hasClosingTag) {
+                return <AssistantDiagram markup={rawCode} />;
+              }
+              if (!diagrams) {
+                return (
+                  <div className="pip-diagram-streaming" role="status">
+                    Drawing SVG diagram…
+                  </div>
+                );
+              }
+            }
           }
           return <pre>{children}</pre>;
         },

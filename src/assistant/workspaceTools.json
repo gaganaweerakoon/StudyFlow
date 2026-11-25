@@ -45,14 +45,33 @@
   },
   {
     "name": "delete_event",
-    "description": "Delete an existing calendar event (StudyFlow will ask the student to confirm first).",
+    "description": "Delete a single existing calendar event by ID or by title (with optional date/time). StudyFlow will ask the student to confirm before deleting.",
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Existing session ID." },
-        "scope": { "type": "string", "enum": ["occurrence"] }
-      },
-      "required": ["id"]
+        "id": { "type": "string", "description": "Existing session ID from workspace context." },
+        "title": { "type": "string", "description": "Event title if ID is not known." },
+        "date": { "type": "string", "description": "Optional YYYY-MM-DD date to disambiguate matching events." },
+        "startTime": { "type": "string", "description": "Optional HH:MM 24-hour start time to disambiguate matching events." },
+        "scope": { "type": "string", "enum": ["occurrence"], "description": "For recurring events, removes this occurrence only." }
+      }
+    }
+  },
+  {
+    "name": "delete_events",
+    "description": "Delete multiple calendar events at once (e.g. clear a whole day or remove all events matching a keyword or list of IDs). StudyFlow will ask the student to confirm before deleting.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional list of specific session IDs to delete."
+        },
+        "date": { "type": "string", "description": "Optional YYYY-MM-DD date to delete all matching events on that day." },
+        "titleContains": { "type": "string", "description": "Optional case-insensitive title keyword to filter events to delete." },
+        "blockType": { "type": "string", "enum": ["study", "sleep", "free"], "description": "Optional block category filter." }
+      }
     }
   },
   {
@@ -99,13 +118,14 @@
   },
   {
     "name": "delete_tasks",
-    "description": "Delete one or more existing tasks (StudyFlow will ask the student to confirm first).",
+    "description": "Delete one or more existing tasks by ID or title, or clear all completed tasks. StudyFlow will ask the student to confirm before deleting.",
     "parameters": {
       "type": "object",
       "properties": {
-        "ids": { "type": "array", "items": { "type": "string" } }
-      },
-      "required": ["ids"]
+        "ids": { "type": "array", "items": { "type": "string" }, "description": "Existing task IDs to delete." },
+        "titles": { "type": "array", "items": { "type": "string" }, "description": "Optional task titles to match if IDs are not known." },
+        "completedOnly": { "type": "boolean", "description": "Set true to delete all completed tasks." }
+      }
     }
   },
   {
@@ -146,13 +166,13 @@
   },
   {
     "name": "delete_exam",
-    "description": "Delete an existing exam (StudyFlow will ask the student to confirm first).",
+    "description": "Delete an existing exam by ID or title. StudyFlow will ask the student to confirm before deleting.",
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string" }
-      },
-      "required": ["id"]
+        "id": { "type": "string", "description": "Existing exam ID." },
+        "title": { "type": "string", "description": "Exam title if ID is not known." }
+      }
     }
   },
   {
@@ -292,6 +312,30 @@
     }
   },
   {
+    "name": "delete_goal",
+    "description": "Delete an existing study goal and its milestones by ID or title. StudyFlow will ask the student to confirm before deleting.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Existing goal ID." },
+        "title": { "type": "string", "description": "Goal title if ID is not known." }
+      }
+    }
+  },
+  {
+    "name": "delete_goal_milestone",
+    "description": "Delete a milestone from an existing study goal. StudyFlow will ask the student to confirm before deleting.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "goalId": { "type": "string", "description": "Existing goal ID or goal title." },
+        "id": { "type": "string", "description": "Milestone ID." },
+        "title": { "type": "string", "description": "Milestone label if ID is not known." }
+      },
+      "required": ["goalId"]
+    }
+  },
+  {
     "name": "create_note",
     "description": "Create a new Markdown study note in StudyFlow Notes.",
     "parameters": {
@@ -320,13 +364,13 @@
   },
   {
     "name": "delete_note",
-    "description": "Delete an existing note (StudyFlow will ask the student to confirm first).",
+    "description": "Delete an existing note by ID or title. StudyFlow will ask the student to confirm before deleting.",
     "parameters": {
       "type": "object",
       "properties": {
-        "id": { "type": "string" }
-      },
-      "required": ["id"]
+        "id": { "type": "string", "description": "Existing note ID." },
+        "title": { "type": "string", "description": "Note title if ID is not known." }
+      }
     }
   },
   {
@@ -340,6 +384,17 @@
         "subjectId": { "type": "string", "description": "Optional subject ID or subject code." }
       },
       "required": ["title"]
+    }
+  },
+  {
+    "name": "delete_deck",
+    "description": "Delete an existing flashcard deck and all cards inside it by ID or title. StudyFlow will ask the student to confirm before deleting.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Existing deck ID." },
+        "title": { "type": "string", "description": "Deck title if ID is not known." }
+      }
     }
   },
   {
@@ -401,6 +456,28 @@
     }
   },
   {
+    "name": "delete_practice_test",
+    "description": "Delete an existing practice test/quiz by ID or title. StudyFlow will ask the student to confirm before deleting.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Existing practice test ID." },
+        "title": { "type": "string", "description": "Practice test title if ID is not known." }
+      }
+    }
+  },
+  {
+    "name": "delete_subject",
+    "description": "Delete an existing subject and its syllabus chapters/topics by ID, code, or name. StudyFlow will ask the student to confirm before deleting.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Existing subject ID." },
+        "title": { "type": "string", "description": "Subject code or name if ID is not known." }
+      }
+    }
+  },
+  {
     "name": "start_focus_session",
     "description": "Configure and start a StudyFlow Focus Timer session and optionally switch to the Focus view.",
     "parameters": {
@@ -423,11 +500,168 @@
       "properties": {
         "route": {
           "type": "string",
-          "enum": ["dashboard", "planner", "subjects", "tasks", "focus", "notes", "flashcards", "practice", "exams", "goals", "analytics", "settings"]
+          "enum": ["dashboard", "planner", "subjects", "tasks", "focus", "notes", "flashcards", "practice", "exams", "goals", "analytics", "lab", "settings"]
         },
         "noteId": { "type": "string", "description": "Optional note ID to select when opening notes." }
       },
       "required": ["route"]
+    }
+  },
+  {
+    "name": "open_study_lab",
+    "description": "Open the Study Lab page preloaded with a Math/LaTeX or Code Playground snippet (python, javascript, sql, math, cpp) or an SVG diagram on the Interactive Whiteboard.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tab": { "type": "string", "enum": ["playground", "whiteboard"], "description": "Which Study Lab studio to open." },
+        "language": { "type": "string", "enum": ["math", "python", "javascript", "sql", "cpp"], "description": "Playground language mode." },
+        "code": { "type": "string", "description": "Initial formula or code snippet to preload." },
+        "svg": { "type": "string", "description": "Optional SVG markup to load into the Whiteboard studio." },
+        "title": { "type": "string", "description": "Short descriptive title for the snippet or diagram." },
+        "noteId": { "type": "string", "description": "Optional note ID to target when inserting results back into Notes." }
+      },
+      "required": ["tab"]
+    }
+  },
+  {
+    "name": "insert_note_diagram",
+    "description": "Append a sanitized custom SVG diagram directly into an existing StudyFlow note.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "noteId": { "type": "string", "description": "Target note ID or note title from workspace context." },
+        "title": { "type": "string", "description": "Short heading for the diagram section." },
+        "svg": { "type": "string", "description": "Complete self-contained <svg ...>...</svg> diagram markup." }
+      },
+      "required": ["svg"]
+    }
+  },
+  {
+    "name": "create_events",
+    "description": "Propose multiple study sessions or calendar blocks at once. StudyFlow will always present a checklist for the student to review and approve before adding.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "events": {
+          "type": "array",
+          "description": "List of calendar sessions to propose.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string" },
+              "date": { "type": "string", "description": "YYYY-MM-DD" },
+              "startHour": { "type": "number" },
+              "startTime": { "type": "string", "description": "HH:MM" },
+              "durationHours": { "type": "number" },
+              "subjectId": { "type": "string" },
+              "blockType": { "type": "string", "enum": ["study", "sleep", "free"] },
+              "location": { "type": "string" },
+              "notes": { "type": "string" }
+            },
+            "required": ["title", "date"]
+          }
+        }
+      },
+      "required": ["events"]
+    }
+  },
+  {
+    "name": "create_tasks",
+    "description": "Propose multiple study tasks or assignments at once. StudyFlow will always present a checklist for the student to review and approve before adding.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "description": "List of tasks to propose.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string" },
+              "date": { "type": "string", "description": "Optional due date YYYY-MM-DD" },
+              "subjectId": { "type": "string" },
+              "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+              "estimatedMinutes": { "type": "integer" },
+              "description": { "type": "string" }
+            },
+            "required": ["title"]
+          }
+        }
+      },
+      "required": ["tasks"]
+    }
+  },
+  {
+    "name": "schedule_micro_reviews",
+    "description": "Analyze flashcard forgetting curves and upcoming exams to propose targeted spaced-repetition micro-review blocks in open calendar slots. StudyFlow always asks the student to review and approve proposed sessions.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "deckId": { "type": "string", "description": "Optional specific deck ID or title to focus on." },
+        "maxBlocks": { "type": "integer", "description": "Maximum number of micro-review blocks to propose (1 to 8, default 4)." }
+      }
+    }
+  },
+  {
+    "name": "import_syllabus_bundle",
+    "description": "Propose a structured course syllabus bundle containing exams with weights, assignment tasks with deadlines, syllabus chapters/topics, and study goals. StudyFlow always displays a checklist for the student to review and approve before importing.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "subjectId": { "type": "string", "description": "Optional matching subject ID or code." },
+        "courseTitle": { "type": "string", "description": "Course title extracted from the syllabus." },
+        "exams": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string" },
+              "date": { "type": "string", "description": "YYYY-MM-DD" },
+              "time": { "type": "string" },
+              "room": { "type": "string" },
+              "weightPercent": { "type": "number" }
+            },
+            "required": ["title", "date"]
+          }
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string" },
+              "date": { "type": "string", "description": "YYYY-MM-DD" },
+              "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+              "estimatedMinutes": { "type": "integer" },
+              "description": { "type": "string" }
+            },
+            "required": ["title"]
+          }
+        },
+        "chapters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "topics": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["name"]
+          }
+        },
+        "goals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string" },
+              "deadline": { "type": "string" },
+              "milestones": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["title"]
+          }
+        }
+      }
     }
   }
 ]

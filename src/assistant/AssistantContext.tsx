@@ -1,3 +1,4 @@
+import { normalizeReviewEdits, selectedReviewAction } from './reviewPolicy';
 import { flushSync } from 'react-dom';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { parseWorkspaceEdit, splitWorkspaceResponse, type WorkspaceEdit } from './workspaceEdit';
@@ -72,7 +73,17 @@ export interface ChatMessage extends ChatTurn {
 export interface Conversation {
   id: string;
   title: string;
+  titleSource?: 'default' | 'ai' | 'manual';
   messages: ChatMessage[];
+}
+
+export interface FailedAttempt {
+  id: string;
+  conversationId: string;
+  prompt: string;
+  attachments: PipAttachment[];
+  errorMessage: string;
+  createdAt: number;
 }
 
 export interface DesktopHistory {
@@ -84,10 +95,31 @@ const historyKey = 'studyflow.assistant.conversations.v1';
 const overviewCacheKey = 'studyflow.assistant.dashboardOverview.v1';
 const historyLimit = 20;
 
+function stripFailedTurns(messages: ChatMessage[]): ChatMessage[] {
+  const cleaned: ChatMessage[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === 'assistant' && msg.state === 'error') {
+      if (cleaned.length > 0 && cleaned[cleaned.length - 1].role === 'user') {
+        cleaned.pop();
+      }
+      continue;
+    }
+    cleaned.push(msg);
+  }
+  return cleaned;
+}
+
 function browserHistory(): Conversation[] {
   try {
     const saved = JSON.parse(localStorage.getItem(historyKey) ?? '[]');
-    return Array.isArray(saved) ? saved : [];
+    if (!Array.isArray(saved)) return [];
+    return saved
+      .map((chat: Conversation) => ({
+        ...chat,
+        messages: stripFailedTurns(Array.isArray(chat.messages) ? chat.messages : []),
+      }))
+      .filter((chat: Conversation) => chat.messages.length > 0);
   } catch {
     return [];
   }
@@ -107,7 +139,7 @@ function readCachedOverview(): DashboardAiOverview | null {
 
 const imagePrompt = 'Explain what is shown in this image.';
 const documentPrompt = 'Summarize the key concepts, important formulas/tables, and main takeaways from the attached document(s).';
-const initial: Conversation = { id: 'first', title: 'New chat', messages: [] };
+const initial: Conversation = { id: 'first', title: 'New chat', titleSource: 'default', messages: [] };
 const createId = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: DesktopHistory) {
@@ -119,14 +151,21 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   const [settings, setSettings] = useState(readSettings);
   const [usage, setUsage] = useState(() => mergeUsage(desktopUsage?.records ?? readUsage()));
   const [configured, setConfigured] = useState<Provider[]>([]);
+  const [serverStatus, setServerStatus] = useState<'checking' | 'connected' | 'unconfigured'>(() =>
+    isTauri() ? 'unconfigured' : 'checking',
+  );
   const [keyStorage, setKeyStorage] = useState<'loading' | 'windows' | 'session'>(() =>
     isTauri() ? 'loading' : 'session',
   );
   const [keyStorageError, setKeyStorageError] = useState('');
-  const [conversations, setConversations] = useState(() =>
-    [{ ...initial, id: createId() }, ...(desktopHistory?.conversations ?? browserHistory())].slice(0, historyLimit + 1),
-  );
+  const [conversations, setConversations] = useState(() => {
+    const loaded = (desktopHistory?.conversations ?? browserHistory())
+      .map((chat) => ({ ...chat, messages: stripFailedTurns(chat.messages ?? []) }))
+      .filter((chat) => chat.messages.length > 0);
+    return [{ ...initial, id: createId() }, ...loaded].slice(0, historyLimit + 1);
+  });
   const [activeId, setActiveId] = useState(conversations[0].id);
+  const [failedAttempts, setFailedAttempts] = useState<FailedAttempt[]>([]);
   const [petOpen, setPetOpen] = useState(false);
   const [settingsRequested, setSettingsRequested] = useState(false);
   const [includeContext, setIncludeContext] = useState(true);
@@ -143,6 +182,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   const keys = useRef<Partial<Record<Provider, string>>>({});
   const activeRequest = useRef<AbortController | null>(null);
   const pendingAskPrompt = useRef<string | null>(null);
+  const conversationsRef = useRef(conversations);
+  conversationsRef.current = conversations;
 
   useEffect(() => {
     let cancelled = false;
@@ -165,6 +206,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     void fetchAssistantStatus().then((status) => {
       if (cancelled) return;
       if (status.geminiConfigured) {
+        setServerStatus('connected');
         setConfigured((prev) => (prev.includes('gemini') ? prev : [...prev, 'gemini']));
         setSettings((prev) => {
           if (prev.provider !== 'gemini' && !keys.current[prev.provider]) {
@@ -174,6 +216,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           }
           return prev;
         });
+      } else {
+        setServerStatus('unconfigured');
       }
     });
     return () => {
@@ -200,18 +244,18 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   useEffect(() => {
     if (busy) return;
     const saved = conversations
-      .filter((chat) => chat.messages.length)
-      .slice(0, historyLimit)
       .map((chat) => ({
         ...chat,
-        // Workspace edit callbacks and images only belong to the current session.
-        messages: chat.messages.map(
+        // Workspace edit callbacks, images, and failed turns are never persisted to history.
+        messages: stripFailedTurns(chat.messages).map(
           ({ edit: _edit, pendingEdits: _pending, generatedImage: _image, ...message }) => ({
             ...message,
             state: message.state === 'streaming' ? ('stopped' as const) : message.state,
           }),
         ),
-      }));
+      }))
+      .filter((chat) => chat.messages.length > 0)
+      .slice(0, historyLimit);
     async function save() {
       try {
         if (desktopHistory) await desktopHistory.save(saved);
@@ -271,7 +315,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       delete keys.current[provider];
     }
     setConfigured((items) =>
-      key ? [...new Set([...items, provider])] : items.filter((item) => item !== provider),
+      key || (!isTauri() && provider === 'gemini' && serverStatus === 'connected') ? [...new Set([...items, provider])] : items.filter((item) => item !== provider),
     );
   }
 
@@ -301,7 +345,9 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   function renameChat(id: string, title: string) {
     const name = title.trim().slice(0, 80);
     if (!name || busy) return;
-    setConversations((chats) => chats.map((chat) => (chat.id === id ? { ...chat, title: name } : chat)));
+    setConversations((chats) =>
+      chats.map((chat) => (chat.id === id ? { ...chat, title: name, titleSource: 'manual' } : chat)),
+    );
   }
 
   function removeChat(id: string) {
@@ -309,21 +355,94 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const remaining = conversations.filter((chat) => chat.id !== id);
     const next = remaining.length ? remaining : [{ ...initial, id: createId() }];
     setConversations(next);
+    setFailedAttempts((items) => items.filter((item) => item.conversationId !== id));
     if (activeId === id) switchChat(next[0].id);
   }
 
-  async function applyWorkspaceEdits(edits: WorkspaceEdit[]) {
+  async function generateAiChatTitle(
+    chatId: string,
+    userPrompt: string,
+    assistantReply: string,
+    provider: Provider,
+    activeModel: string,
+    key?: string,
+  ) {
+    const titleModel = provider === 'gemini' ? 'gemini-3.5-flash-lite' : activeModel;
+    const snippetPrompt = userPrompt.replace(/\s+/g, ' ').trim().slice(0, 320);
+    const snippetReply = assistantReply.replace(/\s+/g, ' ').trim().slice(0, 420);
+    const titleRequest: ChatRequest = {
+      provider,
+      model: titleModel,
+      maxOutput: 300,
+      workspaceActions: false,
+      context: '',
+      history: [],
+      prompt: [
+        'Write a crisp 3 to 6 word title summarizing this study conversation.',
+        'Return ONLY the plain title text: no quotes, no markdown, no prefixes, no emojis, and no trailing period.',
+        '',
+        `Student: ${snippetPrompt}`,
+        snippetReply ? `Pip: ${snippetReply}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    };
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
+    let rawTitle = '';
+    try {
+      for await (const event of sendChat(titleRequest, key, controller.signal)) {
+        if (event.type === 'text') rawTitle += event.text;
+        if (event.type === 'error') return;
+      }
+      const cleaned = rawTitle
+        .split('\n')[0]
+        ?.replace(/^["'`#*-\s]+|["'`.\s]+$/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 64);
+      if (!cleaned || cleaned.length < 2) return;
+      setConversations((chats) =>
+        chats.map((chat) =>
+          chat.id === chatId && chat.titleSource !== 'manual'
+            ? { ...chat, title: cleaned, titleSource: 'ai' }
+            : chat,
+        ),
+      );
+    } catch {
+      // Quietly keep the fallback title if background title generation fails
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  async function applyWorkspaceEdits(
+    edits: WorkspaceEdit[],
+    selection?: Record<number, string[] | boolean>,
+  ) {
     const appliedSummaries: string[] = [];
     const failedSummaries: string[] = [];
     const linksMap = new Map<NavRoute, string>();
     try {
-      for (const edit of edits) {
+      for (let i = 0; i < edits.length; i++) {
+        const edit = edits[i];
+        const chosen = selection ? selectedReviewAction(edit, selection[i]) : true;
+        if (chosen === false) continue;
+
         let ok = false;
         flushSync(() => {
-          ok = edit.apply(currentApp.current);
+          if (Array.isArray(chosen) && edit.applySelected) {
+            ok = edit.applySelected(currentApp.current, chosen);
+          } else {
+            ok = edit.apply(currentApp.current);
+          }
         });
         if (ok) {
-          appliedSummaries.push(edit.success ?? `Done. ${edit.title}.`);
+          const countLabel =
+            Array.isArray(chosen) && edit.reviewItems && chosen.length < edit.reviewItems.length
+              ? ` (${chosen.length} of ${edit.reviewItems.length} selected)`
+              : '';
+          appliedSummaries.push(`${edit.success ?? `Done. ${edit.title}.`}${countLabel}`);
           if (edit.route && edit.routeLabel && !linksMap.has(edit.route)) {
             linksMap.set(edit.route, edit.routeLabel);
           }
@@ -355,24 +474,67 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     }
   }
 
-  async function send(generateImage = false, overridePrompt?: string) {
+  async function send(
+    generateImage = false,
+    overridePrompt?: string,
+    options?: {
+      overrideAttachments?: PipAttachment[];
+      baseMessages?: ChatMessage[];
+    },
+  ) {
     const typed = (overridePrompt ?? draft).trim();
-    const currentAttachments = attachments;
+    const currentAttachments = options?.overrideAttachments ?? attachments;
     if (cooldownUntil > Date.now()) return;
     if ((!typed && !currentAttachments.length) || activeRequest.current || !available) return;
     const { provider } = settings;
     const key = keys.current[provider];
+    const targetChatId = active.id;
+    const hasDocs = currentAttachments.some((item) => item.kind !== 'image');
+    const prompt = typed || (hasDocs ? documentPrompt : imagePrompt);
+
+    const recordFailedAttempt = (message: string) => {
+      setFailedAttempts((items) => [
+        ...items,
+        {
+          id: createId(),
+          conversationId: targetChatId,
+          prompt,
+          attachments: currentAttachments,
+          errorMessage: message,
+          createdAt: Date.now(),
+        },
+      ]);
+      setNotice('');
+    };
+
     if (keyStorage === 'loading') {
       setNotice('Pip is checking for saved API keys. Try again in a moment.');
       return;
     }
-    if (!configured.includes(provider) && !keyStorageError) {
-      setNotice(`Add a ${PROVIDERS[provider].label} API key in AI Settings to send a message.`);
+    let isProviderConfigured = configured.includes(provider);
+    if (!isProviderConfigured && !isTauri() && provider === 'gemini') {
+      const liveStatus = await fetchAssistantStatus();
+      if (liveStatus.geminiConfigured) {
+        isProviderConfigured = true;
+        setServerStatus('connected');
+        setConfigured((prev) => (prev.includes('gemini') ? prev : [...prev, 'gemini']));
+      } else {
+        setServerStatus('unconfigured');
+      }
+    }
+    if (!isProviderConfigured && !keyStorageError) {
+      if (!overridePrompt) setDraft('');
+      setAttachments([]);
+      recordFailedAttempt(
+        isTauri()
+          ? `Add a ${PROVIDERS[provider].label} API key in AI Settings to send a message.`
+          : 'Add your Gemini API key in AI Settings, or configure the local server key.',
+      );
       return;
     }
     if (generateImage && (!typed || currentAttachments.length > 0 || provider === 'claude')) return;
-    const hasDocs = currentAttachments.some((item) => item.kind !== 'image');
-    const prompt = typed || (hasDocs ? documentPrompt : imagePrompt);
+
+    const baseMsgs = options?.baseMessages ?? active.messages;
     const clock = requestClock(settings.timezone);
     const toolsAllowed = includeContext && !generateImage;
     const attachedImage = currentAttachments.find((item) => item.image)?.image;
@@ -395,7 +557,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       documents: attachedDocuments.length ? attachedDocuments : undefined,
       history: generateImage
         ? []
-        : active.messages
+        : baseMsgs
             .filter((message) => message.text && (message.role === 'user' || message.state === 'complete'))
             .slice(-CHAT_LIMITS.history)
             .map(({ role, text }) => ({ role, text: text.slice(0, CHAT_LIMITS.historyMessage) })),
@@ -403,8 +565,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const records = mergeUsage(usage, desktopUsage ? [] : readUsage());
     const control = new AbortController();
     activeRequest.current = control;
+    const userTurnId = createId();
     const assistantId = createId();
-    const targetChatId = active.id;
     const messageAttachments: ChatMessageAttachmentBadge[] | undefined = currentAttachments.length
       ? currentAttachments.map((item) => ({
           name: item.name,
@@ -413,13 +575,20 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         }))
       : undefined;
     const turn: ChatMessage = {
-      id: createId(),
+      id: userTurnId,
       role: 'user',
       text: prompt,
       attachment: currentAttachments[0]?.name,
       attachments: messageAttachments,
     };
     const started = new Date();
+    const shouldAutoTitle =
+      active.titleSource !== 'manual' &&
+      active.titleSource !== 'ai' &&
+      baseMsgs.length === 0;
+    const previousTitle = active.title;
+    const previousTitleSource = active.titleSource;
+
     const updateChat = (update: (chat: Conversation) => Conversation) =>
       setConversations((items) => items.map((chat) => (chat.id === targetChatId ? update(chat) : chat)));
     const updateMessage = (update: (message: ChatMessage) => ChatMessage) =>
@@ -435,13 +604,15 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     setAttachments([]);
     updateChat((chat) => ({
       ...chat,
-      title: chat.messages.length
-        ? chat.title
-        : (currentAttachments[0] ? `${currentAttachments[0].name} · ${prompt}` : prompt).slice(0, 48),
-      messages: [...chat.messages, turn, { id: assistantId, role: 'assistant', text: '', state: 'streaming' }],
+      title:
+        baseMsgs.length > 0 || chat.titleSource === 'manual' || chat.titleSource === 'ai'
+          ? chat.title
+          : (currentAttachments[0] ? `${currentAttachments[0].name} · ${prompt}` : prompt).slice(0, 48),
+      messages: [...baseMsgs, turn, { id: assistantId, role: 'assistant', text: '', state: 'streaming' }],
     }));
 
     let responseText = '';
+    let finalAssistantText = '';
     const actionCalls: string[] = [];
     const seenActions = new Set<string>();
     let proposedEdits: WorkspaceEdit[] | undefined;
@@ -449,6 +620,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     let actionLinks: AppliedActionLink[] | undefined;
     let tokens: TokenUsage | undefined;
     let errorMessage: string | undefined;
+    let errorStatus: number | undefined;
     let status: UsageEntryStatus = 'error';
     try {
       for await (const event of sendChat(request, key, control.signal)) {
@@ -465,6 +637,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         }
         if (event.type === 'image' && generateImage) {
           responseText = 'Generated image. Download it to keep a copy.';
+          finalAssistantText = responseText;
           updateMessage((message) => ({
             ...message,
             text: responseText,
@@ -474,10 +647,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         if (event.type === 'usage') tokens = event.usage;
         if (event.type === 'retry') setNotice(`Provider unavailable. Retrying in ${event.seconds}s…`);
         if (event.type === 'error') {
-          if (event.status === 429 || event.status === 503) {
-            setDraft((current) => current || typed);
-            setAttachments((current) => (current.length ? current : currentAttachments));
-          }
+          errorStatus = event.status;
           throw providerFailure(provider, event);
         }
         if (event.type === 'done') {
@@ -487,6 +657,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           const allRawCommands = actionCalls.length ? actionCalls : legacyCommands;
 
           if (!allRawCommands.length) {
+            finalAssistantText = text;
             updateMessage((message) => ({ ...message, text }));
           } else if (!event.truncated && toolsAllowed) {
             const parsedEdits: WorkspaceEdit[] = [];
@@ -496,13 +667,17 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
             }
 
             if (!parsedEdits.length) {
+              finalAssistantText =
+                text || 'I couldn’t apply that change automatically. Check the target details and try again.';
               updateMessage((message) => ({
                 ...message,
-                text: text || 'I couldn’t apply that change automatically. Check the target details and try again.',
+                text: finalAssistantText,
               }));
             } else {
-              const immediate = parsedEdits.filter((e) => !e.confirmation);
-              const confirmRequired = parsedEdits.filter((e) => e.confirmation);
+              const normalizedEdits = normalizeReviewEdits(parsedEdits);
+
+              const immediate = normalizedEdits.filter((e) => !e.confirmation);
+              const confirmRequired = normalizedEdits.filter((e) => e.confirmation);
 
               let finalText = text.trim();
               if (immediate.length > 0) {
@@ -526,10 +701,16 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
               if (confirmRequired.length > 0) {
                 proposedEdits = confirmRequired;
                 if (!finalText) {
-                  finalText = 'Please review and confirm the requested workspace changes below.';
+                  const hasDestructive = confirmRequired.some(
+                    (item) => item.destructive || item.action.startsWith('delete_'),
+                  );
+                  finalText = hasDestructive
+                    ? 'Please review and explicitly confirm any sensitive changes below.'
+                    : 'Please review the proposed additions below, uncheck anything you do not want, and click Approve Selected.';
                 }
               }
 
+              finalAssistantText = finalText;
               updateMessage((message) => ({
                 ...message,
                 text: finalText,
@@ -543,31 +724,51 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           }
         }
       }
-      if (status !== 'complete') setNotice('The connection ended before the assistant finished.');
+      if (status !== 'complete') {
+        errorMessage = 'The connection ended before Pip finished replying.';
+      }
     } catch (error) {
       if (control.signal.aborted) {
         status = 'stopped';
         setNotice('Reply stopped. The provider may still count part of this request.');
       } else {
-        setDraft((current) => current || typed);
-        setAttachments((current) => current.length ? current : currentAttachments);
         errorMessage =
           error instanceof Error && !(error instanceof TypeError)
             ? error.message
-            : 'Could not reach the local assistant. Check that StudyFlow is running locally.';
-        setNotice(errorMessage);
+            : 'Could not reach the assistant. Check your connection and try again.';
       }
     } finally {
-      updateMessage((message) => ({
-        ...message,
-        tokens,
-        errorMessage,
-        state: status,
-        edit: proposedEdits?.[0],
-        pendingEdits: proposedEdits,
-        appliedActions,
-        actionLinks,
-      }));
+      if (status === 'error') {
+        // Remove BOTH the failed user prompt and failed assistant bubble from the chat thread
+        // and surface them in the dismissible recovery tray above the composer.
+        updateChat((chat) => {
+          const remaining = chat.messages.filter(
+            (msg) => msg.id !== userTurnId && msg.id !== assistantId,
+          );
+          return {
+            ...chat,
+            title: remaining.length === 0 ? 'New chat' : previousTitle,
+            titleSource: remaining.length === 0 ? 'default' : previousTitleSource,
+            messages: remaining,
+          };
+        });
+        recordFailedAttempt(errorMessage || 'Message failed to send. Please try again.');
+      } else {
+        updateMessage((message) => ({
+          ...message,
+          tokens,
+          errorMessage,
+          state: status,
+          edit: proposedEdits?.[0],
+          pendingEdits: proposedEdits,
+          appliedActions,
+          actionLinks,
+        }));
+        if (status === 'complete' && shouldAutoTitle) {
+          void generateAiChatTitle(targetChatId, prompt, finalAssistantText || responseText, provider, model, key);
+        }
+      }
+
       const updated = mergeUsage([
         ...records,
         {
@@ -578,6 +779,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           model,
           tokens,
           status,
+          ...(errorStatus !== undefined ? { errorStatus } : {}),
         },
       ]);
       if (desktopUsage) {
@@ -589,6 +791,55 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       activeRequest.current = null;
       setBusy(false);
     }
+  }
+
+  function dismissFailedAttempt(id: string) {
+    setFailedAttempts((items) => items.filter((item) => item.id !== id));
+  }
+
+  function retryFailedAttempt(id: string) {
+    if (busy || activeRequest.current) return;
+    const target = failedAttempts.find((item) => item.id === id);
+    if (!target) return;
+    setFailedAttempts((items) => items.filter((item) => item.id !== id));
+    void send(false, target.prompt, { overrideAttachments: target.attachments });
+  }
+
+  function editFailedAttempt(id: string) {
+    const target = failedAttempts.find((item) => item.id === id);
+    if (!target) return;
+    setFailedAttempts((items) => items.filter((item) => item.id !== id));
+    setDraft(target.prompt);
+    if (target.attachments.length) {
+      setAttachments(target.attachments);
+    }
+  }
+
+  function editAndResendMessage(messageId: string, nextPrompt: string) {
+    const clean = nextPrompt.trim();
+    if (!clean || busy || activeRequest.current) return;
+    const currentChat = conversationsRef.current.find((c) => c.id === active.id);
+    if (!currentChat) return;
+    const idx = currentChat.messages.findIndex((m) => m.id === messageId && m.role === 'user');
+    if (idx < 0) return;
+    const baseMessages = currentChat.messages.slice(0, idx);
+    void send(false, clean, { baseMessages });
+  }
+
+  function regenerateMessage(messageId: string) {
+    if (busy || activeRequest.current) return;
+    const currentChat = conversationsRef.current.find((c) => c.id === active.id);
+    if (!currentChat) return;
+    const idx = currentChat.messages.findIndex((m) => m.id === messageId && m.role === 'assistant');
+    if (idx <= 0) return;
+    let userIdx = idx - 1;
+    while (userIdx >= 0 && currentChat.messages[userIdx].role !== 'user') {
+      userIdx--;
+    }
+    if (userIdx < 0) return;
+    const userMsg = currentChat.messages[userIdx];
+    const baseMessages = currentChat.messages.slice(0, userIdx);
+    void send(false, userMsg.text, { baseMessages });
   }
 
   // Handle queued askPip triggers cleanly once UI switches
@@ -689,8 +940,23 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const provider = settings.provider;
     const key = keys.current[provider];
     if (keyStorage === 'loading') throw new Error('Pip is checking for saved API keys. Try again in a moment.');
-    if (!configured.includes(provider) && !keyStorageError) {
-      throw new Error('Add your ' + PROVIDERS[provider].label + ' API key in Settings.');
+    let isProviderConfigured = configured.includes(provider);
+    if (!isProviderConfigured && !isTauri() && provider === 'gemini') {
+      const liveStatus = await fetchAssistantStatus();
+      if (liveStatus.geminiConfigured) {
+        isProviderConfigured = true;
+        setServerStatus('connected');
+        setConfigured((prev) => (prev.includes('gemini') ? prev : [...prev, 'gemini']));
+      } else {
+        setServerStatus('unconfigured');
+      }
+    }
+    if (!isProviderConfigured && !keyStorageError) {
+      throw new Error(
+        isTauri()
+          ? 'Add your ' + PROVIDERS[provider].label + ' API key in Settings.'
+          : 'Add your Gemini API key in AI Settings, or configure the local server key.',
+      );
     }
     if (cooldownUntil > Date.now()) {
       throw new Error('The AI provider is cooling down. Try again when the countdown ends.');
@@ -741,6 +1007,171 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       }
       valid = true;
       return items;
+    } finally {
+      activeRequest.current = null;
+      setBusy(false);
+      const entry: UsageEntry = {
+        id: createId(),
+        at: Date.now(),
+        day: localDay(),
+        provider,
+        model,
+        tokens,
+        status: valid ? 'complete' : 'error',
+      };
+      const records = mergeUsage(usage, [entry]);
+      if (desktopUsage) {
+        await desktopUsage.save(records);
+        setUsage(records);
+      } else {
+        setUsage(writeUsage(records));
+      }
+    }
+  }
+
+  async function generateStructured<T>(kind: StudyGenerationKind, prompt: string, source: string): Promise<T> {
+    const provider = settings.provider;
+    const key = keys.current[provider];
+    if (keyStorage === 'loading') throw new Error('Pip is checking for saved API keys. Try again in a moment.');
+    let isProviderConfigured = configured.includes(provider);
+    if (!isProviderConfigured && !isTauri() && provider === 'gemini') {
+      const liveStatus = await fetchAssistantStatus();
+      if (liveStatus.geminiConfigured) {
+        isProviderConfigured = true;
+        setServerStatus('connected');
+        setConfigured((prev) => (prev.includes('gemini') ? prev : [...prev, 'gemini']));
+      } else {
+        setServerStatus('unconfigured');
+      }
+    }
+    if (!isProviderConfigured && !keyStorageError) {
+      throw new Error(
+        isTauri()
+          ? 'Add your ' + PROVIDERS[provider].label + ' API key in Settings.'
+          : 'Add your Gemini API key in AI Settings, or configure the local server key.',
+      );
+    }
+    if (cooldownUntil > Date.now()) {
+      throw new Error('The AI provider is cooling down. Try again when the countdown ends.');
+    }
+    if (activeRequest.current) {
+      throw new Error('Pip is already working on a request. Try again when it finishes.');
+    }
+    if (!source.trim()) throw new Error('Provide text or upload a file first.');
+    const trimmedSource = source.slice(0, CHAT_LIMITS.context);
+    let body = '';
+    let complete = false;
+    let valid = false;
+    let tokens: TokenUsage | undefined;
+    const control = new AbortController();
+    activeRequest.current = control;
+    setBusy(true);
+    try {
+      const clock = requestClock(settings.timezone);
+      for await (const event of sendChat(
+        {
+          provider,
+          model,
+          prompt,
+          context: trimmedSource,
+          history: [],
+          maxOutput: 16384,
+          studyGeneration: kind,
+          clientContext: `Current local date and time: ${clock.label}. Default response language: ${settings.language ?? 'match the source'}.`,
+        },
+        key,
+        control.signal,
+      )) {
+        if (event.type === 'text') body += event.text;
+        if (event.type === 'error') throw providerFailure(provider, event);
+        if (event.type === 'usage') tokens = event.usage;
+        if (event.type === 'done') complete = !event.truncated;
+      }
+      if (!complete) throw new Error('Incomplete provider response. Try a shorter document.');
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(body.trim().replace(/^```(?:json)?\s*|\s*```$/gi, ''));
+      } catch {
+        throw new Error('Pip returned malformed structured data. Retry with a shorter section.');
+      }
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Pip did not return structured study data.');
+      }
+      valid = true;
+      return parsed as T;
+    } finally {
+      activeRequest.current = null;
+      setBusy(false);
+      const entry: UsageEntry = {
+        id: createId(),
+        at: Date.now(),
+        day: localDay(),
+        provider,
+        model,
+        tokens,
+        status: valid ? 'complete' : 'error',
+      };
+      const records = mergeUsage(usage, [entry]);
+      if (desktopUsage) {
+        await desktopUsage.save(records);
+        setUsage(records);
+      } else {
+        setUsage(writeUsage(records));
+      }
+    }
+  }
+
+  async function generateText(prompt: string, contextText = ''): Promise<string> {
+    const provider = settings.provider;
+    const key = keys.current[provider];
+    if (keyStorage === 'loading') throw new Error('Pip is checking for saved API keys. Try again in a moment.');
+    let isProviderConfigured = configured.includes(provider);
+    if (!isProviderConfigured && !isTauri() && provider === 'gemini') {
+      const liveStatus = await fetchAssistantStatus();
+      if (liveStatus.geminiConfigured) {
+        isProviderConfigured = true;
+        setServerStatus('connected');
+        setConfigured((prev) => (prev.includes('gemini') ? prev : [...prev, 'gemini']));
+      }
+    }
+    if (!isProviderConfigured && !keyStorageError) {
+      throw new Error('Pip is not configured yet. Check your API settings.');
+    }
+    if (cooldownUntil > Date.now()) {
+      throw new Error('The AI provider is cooling down. Try again shortly.');
+    }
+    if (activeRequest.current) {
+      throw new Error('Pip is already working on a request. Wait for it to finish.');
+    }
+    let body = '';
+    let valid = false;
+    let tokens: TokenUsage | undefined;
+    const control = new AbortController();
+    activeRequest.current = control;
+    setBusy(true);
+    try {
+      const clock = requestClock(settings.timezone);
+      for await (const event of sendChat(
+        {
+          provider,
+          model,
+          prompt,
+          context: contextText.slice(0, CHAT_LIMITS.context),
+          history: [],
+          maxOutput: 16384,
+          workspaceActions: false,
+          clientContext: `Current local date and time: ${clock.label}.`,
+        },
+        key,
+        control.signal,
+      )) {
+        if (event.type === 'text') body += event.text;
+        if (event.type === 'error') throw providerFailure(provider, event);
+        if (event.type === 'usage') tokens = event.usage;
+      }
+      if (!body.trim()) throw new Error('Pip returned an empty response.');
+      valid = true;
+      return body.trim();
     } finally {
       activeRequest.current = null;
       setBusy(false);
@@ -818,6 +1249,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     let body = '';
     let valid = false;
     let tokens: TokenUsage | undefined;
+    let errorStatus: number | undefined;
     let latestMeta: { detectedLanguage?: string; removedFigures: string[]; keptFigures: string[] } = {
       removedFigures: [],
       keptFigures: encodedFigures.map((f) => f.id),
@@ -853,6 +1285,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
             options?.onStream?.(stripOuterMarkdownFence(body));
           }
           if (event.type === 'error') {
+            errorStatus = event.status;
             throw providerFailure(provider, { type: 'error', message: event.message, status: event.status });
           }
           if (event.type === 'usage') tokens = event.usage;
@@ -897,7 +1330,10 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
             body += event.text;
             options?.onStream?.(stripOuterMarkdownFence(body));
           }
-          if (event.type === 'error') throw providerFailure(provider, event);
+          if (event.type === 'error') {
+            errorStatus = event.status;
+            throw providerFailure(provider, event);
+          }
           if (event.type === 'usage') tokens = event.usage;
         }
         if (encodedFigures.length) {
@@ -936,6 +1372,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         model: geminiModel,
         tokens,
         status: valid ? 'complete' : 'error',
+        ...(errorStatus !== undefined ? { errorStatus } : {}),
       };
       const records = mergeUsage(usage, [entry]);
       if (desktopUsage) {
@@ -948,28 +1385,37 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   }
 
   return {
-    async applyEdit(message: ChatMessage) {
+    async applyEdit(message: ChatMessage, selection?: Record<number, string[] | boolean>) {
       const edits = message.pendingEdits?.length ? message.pendingEdits : message.edit ? [message.edit] : [];
       if (!edits.length || busy || activeRequest.current) return;
       setBusy(true);
+      setNotice('');
       try {
-        const result = await applyWorkspaceEdits(edits);
+        const result = await applyWorkspaceEdits(edits, selection);
+        if (result.failedSummaries.length > 0) {
+          setNotice(result.failedSummaries.join(' '));
+        }
         setConversations((items) =>
           items.map((chat) => ({
             ...chat,
-            messages: chat.messages.map((item) =>
-              item.id === message.id
-                ? {
-                    ...item,
-                    text: item.text || result.appliedSummaries.join('\n') || result.failedSummaries.join('\n'),
-                    appliedActions: [...(item.appliedActions ?? []), ...result.appliedSummaries],
-                    actionLinks: [...(item.actionLinks ?? []), ...result.links],
-                    edit: undefined,
-                    pendingEdits: undefined,
-                    state: result.saved ? 'complete' : 'error',
-                  }
-                : item,
-            ),
+            messages: chat.messages.map((item) => {
+              if (item.id !== message.id) return item;
+              const mergedLinks = [...(item.actionLinks ?? [])];
+              for (const link of result.links) {
+                if (!mergedLinks.some((existing) => existing.route === link.route)) {
+                  mergedLinks.push(link);
+                }
+              }
+              return {
+                ...item,
+                text: item.text || result.appliedSummaries.join('\n') || result.failedSummaries.join('\n'),
+                appliedActions: [...(item.appliedActions ?? []), ...result.appliedSummaries],
+                actionLinks: mergedLinks,
+                edit: undefined,
+                pendingEdits: undefined,
+                state: 'complete' as const,
+              };
+            }),
           })),
         );
       } finally {
@@ -984,7 +1430,9 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
             item.id === id
               ? {
                   ...item,
-                  text: item.text ? `${item.text}\n\n_Requested change cancelled._` : 'Change cancelled.',
+                  text: item.text
+                    ? `${item.text}\n\n_Cancelled — no changes were made._`
+                    : 'Cancelled — no changes were made.',
                   edit: undefined,
                   pendingEdits: undefined,
                 }
@@ -994,6 +1442,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       );
     },
     generate,
+    generateStructured,
+    generateText,
     restructureMarkdown,
     askPip,
     dashboardOverview,
@@ -1006,6 +1456,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     updateSettings,
     usage,
     configured,
+    serverStatus,
     setKey,
     keyStorage,
     keyStorageError,
@@ -1050,6 +1501,12 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     busy,
     notice,
     setNotice,
+    failedAttempts,
+    dismissFailedAttempt,
+    retryFailedAttempt,
+    editFailedAttempt,
+    editAndResendMessage,
+    regenerateMessage,
     send,
     stop: () => activeRequest.current?.abort(),
   };

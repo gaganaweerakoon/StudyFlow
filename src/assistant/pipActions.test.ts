@@ -22,8 +22,8 @@ function createMockWorkspace(): Workspace {
           id: 'ch1',
           title: 'Carbonyl Chemistry',
           topics: [
-            { id: 't1', title: 'Aldol Condensation', completed: true, difficulty: 'hard' as const, confidence: 4, revisionStatus: 'mastered' as const },
-            { id: 't2', title: 'Wittig Reaction', completed: false, difficulty: 'hard' as const, confidence: 2, revisionStatus: 'in_review' as const },
+            { id: 't1', title: 'Aldol Condensation', completed: true, difficulty: 'hard' as 'easy' | 'medium' | 'hard', confidence: 4, revisionStatus: 'mastered' as 'not_started' | 'in_review' | 'mastered' },
+            { id: 't2', title: 'Wittig Reaction', completed: false, difficulty: 'hard' as 'easy' | 'medium' | 'hard', confidence: 2, revisionStatus: 'in_review' as 'not_started' | 'in_review' | 'mastered' },
           ],
         },
       ],
@@ -109,7 +109,17 @@ function createMockWorkspace(): Workspace {
       retentionRate: 88,
     },
   ];
-  const flashcards = [
+  const flashcards: Array<{
+    id: string;
+    deckId: string;
+    front: string;
+    back: string;
+    hint?: string;
+    intervalDays: number;
+    easeFactor: number;
+    dueToday: boolean;
+    mastery: 'new' | 'learning' | 'mastered';
+  }> = [
     {
       id: 'fc-1',
       deckId: 'deck-1',
@@ -118,7 +128,7 @@ function createMockWorkspace(): Workspace {
       intervalDays: 1,
       easeFactor: 2.5,
       dueToday: true,
-      mastery: 'learning' as 'new' | 'learning' | 'mastered',
+      mastery: 'learning',
     },
   ];
   const quizzes = [
@@ -223,6 +233,13 @@ function createMockWorkspace(): Workspace {
       decks.push({ ...d, id, lastReviewed: 'Just created', retentionRate: 0 });
       return id;
     },
+    deleteDeck(id: string) {
+      const idx = decks.findIndex((x) => x.id === id);
+      if (idx >= 0) decks.splice(idx, 1);
+      for (let i = flashcards.length - 1; i >= 0; i--) {
+        if (flashcards[i].deckId === id) flashcards.splice(i, 1);
+      }
+    },
     addFlashcard(c: Omit<(typeof flashcards)[number], 'id' | 'intervalDays' | 'easeFactor' | 'dueToday' | 'mastery'>) {
       flashcards.push({
         ...c,
@@ -233,8 +250,76 @@ function createMockWorkspace(): Workspace {
         mastery: 'new',
       });
     },
+    importFlashcardsBulk(deckId: string, cards: Array<{ front: string; back: string; hint?: string }>) {
+      let count = 0;
+      for (const c of cards) {
+        if (!c.front.trim() || !c.back.trim()) continue;
+        flashcards.push({
+          id: `fc-${flashcards.length + 1}`,
+          deckId,
+          front: c.front.trim(),
+          back: c.back.trim(),
+          hint: c.hint?.trim(),
+          intervalDays: 1,
+          easeFactor: 2.5,
+          dueToday: true,
+          mastery: 'new',
+        });
+        count++;
+      }
+      return count;
+    },
+    addChapter(subjectId: string, title: string) {
+      const target = subjects.find((s) => s.id === subjectId);
+      if (!target) return;
+      target.chapters.push({
+        id: `ch-${target.chapters.length + 1}`,
+        title,
+        topics: [],
+      });
+    },
+    addTopic(subjectId: string, chapterId: string, title: string) {
+      const target = subjects.find((s) => s.id === subjectId);
+      const chapter = target?.chapters.find((c) => c.id === chapterId);
+      if (!chapter) return;
+      chapter.topics.push({
+        id: `tp-${chapter.topics.length + 1}`,
+        title,
+        completed: false,
+        difficulty: 'medium',
+        confidence: 2,
+        revisionStatus: 'not_started',
+      });
+    },
+    addChapters(subjectId: string, chapters: Array<{ title: string; topics: string[] }>) {
+      const target = subjects.find((s) => s.id === subjectId);
+      if (!target) return;
+      for (const ch of chapters) {
+        target.chapters.push({
+          id: `ch-${target.chapters.length + 1}`,
+          title: ch.title,
+          topics: ch.topics.map((t, idx) => ({
+            id: `tp-${target.chapters.length + 1}-${idx + 1}`,
+            title: t,
+            completed: false,
+            difficulty: 'medium',
+            confidence: 2,
+            revisionStatus: 'not_started',
+          })),
+        });
+      }
+    },
+    studyLabLaunch: null as unknown,
+    openStudyLab(launch?: Record<string, unknown>) {
+      state.studyLabLaunch = launch ?? { tab: 'playground' };
+      state.route = 'lab';
+    },
     addQuiz(q: (typeof quizzes)[number]) {
       quizzes.push(q);
+    },
+    deleteQuiz(id: string) {
+      const idx = quizzes.findIndex((x) => x.id === id);
+      if (idx >= 0) quizzes.splice(idx, 1);
     },
     addGoal(g: Omit<(typeof goals)[number], 'id'>) {
       goals.push({ ...g, id: `g-${goals.length + 1}` });
@@ -242,6 +327,14 @@ function createMockWorkspace(): Workspace {
     updateGoal(id: string, patch: Partial<(typeof goals)[number]>) {
       const target = goals.find((x) => x.id === id);
       if (target) Object.assign(target, patch);
+    },
+    deleteGoal(id: string) {
+      const idx = goals.findIndex((x) => x.id === id);
+      if (idx >= 0) goals.splice(idx, 1);
+    },
+    deleteSubject(id: string) {
+      const idx = subjects.findIndex((x) => x.id === id);
+      if (idx >= 0) subjects.splice(idx, 1);
     },
     addExam(e: Omit<(typeof exams)[number], 'id' | 'mockHistory'>) {
       exams.push({ ...e, id: `ex-${exams.length + 1}`, mockHistory: [] });
@@ -381,7 +474,7 @@ test('parseWorkspaceEdit handles create_event with HH:MM startTime, subject code
   assert.equal(ws.sessions[1].durationHours, 1);
 });
 
-test('parseWorkspaceEdit handles create_flashcards with auto-created new deck via deckTitle', () => {
+test('parseWorkspaceEdit handles create_flashcards with auto-created new deck and mandatory approval gate', () => {
   const ws = createMockWorkspace();
   const edit = parseWorkspaceEdit(
     JSON.stringify({
@@ -397,6 +490,9 @@ test('parseWorkspaceEdit handles create_flashcards with auto-created new deck vi
   );
   assert.ok(edit);
   assert.equal(edit.route, 'flashcards');
+  assert.equal(edit.confirmation, true);
+  assert.equal(edit.reviewKind, 'approval');
+  assert.equal(edit.reviewItems?.length, 2);
   assert.equal(edit.apply(ws), true);
   assert.equal(ws.decks.length, 2);
   assert.equal(ws.decks[1].title, 'Redox Titration Standards');
@@ -424,6 +520,9 @@ test('parseWorkspaceEdit handles create_practice_test, create_goal, add_goal_mil
     ws,
   );
   assert.ok(quizEdit);
+  assert.equal(quizEdit.confirmation, true);
+  assert.equal(quizEdit.reviewKind, 'approval');
+  assert.equal(quizEdit.reviewItems?.length, 1);
   assert.equal(quizEdit.apply(ws), true);
   assert.equal(ws.quizzes.length, 2);
   assert.equal(ws.quizzes[1].questions[0].correctAnswer, 'Na₂CO₃');
@@ -481,4 +580,313 @@ test('readGeneratedCards, readGeneratedQuestions, and normalizeMarkdownForDispla
 
   const md = normalizeMarkdownForDisplay('Use $\\text{Na}_2\\text{CO}_3$ in titration.');
   assert.ok(md.includes('Na'));
+});
+
+test('delete_event and delete_events require confirmation, resolve by title/date/id, and remove calendar events on apply', () => {
+  const ws = createMockWorkspace();
+  ws.addSession({
+    title: 'Afternoon Physics Review',
+    subjectId: '',
+    date: '2026-11-23',
+    dayIndex: 0,
+    startHour: 15,
+    durationHours: 1.5,
+    status: 'upcoming',
+    blockType: 'study',
+    recurring: true,
+  });
+
+  // Single event deletion by title + date (even on recurring event without explicit scope)
+  const delSingle = parseWorkspaceEdit(
+    JSON.stringify({ action: 'delete_event', title: 'Afternoon Physics Review', date: '2026-11-23' }),
+    ws,
+  );
+  assert.ok(delSingle);
+  assert.equal(delSingle.confirmation, true);
+  assert.equal(delSingle.destructive, true);
+  assert.match(delSingle.title, /this occurrence only/);
+  assert.equal(ws.sessions.length, 2); // Not deleted until confirmed!
+  assert.equal(delSingle.apply(ws), true);
+  assert.equal(ws.sessions.length, 1);
+
+  // Add another session on the same day and test bulk delete_events by date
+  ws.addSession({
+    title: 'Evening Lab Prep',
+    subjectId: 'chem210',
+    date: '2026-11-23',
+    dayIndex: 0,
+    startHour: 18,
+    durationHours: 1,
+    status: 'upcoming',
+    blockType: 'study',
+  });
+  // Empty filter must be rejected so entire calendar cannot be wiped accidentally
+  assert.equal(parseWorkspaceEdit(JSON.stringify({ action: 'delete_events' }), ws), undefined);
+
+  const delDay = parseWorkspaceEdit(JSON.stringify({ action: 'delete_events', date: '2026-11-23' }), ws);
+  assert.ok(delDay);
+  assert.equal(delDay.confirmation, true);
+  assert.equal(delDay.destructive, true);
+  assert.equal(delDay.details?.length, 2);
+  assert.equal(delDay.apply(ws), true);
+  assert.equal(ws.sessions.length, 0);
+});
+
+test('negative & destructive actions across tasks, notes, exams, goals, milestones, decks, quizzes, and subjects require confirmation and execute cleanly', () => {
+  const ws = createMockWorkspace();
+
+  // Clear completed tasks via completedOnly
+  ws.addTask({
+    title: 'Already finished reading',
+    subjectId: 'chem210',
+    dueDate: '2026-11-20',
+    dueLabel: '2026-11-20',
+    priority: 'low',
+    status: 'done',
+    estimatedMinutes: 20,
+    description: '',
+    subtasks: [],
+  });
+  // Reopening a completed task should also require confirmation
+  const reopenEdit = parseWorkspaceEdit(
+    JSON.stringify({ action: 'update_task', id: ws.tasks[ws.tasks.length - 1].id, status: 'todo' }),
+    ws,
+  );
+  assert.ok(reopenEdit);
+  assert.equal(reopenEdit.confirmation, true);
+  assert.equal(reopenEdit.destructive, true);
+
+  const clearDone = parseWorkspaceEdit(JSON.stringify({ action: 'delete_tasks', completedOnly: true }), ws);
+  assert.ok(clearDone);
+  assert.equal(clearDone.confirmation, true);
+  assert.equal(clearDone.destructive, true);
+  assert.equal(clearDone.apply(ws), true);
+  assert.equal(ws.tasks.some((t) => t.status === 'done'), false);
+
+  // Delete task by title
+  const delTaskByTitle = parseWorkspaceEdit(
+    JSON.stringify({ action: 'delete_tasks', titles: ['Complete Carbonyl Mechanism Worksheet'] }),
+    ws,
+  );
+  assert.ok(delTaskByTitle);
+  assert.equal(delTaskByTitle.confirmation, true);
+  assert.equal(delTaskByTitle.destructive, true);
+  assert.equal(delTaskByTitle.apply(ws), true);
+  assert.equal(ws.tasks.some((t) => t.title === 'Complete Carbonyl Mechanism Worksheet'), false);
+
+  // Delete goal milestone then delete goal
+  ws.updateGoal('g-1', {
+    milestones: [{ id: 'ms-1', label: 'Finish chapter 8', date: '2026-11-26', done: false }],
+  });
+  const delMs = parseWorkspaceEdit(
+    JSON.stringify({ action: 'delete_goal_milestone', goalId: 'Master Carbonyl', title: 'Finish chapter 8' }),
+    ws,
+  );
+  assert.ok(delMs);
+  assert.equal(delMs.confirmation, true);
+  assert.equal(delMs.destructive, true);
+  assert.equal(delMs.apply(ws), true);
+  assert.equal(ws.goals[0].milestones.length, 0);
+
+  const delGoal = parseWorkspaceEdit(JSON.stringify({ action: 'delete_goal', title: 'Master Carbonyl' }), ws);
+  assert.ok(delGoal);
+  assert.equal(delGoal.confirmation, true);
+  assert.equal(delGoal.destructive, true);
+  assert.equal(delGoal.apply(ws), true);
+  assert.equal(ws.goals.length, 0);
+
+  // Delete deck (and its cards), practice test, exam, note, and subject by title/code
+  const delDeck = parseWorkspaceEdit(JSON.stringify({ action: 'delete_deck', title: 'CHEM 210 Core' }), ws);
+  assert.ok(delDeck);
+  assert.equal(delDeck.confirmation, true);
+  assert.equal(delDeck.destructive, true);
+  assert.equal(delDeck.apply(ws), true);
+  assert.equal(ws.decks.length, 0);
+  assert.equal(ws.flashcards.length, 0);
+
+  const delQuiz = parseWorkspaceEdit(
+    JSON.stringify({ action: 'delete_practice_test', title: 'Carbonyl Diagnostic' }),
+    ws,
+  );
+  assert.ok(delQuiz);
+  assert.equal(delQuiz.confirmation, true);
+  assert.equal(delQuiz.destructive, true);
+  assert.equal(delQuiz.apply(ws), true);
+  assert.equal(ws.quizzes.length, 0);
+
+  const delExam = parseWorkspaceEdit(JSON.stringify({ action: 'delete_exam', title: 'CHEM 210 Midterm III' }), ws);
+  assert.ok(delExam);
+  assert.equal(delExam.confirmation, true);
+  assert.equal(delExam.destructive, true);
+  assert.equal(delExam.apply(ws), true);
+  assert.equal(ws.exams.length, 0);
+
+  // Overwriting a substantial note with tiny content requires confirmation
+  const shrinkNote = parseWorkspaceEdit(
+    JSON.stringify({ action: 'update_note', id: 'note-1', content: 'short' }),
+    ws,
+  );
+  assert.ok(shrinkNote);
+  assert.equal(shrinkNote.confirmation, true);
+  assert.equal(shrinkNote.destructive, true);
+
+  const existingContent = ws.notes.find(n => n.id === 'note-1')!.content;
+  const equalLengthOverwrite = parseWorkspaceEdit(JSON.stringify({ action: 'update_note', id: 'note-1', content: 'x'.repeat(existingContent.length) }), ws);
+  assert.equal(equalLengthOverwrite?.confirmation, true);
+  assert.equal(equalLengthOverwrite?.destructive, true);
+  const unchanged = parseWorkspaceEdit(JSON.stringify({ action: 'update_note', id: 'note-1', content: existingContent }), ws);
+  assert.notEqual(unchanged?.destructive, true);
+
+  const delNote = parseWorkspaceEdit(JSON.stringify({ action: 'delete_note', title: 'Primary Standards' }), ws);
+  assert.ok(delNote);
+  assert.equal(delNote.confirmation, true);
+  assert.equal(delNote.destructive, true);
+  assert.equal(delNote.apply(ws), true);
+  assert.equal(ws.notes.length, 0);
+
+  const delSubject = parseWorkspaceEdit(JSON.stringify({ action: 'delete_subject', title: 'CHEM 210' }), ws);
+  assert.ok(delSubject);
+  assert.equal(delSubject.confirmation, true);
+  assert.equal(delSubject.destructive, true);
+  assert.equal(delSubject.apply(ws), true);
+  assert.equal(ws.subjects.length, 0);
+});
+
+test('workspaceContext includes relevant item catalogs for destructive prompts', () => {
+  const ws = createMockWorkspace();
+  const clock = { date: '2026-11-23', time: '08:30', label: '2026-11-23 08:30 (UTC, GMT)' };
+  const ctx = workspaceContext(ws, 'dashboard', 'Delete Organic Chemistry Lecture', clock);
+  assert.match(ctx.text, /Calendar:/);
+  assert.match(ctx.text, /Organic Chemistry Lecture/);
+  assert.match(ctx.text, /Notes Catalog:/);
+  assert.match(ctx.text, /Goals:/);
+});
+
+test('mass additions (create_events, create_tasks, schedule_micro_reviews, import_syllabus_bundle, create_goal with 2+ milestones) require review approval and support partial applySelected', () => {
+  const ws = createMockWorkspace();
+
+  // create_events with 2 blocks -> partial selection adds only 1
+  const bulkEvents = parseWorkspaceEdit(
+    JSON.stringify({
+      action: 'create_events',
+      events: [
+        { title: 'Algorithm Proof Session', date: '2026-11-24', startTime: '10:00', durationHours: 1.5, subjectId: 'CHEM 210' },
+        { title: 'Organic Synthesis Drill', date: '2026-11-25', startTime: '14:00', durationHours: 1, subjectId: 'CHEM 210' },
+      ],
+    }),
+    ws,
+  );
+  assert.ok(bulkEvents);
+  assert.equal(bulkEvents.confirmation, true);
+  assert.equal(bulkEvents.reviewKind, 'approval');
+  assert.equal(bulkEvents.reviewItems?.length, 2);
+  assert.ok(bulkEvents.applySelected);
+  assert.equal(bulkEvents.applySelected(ws, [bulkEvents.reviewItems![0].id]), true);
+  assert.equal(ws.sessions.length, 2);
+  assert.equal(ws.sessions[1].title, 'Algorithm Proof Session');
+
+  // create_tasks with 3 tasks -> partial selection adds only 2
+  const bulkTasks = parseWorkspaceEdit(
+    JSON.stringify({
+      action: 'create_tasks',
+      tasks: [
+        { title: 'Read Chapter 9', subjectId: 'CHEM 210', priority: 'high' },
+        { title: 'Practice NMR Spectra', subjectId: 'CHEM 210', priority: 'medium' },
+        { title: 'Optional Bonus Sheet', subjectId: 'CHEM 210', priority: 'low' },
+      ],
+    }),
+    ws,
+  );
+  assert.ok(bulkTasks);
+  assert.equal(bulkTasks.confirmation, true);
+  assert.equal(bulkTasks.reviewKind, 'approval');
+  assert.equal(bulkTasks.reviewItems?.length, 3);
+  assert.ok(bulkTasks.applySelected);
+  const pickTwo = [bulkTasks.reviewItems![0].id, bulkTasks.reviewItems![1].id];
+  assert.equal(bulkTasks.applySelected(ws, pickTwo), true);
+  assert.equal(ws.tasks.length, 3);
+
+  // schedule_micro_reviews -> approval gate + adds sessions when approved
+  const micro = parseWorkspaceEdit(
+    JSON.stringify({
+      action: 'schedule_micro_reviews',
+      maxBlocks: 2,
+    }),
+    ws,
+  );
+  assert.ok(micro);
+  assert.equal(micro.confirmation, true);
+  assert.equal(micro.reviewKind, 'approval');
+  assert.ok((micro.reviewItems?.length ?? 0) >= 1);
+  const sessionsBeforeMicro = ws.sessions.length;
+  assert.equal(micro.apply(ws), true);
+  assert.equal(ws.sessions.length, sessionsBeforeMicro + micro.reviewItems!.length);
+
+  // import_syllabus_bundle -> approval gate + selective import
+  const syl = parseWorkspaceEdit(
+    JSON.stringify({
+      action: 'import_syllabus_bundle',
+      subjectId: 'CHEM 210',
+      exams: [{ title: 'CHEM 210 Final Exam', date: '2026-12-12', weightPercent: 40 }],
+      tasks: [{ title: 'Lab Report 4', dueDate: '2026-12-01', priority: 'high' }],
+      chapters: [{ title: 'Aromatic Substitution', topics: ['EAS Mechanism', 'Directing Groups'] }],
+      goals: [{ title: 'Complete Fall Syllabus', target: 4, unit: 'modules', milestones: ['Finish EAS', 'Review Finals'] }],
+    }),
+    ws,
+  );
+  assert.ok(syl);
+  assert.equal(syl.confirmation, true);
+  assert.equal(syl.reviewKind, 'approval');
+  assert.equal(syl.reviewItems?.length, 4);
+  assert.equal(syl.apply(ws), true);
+  assert.equal(ws.exams.some((e) => e.title === 'CHEM 210 Final Exam'), true);
+  assert.equal(ws.tasks.some((t) => t.title === 'Lab Report 4'), true);
+  assert.equal(ws.subjects[0].chapters.some((c) => c.title === 'Aromatic Substitution'), true);
+  assert.equal(ws.goals.some((g) => g.title === 'Complete Fall Syllabus'), true);
+
+  // create_goal with 2+ milestones requires approval
+  const multiMsGoal = parseWorkspaceEdit(
+    JSON.stringify({
+      action: 'create_goal',
+      title: 'Ace Algorithms Final',
+      milestones: ['Dynamic Programming', 'NP-Completeness'],
+    }),
+    ws,
+  );
+  assert.ok(multiMsGoal);
+  assert.equal(multiMsGoal.confirmation, true);
+  assert.equal(multiMsGoal.reviewKind, 'approval');
+});
+
+test('open_study_lab and insert_note_diagram sanitize SVG and route cleanly', () => {
+  const ws = createMockWorkspace();
+
+  const openLab = parseWorkspaceEdit(
+    JSON.stringify({
+      action: 'open_study_lab',
+      tab: 'playground',
+      language: 'python',
+      code: 'print(2 + 2)',
+      title: 'Quick Check',
+    }),
+    ws,
+  );
+  assert.ok(openLab);
+  assert.equal(openLab.confirmation, undefined);
+  assert.equal(openLab.apply(ws), true);
+  assert.equal(ws.route, 'lab');
+
+  const insertDiagram = parseWorkspaceEdit(
+    JSON.stringify({
+      action: 'insert_note_diagram',
+      noteId: 'note-1',
+      title: 'Titration Curve',
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><script>alert(1)</script><rect width="320" height="180" fill="#fff"/></svg>',
+    }),
+    ws,
+  );
+  assert.ok(insertDiagram);
+  assert.equal(insertDiagram.apply(ws), true);
+  assert.match(ws.notes[0].content, /```svg/);
+  assert.doesNotMatch(ws.notes[0].content, /<script/i);
 });

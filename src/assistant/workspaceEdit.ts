@@ -1,17 +1,30 @@
 import { readGeneratedCards, readGeneratedQuestions } from '../notes/generatedStudyItems';
 import type { useApp } from '../context/AppContext';
-import type { ExamItem, GoalItem, NavRoute, StudySession, TaskItem } from '../types/studyflow';
+import type { ExamItem, GoalItem, NavRoute, StudyLabLanguage, StudySession, TaskItem } from '../types/studyflow';
+import { sanitizeSvgDiagram } from './svgDiagram';
+import { analyzeSrsRetention, planMicroReviewSessions } from '../utils/srsIntelligence';
 
 export type Workspace = ReturnType<typeof useApp>;
+
+export interface WorkspaceReviewItem {
+  id: string;
+  label: string;
+  meta?: string;
+}
 
 export interface WorkspaceEdit {
   action: string;
   title: string;
   success?: string;
   confirmation?: boolean;
+  destructive?: boolean;
+  reviewKind?: 'destructive' | 'approval';
+  reviewItems?: WorkspaceReviewItem[];
+  details?: string[];
   route?: NavRoute;
   routeLabel?: string;
   apply: (app: Workspace) => boolean;
+  applySelected?: (app: Workspace, selectedIds: string[]) => boolean;
 }
 
 export interface BatchEditResult {
@@ -33,6 +46,7 @@ const VALID_ROUTES = new Set<NavRoute>([
   'exams',
   'goals',
   'analytics',
+  'lab',
   'settings',
   'assistant',
 ]);
@@ -110,6 +124,56 @@ function resolveDeck(deckIdRaw: unknown, deckTitleRaw: unknown, app: Workspace) 
   return undefined;
 }
 
+function findSingleByIdOrTitle<T>(
+  rows: T[],
+  id: string | undefined,
+  title: string | undefined,
+  getId: (row: T) => string,
+  getTitle: (row: T) => string,
+): T | undefined {
+  if (id) {
+    const exactId = rows.find((row) => getId(row) === id);
+    if (exactId) return exactId;
+  }
+  const needle = (title ?? id ?? '').trim().toLowerCase();
+  if (!needle) return undefined;
+  const exactMatches = rows.filter((row) => getTitle(row).trim().toLowerCase() === needle);
+  if (exactMatches.length === 1) return exactMatches[0];
+  const partialMatches = rows.filter((row) => getTitle(row).toLowerCase().includes(needle));
+  if (partialMatches.length === 1) return partialMatches[0];
+  return undefined;
+}
+
+function resolveSession(
+  id: string | undefined,
+  title: string | undefined,
+  date: string | undefined,
+  startHour: number | undefined,
+  app: Workspace,
+): StudySession | undefined {
+  if (id) {
+    const exactId = app.sessions.find((item) => item.id === id);
+    if (exactId) return exactId;
+  }
+  let candidates = app.sessions;
+  if (date) candidates = candidates.filter((item) => item.date === date);
+  if (startHour !== undefined) {
+    const timeMatches = candidates.filter((item) => Math.abs(item.startHour - startHour) <= 0.25);
+    if (timeMatches.length > 0) candidates = timeMatches;
+  }
+  const needle = (title ?? id ?? '').trim().toLowerCase();
+  if (needle) {
+    const exactTitle = candidates.filter((item) => item.title.trim().toLowerCase() === needle);
+    if (exactTitle.length === 1) return exactTitle[0];
+    if (exactTitle.length > 1 && date) return exactTitle[0];
+    const partialTitle = candidates.filter((item) => item.title.toLowerCase().includes(needle));
+    if (partialTitle.length === 1) return partialTitle[0];
+  } else if (candidates.length === 1 && (date || startHour !== undefined)) {
+    return candidates[0];
+  }
+  return undefined;
+}
+
 export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit | undefined {
   try {
     const edit = JSON.parse(raw) as Record<string, unknown>;
@@ -126,7 +190,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       const targetRoute = typeof edit.route === 'string' ? (edit.route.trim() as NavRoute) : undefined;
       if (!targetRoute || !VALID_ROUTES.has(targetRoute)) return;
       const note = typeof edit.noteId === 'string' ? resolveNote(edit.noteId, app) : undefined;
-      const label = targetRoute.charAt(0).toUpperCase() + targetRoute.slice(1);
+      const label = targetRoute === 'lab' ? 'Study Lab' : targetRoute.charAt(0).toUpperCase() + targetRoute.slice(1);
       return {
         action,
         title: `Open ${label}`,
@@ -138,6 +202,434 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
           current.setRoute(targetRoute);
           return true;
         },
+      };
+    }
+
+    // 1b. Open Study Lab (Math/Code Playground or Whiteboard Studio)
+    if (action === 'open_study_lab') {
+      const tab = edit.tab === 'whiteboard' ? 'whiteboard' : 'playground';
+      const validLangs = new Set<StudyLabLanguage>(['math', 'python', 'javascript', 'sql', 'cpp']);
+      const language =
+        typeof edit.language === 'string' && validLangs.has(edit.language as StudyLabLanguage)
+          ? (edit.language as StudyLabLanguage)
+          : undefined;
+      const code = typeof edit.code === 'string' ? edit.code.slice(0, 12000) : undefined;
+      const rawSvg = typeof edit.svg === 'string' ? sanitizeSvgDiagram(edit.svg) : null;
+      const note = typeof edit.noteId === 'string' ? resolveNote(edit.noteId, app) : undefined;
+      return {
+        action,
+        title: `Open Study Lab · ${tab === 'whiteboard' ? 'Whiteboard Studio' : 'Math & Code Playground'}${title ? ` (${title})` : ''}`,
+        success: `Opened Study Lab ${tab === 'whiteboard' ? 'Whiteboard Studio' : 'Math & Code Playground'}.`,
+        route: 'lab',
+        routeLabel: 'Open Study Lab',
+        apply: (current) => {
+          current.openStudyLab({
+            tab,
+            language,
+            code,
+            svg: rawSvg ?? undefined,
+            title,
+            targetNoteId: note?.id,
+          });
+          return true;
+        },
+      };
+    }
+
+    // 1c. Insert SVG Diagram into a StudyFlow Note
+    if (action === 'insert_note_diagram') {
+      const cleanSvg = typeof edit.svg === 'string' ? sanitizeSvgDiagram(edit.svg) : null;
+      if (!cleanSvg) return;
+      const targetNote = resolveNote(edit.noteId ?? edit.title, app);
+      const heading = title ?? 'Diagram';
+      const snippet = `\n\n### ${heading}\n\n\`\`\`svg\n${cleanSvg}\n\`\`\`\n`;
+      return {
+        action,
+        title: targetNote
+          ? `Insert SVG diagram “${heading}” into note “${targetNote.title}”`
+          : `Create note “${heading}” with SVG diagram`,
+        success: targetNote
+          ? `Inserted SVG diagram “${heading}” into “${targetNote.title}”.`
+          : `Created note “${heading}” with your SVG diagram.`,
+        route: 'notes',
+        routeLabel: 'Open Notes',
+        apply: (current) => {
+          if (targetNote && current.notes.some((n) => n.id === targetNote.id)) {
+            const live = current.notes.find((n) => n.id === targetNote.id)!;
+            current.updateNote(live.id, {
+              content: `${live.content.trimEnd()}${snippet}`,
+              updatedAt: 'Just now',
+            });
+            current.setSelectedNoteId(live.id);
+          } else {
+            const subjectId = current.subjects[0]?.id ?? '';
+            current.createNote(subjectId, 'fld-all', {
+              title: heading,
+              content: `### ${heading}\n\n\`\`\`svg\n${cleanSvg}\n\`\`\`\n`,
+              tags: ['Diagram'],
+            });
+          }
+          return true;
+        },
+      };
+    }
+
+    // 1d. Bulk Create Calendar Events (always requires review & approval)
+    if (action === 'create_events') {
+      if (!Array.isArray(edit.events) || !edit.events.length) return;
+      const parsedItems: Array<{
+        id: string;
+        label: string;
+        meta: string;
+        event: Omit<StudySession, 'id'>;
+      }> = [];
+      for (const rawItem of edit.events.slice(0, 30)) {
+        if (!rawItem || typeof rawItem !== 'object') continue;
+        const item = rawItem as Record<string, unknown>;
+        const evTitle = typeof item.title === 'string' ? item.title.trim().slice(0, 160) : '';
+        const evDate = validDate(item.date) ? item.date : undefined;
+        const evStart = parseHour(item.startHour ?? item.startTime) ?? 15;
+        const evDur =
+          typeof item.durationHours === 'number' && Number.isFinite(item.durationHours) && item.durationHours > 0 && item.durationHours <= 12
+            ? item.durationHours
+            : 1;
+        if (!evTitle || !evDate) continue;
+        const blockType =
+          item.blockType === 'sleep' || item.blockType === 'free' ? item.blockType : 'study';
+        const subjectId = blockType === 'study' ? resolveSubjectId(item.subjectId, app) : '';
+        const location = typeof item.location === 'string' ? item.location.trim().slice(0, 120) : undefined;
+        const notes = typeof item.notes === 'string' ? item.notes.trim().slice(0, 400) : undefined;
+        const itemId = `ev-${parsedItems.length}`;
+        parsedItems.push({
+          id: itemId,
+          label: evTitle,
+          meta: `${evDate} · ${formatHour(evStart)} (${evDur}h)`,
+          event: {
+            title: evTitle,
+            date: evDate,
+            startHour: evStart,
+            durationHours: evDur,
+            dayIndex: (new Date(evDate + 'T00:00:00Z').getUTCDay() + 6) % 7,
+            subjectId,
+            status: 'upcoming',
+            blockType,
+            countsTowardStudy: blockType === 'study',
+            ...(location ? { location } : {}),
+            ...(notes ? { notes } : {}),
+          },
+        });
+      }
+      if (!parsedItems.length) return;
+      const applySubset = (current: Workspace, selectedSet?: Set<string>) => {
+        const chosen = selectedSet
+          ? parsedItems.filter((item) => selectedSet.has(item.id))
+          : parsedItems;
+        if (!chosen.length) return false;
+        for (const item of chosen) {
+          current.addSession(item.event, []);
+        }
+        return true;
+      };
+      return {
+        action,
+        confirmation: true,
+        reviewKind: 'approval',
+        title: `Schedule ${parsedItems.length} calendar ${parsedItems.length === 1 ? 'session' : 'sessions'}`,
+        reviewItems: parsedItems.map(({ id: itemId, label, meta }) => ({ id: itemId, label, meta })),
+        success: `Scheduled ${parsedItems.length} calendar ${parsedItems.length === 1 ? 'session' : 'sessions'}.`,
+        route: 'planner',
+        routeLabel: 'Open Planner',
+        apply: (current) => applySubset(current),
+        applySelected: (current, selectedIds) => applySubset(current, new Set(selectedIds)),
+      };
+    }
+
+    // 1e. Bulk Create Tasks (always requires review & approval)
+    if (action === 'create_tasks') {
+      if (!Array.isArray(edit.tasks) || !edit.tasks.length) return;
+      const parsedItems: Array<{
+        id: string;
+        label: string;
+        meta: string;
+        task: Omit<TaskItem, 'id'>;
+      }> = [];
+      for (const rawItem of edit.tasks.slice(0, 40)) {
+        if (!rawItem || typeof rawItem !== 'object') continue;
+        const item = rawItem as Record<string, unknown>;
+        const taskTitle = typeof item.title === 'string' ? item.title.trim().slice(0, 180) : '';
+        if (!taskTitle) continue;
+        const dueDate = validDate(item.date) ? item.date : '';
+        const subjectId = resolveSubjectId(item.subjectId, app);
+        const priority: TaskItem['priority'] =
+          item.priority === 'low' || item.priority === 'high' ? item.priority : 'medium';
+        const estimatedMinutes =
+          typeof item.estimatedMinutes === 'number' && Number.isFinite(item.estimatedMinutes) && item.estimatedMinutes > 0
+            ? Math.round(item.estimatedMinutes)
+            : 30;
+        const description = typeof item.description === 'string' ? item.description.trim().slice(0, 500) : '';
+        const itemId = `task-${parsedItems.length}`;
+        parsedItems.push({
+          id: itemId,
+          label: taskTitle,
+          meta: `${dueDate ? `Due ${dueDate}` : 'No due date'} · ${priority} · ${estimatedMinutes}m`,
+          task: {
+            title: taskTitle,
+            dueDate,
+            dueLabel: dueDate || 'No due date',
+            subjectId,
+            priority,
+            status: 'todo',
+            estimatedMinutes,
+            description,
+            subtasks: [],
+          },
+        });
+      }
+      if (!parsedItems.length) return;
+      const applySubset = (current: Workspace, selectedSet?: Set<string>) => {
+        const chosen = selectedSet
+          ? parsedItems.filter((item) => selectedSet.has(item.id))
+          : parsedItems;
+        if (!chosen.length) return false;
+        for (const item of chosen) {
+          current.addTask(item.task);
+        }
+        return true;
+      };
+      return {
+        action,
+        confirmation: true,
+        reviewKind: 'approval',
+        title: `Add ${parsedItems.length} study ${parsedItems.length === 1 ? 'task' : 'tasks'}`,
+        reviewItems: parsedItems.map(({ id: itemId, label, meta }) => ({ id: itemId, label, meta })),
+        success: `Added ${parsedItems.length} study ${parsedItems.length === 1 ? 'task' : 'tasks'} in Tasks.`,
+        route: 'tasks',
+        routeLabel: 'Open Tasks',
+        apply: (current) => applySubset(current),
+        applySelected: (current, selectedIds) => applySubset(current, new Set(selectedIds)),
+      };
+    }
+
+    // 1f. Schedule Spaced-Repetition Micro-Reviews (always requires review & approval)
+    if (action === 'schedule_micro_reviews') {
+      const deckFilter = resolveDeck(edit.deckId, edit.deckId, app);
+      const maxBlocks =
+        typeof edit.maxBlocks === 'number' && Number.isFinite(edit.maxBlocks)
+          ? Math.max(1, Math.min(8, Math.round(edit.maxBlocks)))
+          : 4;
+      const decksToAnalyze = deckFilter ? [deckFilter] : app.decks;
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const currentHour = now.getHours() + now.getMinutes() / 60;
+      const summary = analyzeSrsRetention(decksToAnalyze, app.flashcards, app.exams, app.subjects, todayStr);
+      const proposals = planMicroReviewSessions(summary.decks, app.sessions, todayStr, currentHour, maxBlocks);
+      if (!proposals.length) return;
+      const applySubset = (current: Workspace, selectedSet?: Set<string>) => {
+        const chosen = selectedSet
+          ? proposals.filter((p) => selectedSet.has(p.id))
+          : proposals;
+        if (!chosen.length) return false;
+        for (const item of chosen) {
+          current.addSession(
+            {
+              title: item.title,
+              date: item.date,
+              startHour: item.startHour,
+              durationHours: item.durationHours,
+              dayIndex: (new Date(item.date + 'T00:00:00Z').getUTCDay() + 6) % 7,
+              subjectId: item.subjectId,
+              status: 'upcoming',
+              blockType: 'study',
+              countsTowardStudy: true,
+              notes: item.reason,
+            },
+            [],
+          );
+        }
+        return true;
+      };
+      return {
+        action,
+        confirmation: true,
+        reviewKind: 'approval',
+        title: `Schedule ${proposals.length} SRS micro-review ${proposals.length === 1 ? 'block' : 'blocks'}`,
+        reviewItems: proposals.map((p) => ({
+          id: p.id,
+          label: p.title,
+          meta: `${p.date} · ${formatHour(p.startHour)} (${Math.round(p.durationHours * 60)}m) · ${p.reason}`,
+        })),
+        success: `Scheduled ${proposals.length} spaced-repetition micro-review ${proposals.length === 1 ? 'block' : 'blocks'}.`,
+        route: 'planner',
+        routeLabel: 'Open Planner',
+        apply: (current) => applySubset(current),
+        applySelected: (current, selectedIds) => applySubset(current, new Set(selectedIds)),
+      };
+    }
+
+    // 1g. Import Structured Syllabus Bundle (always requires review & approval)
+    if (action === 'import_syllabus_bundle') {
+      const subjectId = resolveSubjectId(edit.subjectId, app);
+      const rawExams = Array.isArray(edit.exams) ? edit.exams.slice(0, 20) : [];
+      const rawTasks = Array.isArray(edit.tasks) ? edit.tasks.slice(0, 40) : [];
+      const rawChapters = Array.isArray(edit.chapters) ? edit.chapters.slice(0, 25) : [];
+      const rawGoals = Array.isArray(edit.goals) ? edit.goals.slice(0, 15) : [];
+
+      type BundleEntry =
+        | { id: string; kind: 'exam'; label: string; meta: string; data: Omit<ExamItem, 'id' | 'mockHistory'> }
+        | { id: string; kind: 'task'; label: string; meta: string; data: Omit<TaskItem, 'id'> }
+        | { id: string; kind: 'chapter'; label: string; meta: string; name: string; topics: string[] }
+        | { id: string; kind: 'goal'; label: string; meta: string; data: Omit<GoalItem, 'id'> };
+
+      const entries: BundleEntry[] = [];
+      for (const item of rawExams) {
+        if (!item || typeof item !== 'object') continue;
+        const r = item as Record<string, unknown>;
+        const eTitle = typeof r.title === 'string' ? r.title.trim().slice(0, 140) : '';
+        const eDate = validDate(r.date) ? r.date : '';
+        if (!eTitle || !eDate) continue;
+        const weight = typeof r.weightPercent === 'number' && Number.isFinite(r.weightPercent) ? Math.max(0, Math.min(100, r.weightPercent)) : 0;
+        entries.push({
+          id: `syl-exam-${entries.length}`,
+          kind: 'exam',
+          label: `Exam: ${eTitle}`,
+          meta: `${eDate}${weight ? ` · ${weight}% weight` : ''}`,
+          data: {
+            title: eTitle,
+            date: eDate,
+            time: typeof r.time === 'string' ? r.time.trim() : '',
+            room: typeof r.room === 'string' ? r.room.trim() : '',
+            subjectId,
+            weightPercent: weight,
+            targetGrade: 'A',
+            prepProgress: 0,
+            syllabusTopics: [],
+          },
+        });
+      }
+      for (const item of rawTasks) {
+        if (!item || typeof item !== 'object') continue;
+        const r = item as Record<string, unknown>;
+        const tTitle = typeof r.title === 'string' ? r.title.trim().slice(0, 160) : '';
+        if (!tTitle) continue;
+        const dueDate = validDate(r.date) ? r.date : validDate(r.dueDate) ? r.dueDate : '';
+        const priority: TaskItem['priority'] =
+          r.priority === 'low' || r.priority === 'high' ? r.priority : 'medium';
+        const estimatedMinutes =
+          typeof r.estimatedMinutes === 'number' && Number.isFinite(r.estimatedMinutes) && r.estimatedMinutes > 0
+            ? Math.round(r.estimatedMinutes)
+            : 45;
+        entries.push({
+          id: `syl-task-${entries.length}`,
+          kind: 'task',
+          label: `Task: ${tTitle}`,
+          meta: `${dueDate ? `Due ${dueDate}` : 'No date'} · ${priority}`,
+          data: {
+            title: tTitle,
+            dueDate,
+            dueLabel: dueDate || 'No due date',
+            subjectId,
+            priority,
+            status: 'todo',
+            estimatedMinutes,
+            description: typeof r.description === 'string' ? r.description.trim().slice(0, 400) : '',
+            subtasks: [],
+          },
+        });
+      }
+      for (const item of rawChapters) {
+        if (!item || typeof item !== 'object') continue;
+        const r = item as Record<string, unknown>;
+        const chName =
+          typeof r.name === 'string' && r.name.trim()
+            ? r.name.trim().slice(0, 140)
+            : typeof r.title === 'string' && r.title.trim()
+              ? r.title.trim().slice(0, 140)
+              : '';
+        if (!chName) continue;
+        const topics = Array.isArray(r.topics)
+          ? r.topics.filter((t): t is string => typeof t === 'string' && Boolean(t.trim())).map((t) => t.trim().slice(0, 140))
+          : [];
+        entries.push({
+          id: `syl-chap-${entries.length}`,
+          kind: 'chapter',
+          label: `Unit: ${chName}`,
+          meta: `${topics.length} ${topics.length === 1 ? 'topic' : 'topics'}`,
+          name: chName,
+          topics,
+        });
+      }
+      for (const item of rawGoals) {
+        if (!item || typeof item !== 'object') continue;
+        const r = item as Record<string, unknown>;
+        const gTitle = typeof r.title === 'string' ? r.title.trim().slice(0, 140) : '';
+        if (!gTitle) continue;
+        const deadline = typeof r.deadline === 'string' ? r.deadline.trim().slice(0, 40) : '';
+        const msLabels = Array.isArray(r.milestones)
+          ? r.milestones.filter((m): m is string => typeof m === 'string' && Boolean(m.trim())).slice(0, 20)
+          : [];
+        const milestones = msLabels.map((m) => ({
+          id: `ms-${crypto.randomUUID()}`,
+          label: m.trim().slice(0, 160),
+          date: deadline,
+          done: false,
+        }));
+        entries.push({
+          id: `syl-goal-${entries.length}`,
+          kind: 'goal',
+          label: `Goal: ${gTitle}`,
+          meta: `${milestones.length} milestones${deadline ? ` · due ${deadline}` : ''}`,
+          data: {
+            title: gTitle,
+            category: 'syllabus',
+            current: 0,
+            target: Math.max(1, milestones.length || 100),
+            unit: milestones.length ? 'milestones' : '%',
+            deadline,
+            subjectId: subjectId || undefined,
+            milestones,
+          },
+        });
+      }
+      if (!entries.length) return;
+      const courseLabel =
+        typeof edit.courseTitle === 'string' && edit.courseTitle.trim()
+          ? edit.courseTitle.trim().slice(0, 100)
+          : 'Course Syllabus';
+      const applySubset = (current: Workspace, selectedSet?: Set<string>) => {
+        const chosen = selectedSet ? entries.filter((e) => selectedSet.has(e.id)) : entries;
+        if (!chosen.length) return false;
+        const targetSubId = subjectId || current.subjects[0]?.id || '';
+        for (const entry of chosen) {
+          if (entry.kind === 'exam') {
+            current.addExam({ ...entry.data, subjectId: entry.data.subjectId || targetSubId });
+          } else if (entry.kind === 'task') {
+            current.addTask({ ...entry.data, subjectId: entry.data.subjectId || targetSubId });
+          } else if (entry.kind === 'goal') {
+            current.addGoal({ ...entry.data, subjectId: entry.data.subjectId || targetSubId || undefined });
+          } else if (entry.kind === 'chapter' && targetSubId) {
+            current.addChapter(targetSubId, entry.name);
+            const updatedSub = current.subjects.find((s) => s.id === targetSubId);
+            const newestChapter = updatedSub?.chapters[updatedSub.chapters.length - 1];
+            if (newestChapter) {
+              for (const topic of entry.topics) {
+                current.addTopic(targetSubId, newestChapter.id, topic);
+              }
+            }
+          }
+        }
+        return true;
+      };
+      return {
+        action,
+        confirmation: true,
+        reviewKind: 'approval',
+        title: `Import syllabus bundle for “${courseLabel}” (${entries.length} items)`,
+        reviewItems: entries.map(({ id: itemId, label, meta }) => ({ id: itemId, label, meta })),
+        success: `Imported syllabus items for “${courseLabel}”.`,
+        route: 'subjects',
+        routeLabel: 'Open Subjects',
+        apply: (current) => applySubset(current),
+        applySelected: (current, selectedIds) => applySubset(current, new Set(selectedIds)),
       };
     }
 
@@ -190,9 +682,10 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       };
     }
 
-    // 4. Create Flashcards (from note or topic; existing deck OR auto-create new deck!)
+    // 4. Create Flashcards (from note or topic; always requires review & approval!)
     if (action === 'create_flashcards') {
       const cards = readGeneratedCards(edit.cards);
+      if (!cards.length) return;
       const note = resolveNote(edit.noteId, app);
       const existingDeck = resolveDeck(edit.deckId, edit.deckTitle, app);
       const requestedNewTitle =
@@ -204,48 +697,64 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       const fallbackDeck = existingDeck ?? (!edit.deckTitle ? app.decks[0] : undefined);
       const targetDeckName = fallbackDeck ? fallbackDeck.title : requestedNewTitle;
       const subjectId = resolveSubjectId(edit.subjectId, app) || note?.subjectId || '';
+      const indexedCards = cards.map((card, idx) => ({ id: `card-${idx}`, card }));
+
+      const applySubset = (current: Workspace, selectedSet?: Set<string>) => {
+        const chosen = selectedSet
+          ? indexedCards.filter((item) => selectedSet.has(item.id)).map((item) => item.card)
+          : cards;
+        if (!chosen.length) return false;
+        let deckId = fallbackDeck && current.decks.some((d) => d.id === fallbackDeck.id) ? fallbackDeck.id : '';
+        if (!deckId) {
+          const matchByName = current.decks.find(
+            (d) => d.title.toLowerCase() === targetDeckName.toLowerCase(),
+          );
+          deckId = matchByName
+            ? matchByName.id
+            : current.addDeck({
+                title: targetDeckName,
+                subjectId,
+                description: note ? `Generated from note: ${note.title}` : 'Generated with Pip',
+              });
+        }
+        const saved = new Set(
+          current.flashcards
+            .filter((card) => card.deckId === deckId)
+            .map((card) => JSON.stringify([card.front, card.back])),
+        );
+        for (const card of chosen) {
+          const key = JSON.stringify([card.front, card.back]);
+          if (saved.has(key)) continue;
+          current.addFlashcard({ ...card, deckId, hint: note?.title });
+          saved.add(key);
+        }
+        return true;
+      };
 
       return {
         action,
-        title: `Save ${cards.length} flashcards to “${targetDeckName}”`,
-        success: `Saved ${cards.length} flashcards to “${targetDeckName}” in Flashcards.`,
+        confirmation: true,
+        reviewKind: 'approval',
+        title: `Add ${cards.length} flashcards to “${targetDeckName}”`,
+        reviewItems: indexedCards.map(({ id: itemId, card }) => ({
+          id: itemId,
+          label: card.front,
+          meta: card.back.slice(0, 110),
+        })),
+        success: `Saved flashcards to “${targetDeckName}” in Flashcards.`,
         route: 'flashcards',
         routeLabel: 'Open Flashcards',
-        apply: (current) => {
-          let deckId = fallbackDeck && current.decks.some((d) => d.id === fallbackDeck.id) ? fallbackDeck.id : '';
-          if (!deckId) {
-            const matchByName = current.decks.find(
-              (d) => d.title.toLowerCase() === targetDeckName.toLowerCase(),
-            );
-            deckId = matchByName
-              ? matchByName.id
-              : current.addDeck({
-                  title: targetDeckName,
-                  subjectId,
-                  description: note ? `Generated from note: ${note.title}` : 'Generated with Pip',
-                });
-          }
-          const saved = new Set(
-            current.flashcards
-              .filter((card) => card.deckId === deckId)
-              .map((card) => JSON.stringify([card.front, card.back])),
-          );
-          for (const card of cards) {
-            const key = JSON.stringify([card.front, card.back]);
-            if (saved.has(key)) continue;
-            current.addFlashcard({ ...card, deckId, hint: note?.title });
-            saved.add(key);
-          }
-          return true;
-        },
+        apply: (current) => applySubset(current),
+        applySelected: (current, selectedIds) => applySubset(current, new Set(selectedIds)),
       };
     }
 
-    // 5. Create Practice Test (from note or topic)
+    // 5. Create Practice Test (always requires review & approval!)
     if (action === 'create_practice_test') {
       const note = resolveNote(edit.noteId, app);
       const defaultTopic = title ?? note?.title ?? 'Study Review';
       const questions = readGeneratedQuestions(edit.questions, defaultTopic);
+      if (!questions.length) return;
       const name = title ?? (note ? `${note.title} Practice Test` : 'Pip Practice Test');
       const subjectId = resolveSubjectId(edit.subjectId, app) || note?.subjectId || '';
       const rawDiff = typeof edit.difficulty === 'string' ? edit.difficulty : 'Standard';
@@ -257,26 +766,41 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
             : 'Standard';
       const sourceSection =
         typeof edit.sourceSection === 'string' ? edit.sourceSection.trim().slice(0, 120) : undefined;
+      const indexedQuestions = questions.map((q, idx) => ({ id: `q-${idx}`, q }));
+
+      const applySubset = (current: Workspace, selectedSet?: Set<string>) => {
+        const chosen = selectedSet
+          ? indexedQuestions.filter((item) => selectedSet.has(item.id)).map((item) => item.q)
+          : questions;
+        if (!chosen.length) return false;
+        current.addQuiz({
+          id: crypto.randomUUID(),
+          title: name,
+          subjectId,
+          difficulty,
+          durationMinutes: Math.max(5, chosen.length * 2),
+          questions: chosen,
+          sourceNoteId: note?.id,
+          sourceSection,
+        });
+        return true;
+      };
 
       return {
         action,
+        confirmation: true,
+        reviewKind: 'approval',
         title: `Create practice test “${name}” (${questions.length} questions)`,
-        success: `Saved “${name}” in Practice Tests with ${questions.length} questions.`,
+        reviewItems: indexedQuestions.map(({ id: itemId, q }) => ({
+          id: itemId,
+          label: q.prompt,
+          meta: `${q.type.toUpperCase()} · ${q.topic}`,
+        })),
+        success: `Saved “${name}” in Practice Tests.`,
         route: 'practice',
         routeLabel: 'Open Practice Tests',
-        apply: (current) => {
-          current.addQuiz({
-            id: crypto.randomUUID(),
-            title: name,
-            subjectId,
-            difficulty,
-            durationMinutes: Math.max(5, questions.length * 2),
-            questions,
-            sourceNoteId: note?.id,
-            sourceSection,
-          });
-          return true;
-        },
+        apply: (current) => applySubset(current),
+        applySelected: (current, selectedIds) => applySubset(current, new Set(selectedIds)),
       };
     }
 
@@ -292,15 +816,22 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
         ? edit.tags.filter((t): t is string => typeof t === 'string' && Boolean(t.trim())).slice(0, 8)
         : undefined;
 
+      // Replacing existing text is a sensitive operation, regardless of length.
+      const replacesContent = Boolean(updating && existing && existing.content.trim() && content !== existing.content.trim());
+
       return {
         action,
-        title: `${updating ? 'Update' : 'Create'} note “${name}”`,
+        ...(replacesContent ? { confirmation: true, destructive: true } : {}),
+        title: replacesContent
+          ? `Overwrite note “${name}” (replaces existing content)`
+          : `${updating ? 'Update' : 'Create'} note “${name}”`,
         success: `${updating ? 'Updated' : 'Created'} “${name}” in Notes.`,
         route: 'notes',
         routeLabel: 'Open Notes',
         apply: (current) => {
           if (updating && existing) {
-            if (!current.notes.some((n) => n.id === existing.id)) return false;
+            const latest = current.notes.find((n) => n.id === existing.id);
+            if (!latest || latest.content !== existing.content) return false;
             current.updateNote(existing.id, {
               title: name,
               content,
@@ -321,19 +852,138 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
     // 7. Delete Note / Delete Exam
     if (action === 'delete_note' || action === 'delete_exam') {
       const isNote = action === 'delete_note';
-      const record = (isNote ? app.notes : app.exams).find((item) => item.id === id);
+      const record = isNote
+        ? findSingleByIdOrTitle(app.notes, id, title, (item) => item.id, (item) => item.title)
+        : findSingleByIdOrTitle(app.exams, id, title, (item) => item.id, (item) => item.title);
       if (!record) return;
       return {
         action,
         title: isNote
           ? `Delete note “${record.title}” and its attachments`
-          : `Delete exam “${record.title}” and its mock exam history`,
+          : `Delete exam “${record.title}”${'date' in record && record.date ? ` (${record.date})` : ''} and its mock exam history`,
         success: `Deleted “${record.title}” from ${isNote ? 'Notes' : 'Exams'}.`,
         confirmation: true,
+        destructive: true,
+        route: isNote ? 'notes' : 'exams',
+        routeLabel: isNote ? 'Open Notes' : 'Open Exams',
         apply: (current) => {
           if (!(isNote ? current.notes : current.exams).some((item) => item.id === record.id)) return false;
           if (isNote) current.deleteNote(record.id);
           else current.deleteExam(record.id);
+          return true;
+        },
+      };
+    }
+
+    // 7b. Delete Deck / Delete Practice Test / Delete Subject / Delete Goal / Delete Goal Milestone
+    if (action === 'delete_deck') {
+      const deck = findSingleByIdOrTitle(app.decks, id, title, (item) => item.id, (item) => item.title);
+      if (!deck) return;
+      const cardCount = app.flashcards.filter((card) => card.deckId === deck.id).length;
+      return {
+        action,
+        confirmation: true,
+        destructive: true,
+        title: `Delete flashcard deck “${deck.title}”${cardCount > 0 ? ` (${cardCount} ${cardCount === 1 ? 'card' : 'cards'})` : ''}`,
+        success: `Deleted flashcard deck “${deck.title}”.`,
+        route: 'flashcards',
+        routeLabel: 'Open Flashcards',
+        apply: (current) => {
+          if (!current.decks.some((item) => item.id === deck.id)) return false;
+          current.deleteDeck(deck.id);
+          return true;
+        },
+      };
+    }
+
+    if (action === 'delete_practice_test') {
+      const quiz = findSingleByIdOrTitle(app.quizzes, id, title, (item) => item.id, (item) => item.title);
+      if (!quiz) return;
+      return {
+        action,
+        confirmation: true,
+        destructive: true,
+        title: `Delete practice test “${quiz.title}” (${quiz.questions.length} ${quiz.questions.length === 1 ? 'question' : 'questions'})`,
+        success: `Deleted practice test “${quiz.title}”.`,
+        route: 'practice',
+        routeLabel: 'Open Practice Tests',
+        apply: (current) => {
+          if (!current.quizzes.some((item) => item.id === quiz.id)) return false;
+          current.deleteQuiz(quiz.id);
+          return true;
+        },
+      };
+    }
+
+    if (action === 'delete_subject') {
+      const subject =
+        (id ? app.subjects.find((item) => item.id === id) : undefined) ??
+        findSingleByIdOrTitle(app.subjects, id, title, (item) => item.id, (item) => item.code) ??
+        findSingleByIdOrTitle(app.subjects, id, title, (item) => item.id, (item) => item.name);
+      if (!subject) return;
+      return {
+        action,
+        confirmation: true,
+        destructive: true,
+        title: `Delete subject “${subject.code ? `${subject.code} — ` : ''}${subject.name}” and its syllabus chapters`,
+        success: `Deleted subject “${subject.name}”.`,
+        route: 'subjects',
+        routeLabel: 'Open Subjects',
+        apply: (current) => {
+          if (!current.subjects.some((item) => item.id === subject.id)) return false;
+          current.deleteSubject(subject.id);
+          return true;
+        },
+      };
+    }
+
+    if (action === 'delete_goal') {
+      const goal = findSingleByIdOrTitle(app.goals, id, title, (item) => item.id, (item) => item.title);
+      if (!goal) return;
+      const msCount = goal.milestones?.length ?? 0;
+      return {
+        action,
+        confirmation: true,
+        destructive: true,
+        title: `Delete goal “${goal.title}”${msCount > 0 ? ` and ${msCount} ${msCount === 1 ? 'milestone' : 'milestones'}` : ''}`,
+        success: `Deleted goal “${goal.title}”.`,
+        route: 'goals',
+        routeLabel: 'Open Goals',
+        apply: (current) => {
+          if (!current.goals.some((item) => item.id === goal.id)) return false;
+          current.deleteGoal(goal.id);
+          return true;
+        },
+      };
+    }
+
+    if (action === 'delete_goal_milestone') {
+      const goalNeedle = typeof edit.goalId === 'string' ? edit.goalId.trim() : '';
+      if (!goalNeedle) return;
+      const goal = findSingleByIdOrTitle(app.goals, goalNeedle, goalNeedle, (item) => item.id, (item) => item.title);
+      if (!goal) return;
+      const milestone = findSingleByIdOrTitle(
+        goal.milestones ?? [],
+        id,
+        title,
+        (item) => item.id,
+        (item) => item.label,
+      );
+      if (!milestone) return;
+      return {
+        action,
+        confirmation: true,
+        destructive: true,
+        title: `Delete milestone “${milestone.label}” from goal “${goal.title}”`,
+        success: `Removed milestone “${milestone.label}” from “${goal.title}”.`,
+        route: 'goals',
+        routeLabel: 'Open Goals',
+        apply: (current) => {
+          const live = current.goals.find((item) => item.id === goal.id);
+          if (!live || !live.milestones.some((item) => item.id === milestone.id)) return false;
+          current.updateGoal(live.id, {
+            milestones: live.milestones.filter((item) => item.id !== milestone.id),
+          });
           return true;
         },
       };
@@ -436,17 +1086,38 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
         const date = typeof fields.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fields.date) ? fields.date : deadline;
         return label ? [{ id: `ms-${crypto.randomUUID()}`, label, date, done: false }] : [];
       });
+      const requiresReview = milestones.length >= 2;
+      const applyGoal = (current: Workspace, selectedSet?: Set<string>) => {
+        if (current.goals.some((g) => g.title.toLowerCase() === title.toLowerCase())) return true;
+        const chosenMilestones = selectedSet
+          ? milestones.filter((m) => selectedSet.has(m.id))
+          : milestones;
+        current.addGoal({ title, category, current: 0, target, unit, deadline, subjectId, milestones: chosenMilestones });
+        return true;
+      };
       return {
         action,
-        title: `Add goal “${title}” (${target} ${unit})`,
+        ...(requiresReview
+          ? {
+              confirmation: true,
+              reviewKind: 'approval' as const,
+              reviewItems: milestones.map((m) => ({
+                id: m.id,
+                label: m.label,
+                meta: m.date ? `Target ${m.date}` : undefined,
+              })),
+            }
+          : {}),
+        title: `Add goal “${title}” (${target} ${unit})${milestones.length ? ` · ${milestones.length} milestones` : ''}`,
         success: `Created goal “${title}” in Goals.`,
         route: 'goals',
         routeLabel: 'Open Goals',
-        apply: (current) => {
-          if (current.goals.some((g) => g.title.toLowerCase() === title.toLowerCase())) return true;
-          current.addGoal({ title, category, current: 0, target, unit, deadline, subjectId, milestones });
-          return true;
-        },
+        apply: (current) => applyGoal(current),
+        ...(requiresReview
+          ? {
+              applySelected: (current: Workspace, selectedIds: string[]) => applyGoal(current, new Set(selectedIds)),
+            }
+          : {}),
       };
     }
 
@@ -517,51 +1188,158 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
 
     // 10. Delete / Complete Tasks
     if (action === 'delete_tasks' || action === 'complete_tasks') {
-      const ids: unknown = edit.ids;
-      if (
-        !Array.isArray(ids) ||
-        ids.length === 0 ||
-        ids.length > 100 ||
-        ids.some((value) => typeof value !== 'string') ||
-        new Set(ids).size !== ids.length
-      ) {
-        return;
-      }
-      const targets = ids.map((taskId) => app.tasks.find((task) => task.id === taskId));
-      if (targets.some((task) => !task)) return;
       const deleting = action === 'delete_tasks';
+      const resolvedMap = new Map<string, TaskItem>();
+
+      if (deleting && edit.completedOnly === true) {
+        for (const task of app.tasks) {
+          if (task.status === 'done') resolvedMap.set(task.id, task);
+        }
+      } else {
+        const rawIds: string[] = [];
+        if (Array.isArray(edit.ids)) {
+          if (edit.ids.length > 100 || edit.ids.some((value) => typeof value !== 'string')) return;
+          rawIds.push(...edit.ids.map((s) => s.trim()).filter(Boolean));
+        } else if (id) {
+          rawIds.push(id);
+        }
+        const rawTitles: string[] = [];
+        if (Array.isArray(edit.titles)) {
+          if (edit.titles.length > 100 || edit.titles.some((value) => typeof value !== 'string')) return;
+          rawTitles.push(...edit.titles.map((s) => s.trim()).filter(Boolean));
+        } else if (title && rawIds.length === 0) {
+          rawTitles.push(title);
+        }
+
+        if (rawIds.length === 0 && rawTitles.length === 0) return;
+
+        for (const token of rawIds) {
+          const match = findSingleByIdOrTitle(app.tasks, token, undefined, (t) => t.id, (t) => t.title);
+          if (!match) return;
+          resolvedMap.set(match.id, match);
+        }
+        for (const tTitle of rawTitles) {
+          const match = findSingleByIdOrTitle(app.tasks, undefined, tTitle, (t) => t.id, (t) => t.title);
+          if (!match) return;
+          resolvedMap.set(match.id, match);
+        }
+      }
+
+      const targets = Array.from(resolvedMap.values());
+      if (targets.length === 0 || targets.length > 100) return;
+      const targetIds = targets.map((t) => t.id);
+
       // Single-task completion is non-destructive and safe; deletion or bulk completion asks for confirmation
-      const needsConfirm = deleting || ids.length > 1;
+      const needsConfirm = deleting || targets.length > 1;
+      const labelPrefix = deleting
+        ? edit.completedOnly === true
+          ? `Clear ${targets.length} completed ${targets.length === 1 ? 'task' : 'tasks'}`
+          : `Delete ${targets.length} ${targets.length === 1 ? 'task' : 'tasks'}`
+        : `Complete ${targets.length} ${targets.length === 1 ? 'task' : 'tasks'}`;
+
       return {
         action,
         confirmation: needsConfirm,
-        title: `${deleting ? 'Delete' : 'Complete'} ${ids.length} ${ids.length === 1 ? 'task' : 'tasks'} · ${targets.map((task) => task?.title).join(', ')}`,
-        success: `${deleting ? 'Deleted' : 'Completed'} ${ids.length} ${ids.length === 1 ? 'task' : 'tasks'}.`,
+        ...(deleting ? { destructive: true } : {}),
+        title:
+          targets.length <= 2
+            ? `${labelPrefix} · ${targets.map((task) => task.title).join(', ')}`
+            : labelPrefix,
+        details: targets.length > 2 ? targets.map((task) => `${task.title}${task.dueDate ? ` (due ${task.dueDate})` : ''}`) : undefined,
+        success: `${deleting ? 'Deleted' : 'Completed'} ${targets.length} ${targets.length === 1 ? 'task' : 'tasks'}.`,
         route: 'tasks',
         routeLabel: 'Open Tasks',
         apply: (current) => {
-          if (targets.some((task) => !current.tasks.some((item) => item.id === task?.id))) return false;
-          if (deleting) current.deleteTasks(ids);
-          else for (const taskId of ids) current.updateTask(taskId, { status: 'done' });
+          const existingIds = targetIds.filter((taskId) => current.tasks.some((item) => item.id === taskId));
+          if (existingIds.length === 0) return false;
+          if (deleting) current.deleteTasks(existingIds);
+          else for (const taskId of existingIds) current.updateTask(taskId, { status: 'done' });
           return true;
         },
       };
     }
 
-    // 11. Delete Event
-    if (action === 'delete_event' && id) {
-      const event = app.sessions.find((item) => item.id === id);
-      if (!event || (event.recurring && edit.scope !== 'occurrence')) return;
+    // 11. Delete Event (single)
+    if (action === 'delete_event') {
+      const eventDate = validDate(edit.date) ? edit.date : undefined;
+      const eventHour = parseHour(edit.startHour ?? edit.startTime);
+      const event = resolveSession(id, title, eventDate, eventHour, app);
+      if (!event) return;
       return {
         action,
         confirmation: true,
-        title: `Delete “${event.title}” on ${event.date}${event.recurring ? ' · this occurrence only' : ''}`,
-        success: `Removed “${event.title}” from Calendar.`,
+        destructive: true,
+        title: `Delete calendar event “${event.title}” on ${event.date} at ${formatHour(event.startHour)}${event.recurring ? ' · this occurrence only' : ''}`,
+        success: `Removed “${event.title}” (${event.date}) from Calendar.`,
         route: 'planner',
         routeLabel: 'Open Planner',
         apply: (current) => {
-          if (!current.sessions.some((item) => item.id === id)) return false;
-          current.deleteSession(id);
+          if (!current.sessions.some((item) => item.id === event.id)) return false;
+          current.deleteSession(event.id);
+          return true;
+        },
+      };
+    }
+
+    // 11b. Delete Events (bulk calendar removal)
+    if (action === 'delete_events') {
+      const hasIds = Array.isArray(edit.ids) && edit.ids.length > 0;
+      const dateFilter = validDate(edit.date) ? edit.date : undefined;
+      const titleContains =
+        typeof edit.titleContains === 'string' && edit.titleContains.trim()
+          ? edit.titleContains.trim().toLowerCase()
+          : undefined;
+      const blockTypeFilter =
+        edit.blockType === 'study' || edit.blockType === 'sleep' || edit.blockType === 'free'
+          ? edit.blockType
+          : undefined;
+
+      if (!hasIds && !dateFilter && !titleContains && !blockTypeFilter) return;
+
+      const resolved = new Map<string, StudySession>();
+      if (hasIds) {
+        const rawIds = edit.ids as unknown[];
+        if (rawIds.length > 50 || rawIds.some((v) => typeof v !== 'string')) return;
+        for (const token of rawIds as string[]) {
+          const ev = resolveSession(token.trim(), undefined, dateFilter, undefined, app);
+          if (ev) resolved.set(ev.id, ev);
+        }
+      } else {
+        for (const session of app.sessions) {
+          if (dateFilter && session.date !== dateFilter) continue;
+          if (titleContains && !session.title.toLowerCase().includes(titleContains)) continue;
+          if (blockTypeFilter && (session.blockType ?? 'study') !== blockTypeFilter) continue;
+          resolved.set(session.id, session);
+        }
+      }
+
+      const targets = Array.from(resolved.values())
+        .sort((a, b) => a.date.localeCompare(b.date) || a.startHour - b.startHour)
+        .slice(0, 50);
+      if (targets.length === 0) return;
+
+      const scopeDesc = dateFilter
+        ? ` on ${dateFilter}`
+        : titleContains
+          ? ` matching “${edit.titleContains}”`
+          : '';
+
+      return {
+        action,
+        confirmation: true,
+        destructive: true,
+        title: `Delete ${targets.length} calendar ${targets.length === 1 ? 'event' : 'events'}${scopeDesc}`,
+        details: targets.map(
+          (ev) =>
+            `${ev.title} · ${ev.date} at ${formatHour(ev.startHour)} (${ev.durationHours}h)${ev.recurring ? ' — occurrence' : ''}`,
+        ),
+        success: `Removed ${targets.length} calendar ${targets.length === 1 ? 'event' : 'events'}${scopeDesc}.`,
+        route: 'planner',
+        routeLabel: 'Open Planner',
+        apply: (current) => {
+          const liveTargets = targets.filter((ev) => current.sessions.some((item) => item.id === ev.id));
+          if (liveTargets.length === 0) return false;
+          for (const ev of liveTargets) current.deleteSession(ev.id);
           return true;
         },
       };
@@ -616,6 +1394,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       if (!task || (edit.date !== undefined && edit.date !== '' && !validDate(edit.date))) return;
       const patch: Partial<TaskItem> = {};
       const changes: string[] = [];
+      let isRollback = false;
       if (title && title !== task.title) {
         patch.title = title;
         changes.push(`rename to “${title}”`);
@@ -636,11 +1415,17 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
         edit.status !== task.status
       ) {
         patch.status = edit.status;
-        changes.push(edit.status === 'done' ? 'mark complete' : `status ${edit.status}`);
+        if (task.status === 'done' && edit.status !== 'done') {
+          isRollback = true;
+          changes.push(`reopen (${edit.status.replace('_', ' ')})`);
+        } else {
+          changes.push(edit.status === 'done' ? 'mark complete' : `status ${edit.status}`);
+        }
       }
       if (!changes.length) return;
       return {
         action,
+        ...(isRollback ? { confirmation: true, destructive: true } : {}),
         title: `Update “${task.title}” · ${changes.join(', ')}`,
         success: `Updated task “${task.title}” (${changes.join(', ')}).`,
         route: 'tasks',

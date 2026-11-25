@@ -399,8 +399,26 @@ export function normalizeMarkdownForDisplay(raw: string): string {
   return segments
     .map((seg) => {
       if (seg.isCode) return seg.content;
-      const withTables = normalizeTablesInSegment(seg.content);
-      return normalizeMathAndInlineInSegment(withTables);
+      // Extract any raw inline <svg ...>...</svg> blocks into safe fenced ```svg blocks
+      // so react-markdown with skipHtml renders them through AssistantDiagram instead of dropping them.
+      const svgTokens: string[] = [];
+      const withoutInlineSvg = seg.content.replace(
+        /(?:<\?xml[\s\S]*?\?>\s*)?<svg(?=[\s>])[\s\S]*?<\/svg>/gi,
+        (match) => {
+          const idx = svgTokens.length;
+          svgTokens.push(match.trim());
+          return `\n\n@@STUDYFLOW_INLINE_SVG_${idx}@@\n\n`;
+        },
+      );
+      const withTables = normalizeTablesInSegment(withoutInlineSvg);
+      let normalized = normalizeMathAndInlineInSegment(withTables);
+      if (svgTokens.length > 0) {
+        normalized = normalized.replace(/@@STUDYFLOW_INLINE_SVG_(\d+)@@/g, (_m, idxStr: string) => {
+          const rawSvg = svgTokens[Number(idxStr)] ?? '';
+          return `\`\`\`svg\n${rawSvg}\n\`\`\``;
+        });
+      }
+      return normalized;
     })
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')

@@ -105,8 +105,13 @@ export function workspaceContext(
       lower,
     ) || /විශ්ලේෂණය|උපදෙස්|සැලසුම්/.test(lower);
 
+  const asksDestructive =
+    /\b(delete|remove|cancel|clear|drop|wipe|erase|purge|uncheck|reopen|undo|reset)\b/i.test(lower);
+
   const asksCalendar =
     asksAnalysisOrAdvice ||
+    asksDestructive ||
+    page === 'planner' ||
     /\b(calendar|schedule|reschedule|session|event|class|block|slot|free time|busy|book|move|shift|put|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|what.?s next|what.?s on|upcoming|rebalance|planner)\b/i.test(
       lower,
     ) ||
@@ -114,29 +119,45 @@ export function workspaceContext(
 
   const asksTasks =
     asksAnalysisOrAdvice ||
-    /\b(tasks?|to-?do|assignments?|deadlines?|homework|complete|finish|overdue|remind|priority)\b/i.test(lower);
+    asksDestructive ||
+    page === 'tasks' ||
+    /\b(tasks?|to-?do|assignments?|deadlines?|homework|complete|finish|overdue|remind|priority|extract)\b/i.test(lower);
 
   const asksExams =
-    asksAnalysisOrAdvice || /\b(exams?|finals?|midterms?|tests?|prep|grade|weight)\b/i.test(lower);
+    asksAnalysisOrAdvice ||
+    asksDestructive ||
+    page === 'exams' ||
+    /\b(exams?|finals?|midterms?|tests?|prep|grade|weight|mock|cheat sheet)\b/i.test(lower);
 
   const asksGoals =
-    asksAnalysisOrAdvice || /\b(goals?|targets?|milestones?)\b/i.test(lower);
+    asksAnalysisOrAdvice ||
+    asksDestructive ||
+    page === 'goals' ||
+    /\b(goals?|targets?|milestones?)\b/i.test(lower);
 
   const asksNote =
-    /\b(notes?|flashcards?|cards?|decks?|quiz|quizzes|practice tests?|practice|selected section|syllabus|summarize|summary|from my|study guide)\b/i.test(
+    /\b(notes?|flashcards?|cards?|decks?|quiz|quizzes|practice tests?|practice|selected section|syllabus|summarize|summary|from my|study guide|cheat sheet|explain|passage|extract|concepts?|formulas?)\b/i.test(
       lower,
     ) ||
     page === 'notes' ||
     /සටහන/.test(lower);
 
   const asksFlashcards =
-    asksAnalysisOrAdvice || /\b(flashcards?|decks?|cards?|spaced repetition|recall|due)\b/i.test(lower);
+    asksAnalysisOrAdvice ||
+    asksDestructive ||
+    page === 'flashcards' ||
+    /\b(flashcards?|decks?|cards?|spaced repetition|recall|due)\b/i.test(lower);
 
   const asksPractice =
-    asksAnalysisOrAdvice || /\b(practice|quiz|quizzes|mock|test|weak topics?|score)\b/i.test(lower);
+    asksAnalysisOrAdvice ||
+    asksDestructive ||
+    page === 'practice' ||
+    /\b(practice|quiz|quizzes|mock|test|weak topics?|score)\b/i.test(lower);
 
   const asksFocus =
-    asksAnalysisOrAdvice || /\b(focus|pomodoro|timer|stopwatch|deep work|hours|streak)\b/i.test(lower);
+    asksAnalysisOrAdvice ||
+    page === 'focus' ||
+    /\b(focus|pomodoro|timer|stopwatch|deep work|hours|streak)\b/i.test(lower);
 
   const diag = computeWorkspaceDiagnostics(
     {
@@ -198,16 +219,21 @@ export function workspaceContext(
       (session) => session.date === nextDay(-1) && session.startHour + session.durationHours > 24 + currentHour,
     );
     const matching = best(
-      chronological.filter((session) => session.date >= nextDay(-1)),
+      chronological.filter((session) => session.date >= nextDay(asksDestructive ? -7 : -1)),
       (row) => row.title,
       false,
-      4,
+      asksDestructive ? 8 : 4,
     );
+    const targetDaySessions = asksDestructive
+      ? chronological.filter((session) => session.date === tonight)
+      : [];
     const current = lower.includes('tomorrow') ? [] : activeOvernight;
-    const relevant = [...new Map([...matching, ...current, ...upcoming.slice(0, 8)].map((row) => [row.id, row])).values()].slice(
-      0,
-      10,
-    );
+    const calendarLimit = asksDestructive ? 16 : 10;
+    const relevant = [
+      ...new Map(
+        [...matching, ...targetDaySessions, ...current, ...upcoming.slice(0, 8)].map((row) => [row.id, row]),
+      ).values(),
+    ].slice(0, calendarLimit);
     add(
       'Calendar',
       relevant.map(({ id, title, date, startHour, durationHours, blockType, recurring, subjectId }) => ({
@@ -232,12 +258,18 @@ export function workspaceContext(
   }
 
   if (asksTasks) {
+    const wantsCompleted = /\b(completed|done|finished)\b/i.test(lower);
     const openFirst = [...app.tasks].sort((a, b) => {
-      if (a.status === 'done' && b.status !== 'done') return 1;
-      if (a.status !== 'done' && b.status === 'done') return -1;
+      if (wantsCompleted) {
+        if (a.status === 'done' && b.status !== 'done') return -1;
+        if (a.status !== 'done' && b.status === 'done') return 1;
+      } else {
+        if (a.status === 'done' && b.status !== 'done') return 1;
+        if (a.status !== 'done' && b.status === 'done') return -1;
+      }
       return (a.dueDate || '9999-12-31').localeCompare(b.dueDate || '9999-12-31');
     });
-    const picked = best(openFirst, (row) => `${row.title} ${row.description}`, true, 10);
+    const picked = best(openFirst, (row) => `${row.title} ${row.description}`, true, asksDestructive ? 14 : 10);
     add(
       'Tasks',
       picked.map(({ id, title, status, priority, dueDate, subjectId, estimatedMinutes }) => ({
@@ -302,24 +334,30 @@ export function workspaceContext(
     }
     add(
       'Notes',
-      notesToSend.slice(0, 3).map((note) => ({
-        id: note.id,
-        title: clip(note.title),
-        subjectId: note.subjectId,
-        isSelected: note.id === app.selectedNoteId,
-        content:
-          note.content.slice(0, 2600) ||
-          note.pdf?.pages
-            ?.slice(0, 3)
-            .map((part) => part.text.slice(0, 900))
-            .join('\n') ||
-          '',
-      })),
+      notesToSend.slice(0, 3).map((note, idx) => {
+        const isPrimary = note.id === app.selectedNoteId || idx === 0;
+        const contentLimit = isPrimary ? 8000 : 2400;
+        const pdfPageLimit = isPrimary ? 6 : 2;
+        return {
+          id: note.id,
+          title: clip(note.title),
+          subjectId: note.subjectId,
+          tags: note.tags.slice(0, 6),
+          isSelected: note.id === app.selectedNoteId,
+          content:
+            note.content.slice(0, contentLimit) ||
+            note.pdf?.pages
+              ?.slice(0, pdfPageLimit)
+              .map((part) => part.text.slice(0, 1200))
+              .join('\n') ||
+            '',
+        };
+      }),
     );
-  } else if (asksAnalysisOrAdvice && app.notes.length > 0) {
+  } else if ((asksAnalysisOrAdvice || asksDestructive) && app.notes.length > 0) {
     add(
       'Notes Catalog',
-      app.notes.slice(0, 6).map((note) => ({
+      best(app.notes, (row) => row.title, true, asksDestructive ? 10 : 6).map((note) => ({
         id: note.id,
         title: clip(note.title),
         subjectId: note.subjectId,
@@ -361,12 +399,22 @@ export function workspaceContext(
       'Subjects',
       matchedSubjects.map((sub) => {
         const summary = diag.subjectsSummary.find((s) => s.id === sub.id);
+        const focusTopics =
+          asksAnalysisOrAdvice || asksExams || asksPractice || asksFlashcards || page === 'subjects'
+            ? sub.chapters
+                .filter((ch) => !ch.archived)
+                .flatMap((ch) => ch.topics)
+                .filter((tp) => !tp.completed || tp.confidence <= 2)
+                .slice(0, 6)
+                .map((tp) => tp.title)
+            : [];
         return {
           id: sub.id,
           code: sub.code,
           name: clip(sub.name),
           completionPercent: summary?.completionPercent ?? 0,
           pendingTasks: summary?.pendingTasks ?? 0,
+          ...(focusTopics.length ? { weakOrPendingTopics: focusTopics } : {}),
         };
       }),
     );
