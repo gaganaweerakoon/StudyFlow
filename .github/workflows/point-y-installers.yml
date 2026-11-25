@@ -1,5 +1,9 @@
 name: StudyFlow Windows and Android package
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/point-y-installers.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,7 +26,7 @@ jobs:
       - name: Check TypeScript
         run: bun run lint
       - name: Run existing tests
-        run: node --import tsx --test src/utils/studyLogic.test.ts src/utils/workspaceMetrics.test.ts src/companion/offlineFocus.test.ts server/studyAssistant.test.ts
+        run: node --import tsx --test src/utils/studyLogic.test.ts src/utils/workspaceMetrics.test.ts src/companion/offlineFocus.test.ts src/notes/syllabusImport.test.ts server/studyAssistant.test.ts
       - name: Test Rust storage and Pip
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml -p studyflow-storage -p studyflow-assistant -p studyflow-local-companion
       - name: Verify the default Gemini model with the native desktop transport
@@ -94,6 +98,6 @@ jobs:
           sha256sum installers/*
       - uses: actions/upload-artifact@v4
         with:
-          name: StudyFlow-Point-Y-Windows-Android
+          name: StudyFlow-Focus-Syllabus-Windows-Android
           path: installers/*
           if-no-files-found: error
