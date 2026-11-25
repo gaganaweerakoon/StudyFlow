@@ -69,7 +69,6 @@ const CODE_EXTENSIONS = new Set([
 ]);
 
 const MAX_DOCUMENT_FILE_BYTES = 20_000_000;
-const MAX_SINGLE_DOC_TEXT = 45_000;
 
 export function inferPipDocumentKind(fileName: string, mimeType = ''): 'image' | ChatDocumentKind | null {
   const lower = fileName.toLowerCase();
@@ -158,9 +157,7 @@ async function extractPptxSlides(file: File): Promise<{ text: string; slideCount
 }
 
 function truncateDocumentText(raw: string): string {
-  const clean = raw.replace(/\r\n?/g, '\n').trim();
-  if (clean.length <= MAX_SINGLE_DOC_TEXT) return clean;
-  return `${clean.slice(0, MAX_SINGLE_DOC_TEXT)}\n\n[Truncated after ${MAX_SINGLE_DOC_TEXT.toLocaleString()} characters for context budget]`;
+  return raw.trim();
 }
 
 export async function preparePipAttachment(
