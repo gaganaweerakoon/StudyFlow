@@ -12,6 +12,7 @@ import {
   CalendarDays,
   BarChart3,
   Bot,
+  FlaskConical,
   X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -136,6 +137,17 @@ export const CommandPalette: React.FC = () => {
         onSelect: () => {
           close();
           setRoute('assistant');
+        },
+      },
+      {
+        id: 'act-lab',
+        section: 'Quick Navigation',
+        title: 'Open Study Lab',
+        subtitle: 'Math & Code Playground (JS, Python, SQL, LaTeX) and SVG Whiteboard',
+        icon: FlaskConical,
+        onSelect: () => {
+          close();
+          setRoute('lab');
         },
       },
     ];

@@ -13,6 +13,7 @@ import { TopBar } from './components/shell/TopBar';
 import { CommandPalette } from './components/shell/CommandPalette';
 import { FloatingMiniTimer } from './components/shell/FloatingMiniTimer';
 import { QuickModals } from './components/shell/QuickModals';
+import { SessionStartBanner } from './components/shell/SessionStartBanner';
 import { DashboardView } from './components/views/DashboardView';
 import { PlannerView } from './components/views/PlannerView';
 import { FocusTimerView } from './components/views/FocusTimerView';
@@ -23,6 +24,7 @@ import { NotesView } from './components/views/NotesView';
 import { FlashcardsView } from './components/views/FlashcardsView';
 import { PracticeTestsView } from './components/views/PracticeTestsView';
 import { ExamsView } from './components/views/ExamsView';
+import { StudyLabView } from './components/views/StudyLabView';
 import { AnalyticsView } from './components/views/AnalyticsView';
 import { AiAssistantView } from './components/views/AiAssistantView';
 import { AchievementsView } from './components/views/AchievementsView';
@@ -61,6 +63,8 @@ const StudyFlowShell: React.FC = () => {
         return <PracticeTestsView />;
       case 'exams':
         return <ExamsView />;
+      case 'lab':
+        return <StudyLabView />;
       case 'analytics':
         return <AnalyticsView />;
       case 'assistant':
@@ -105,6 +109,7 @@ const StudyFlowShell: React.FC = () => {
       </div>
 
       <CommandPalette />
+      <SessionStartBanner />
       <FloatingMiniTimer />
       <FloatingAssistant />
       <QuickModals />

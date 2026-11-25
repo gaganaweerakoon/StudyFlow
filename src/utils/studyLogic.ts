@@ -130,7 +130,9 @@ export function filterAndSortTasks(
   }
 ): TaskItem[] {
   const q = (opts.query ?? '').trim().toLowerCase();
-  const today = opts.todayIso ?? '2026-11-22';
+  const now = new Date();
+  const realToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const today = opts.todayIso ?? realToday;
 
   const filtered = tasks.filter((t) => {
     if (opts.subjectId && opts.subjectId !== 'all' && t.subjectId !== opts.subjectId) {

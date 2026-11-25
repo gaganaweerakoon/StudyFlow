@@ -1,5 +1,5 @@
-import { currentStudySession } from '../utils/calendarLayout';
 import { collectRewards, rewardSummary, type RewardLedger } from '../utils/rewards';
+import { syncGoalsForTaskStatusChange } from '../utils/goalProgress';
 import { wipeWorkspace, WIPE_OPTIONS, type WipeSection } from '../desktop/wipeWorkspace';
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type {
@@ -19,6 +19,7 @@ import type {
   NotificationItem,
   PracticeAttempt,
   PracticeQuiz,
+  StudyLabLaunchState,
   StudySession,
   Subject,
   TaskItem,
@@ -48,6 +49,22 @@ import { chooseLegacyBackup, legacyOccurrences, mapLegacyWorkspace, type LegacyA
 import { localDay } from '../assistant/workspaceContext';
 import { resolveOfflineFocus, validOfflineRecord, type OfflineFocusRecord, type OfflineReceipts } from '../companion/offlineFocus';
 import { scheduleFlashcardReview, type ReviewRating } from '../utils/studyLogic';
+import {
+  advanceFocusTimerState,
+  clampBreakMinutes,
+  clampFocusHoursMinutes,
+  clampFocusMinutes,
+  computeSwitchElapsedMinutes,
+  currentStudySessionRemaining,
+  detectPlannedSessionInterruption,
+  endFocusBreakState,
+  formatHoursMinutesCompact,
+  studySessionRemainingSeconds,
+  takeFocusBreakState,
+  type PausedFocusSnapshot,
+  type PendingSessionPrompt,
+} from '../utils/focusTimerLogic';
+import { playSessionStartChime, showBrowserSessionNotification } from '../utils/soundAlert';
 
 export interface ToastMessage {
   id: string;
@@ -70,10 +87,13 @@ export interface FocusTimerState {
   miniVisible: boolean;
   completionModalOpen: boolean;
   lastCompletedMinutes: number;
+  pausedFocus?: PausedFocusSnapshot;
+  breakDurationMin?: number;
+  manualDurationOverride?: boolean;
 }
 
 export type PhoneFocusAction = {
-  action: 'start' | 'pause' | 'resume' | 'reset' | 'complete' | 'offline_sync';
+  action: 'start' | 'pause' | 'resume' | 'reset' | 'complete' | 'take_break' | 'end_break' | 'offline_sync';
   sessionId?: string;
   record?: OfflineFocusRecord;
 };
@@ -93,6 +113,7 @@ export interface UserPreferences {
   weeklyGoalHours: number;
   pomodoroFocusMin: number;
   pomodoroBreakMin: number;
+  breaksEnabled?: boolean;
   autoStartBreaks: boolean;
   ambientSound: 'None' | 'Soft Rain' | 'Library Hum' | 'Brown Noise';
   desktopNotifications: boolean;
@@ -188,8 +209,10 @@ interface AppContextValue {
 
   decks: FlashcardDeck[];
   addDeck: (deck: Omit<FlashcardDeck, 'id' | 'lastReviewed' | 'retentionRate'>) => string;
+  deleteDeck: (id: string) => void;
   flashcards: FlashcardItem[];
   addFlashcard: (card: Omit<FlashcardItem, 'id' | 'intervalDays' | 'easeFactor' | 'dueToday' | 'mastery'>) => void;
+  importFlashcardsBulk: (deckId: string, cards: Array<{ front: string; back: string; hint?: string }>) => number;
   reviewFlashcard: (cardId: string, rating: ReviewRating) => void;
 
   exams: ExamItem[];
@@ -199,19 +222,33 @@ interface AppContextValue {
 
   quizzes: PracticeQuiz[];
   addQuiz: (quiz:PracticeQuiz) => void;
+  deleteQuiz: (id: string) => void;
+  updateQuizQuestionExplanation: (quizId: string, questionId: string, explanation: string) => void;
   recordQuizScore: (quizId: string, attempt: PracticeAttempt) => void;
+
+  studyLabLaunch: StudyLabLaunchState | null;
+  openStudyLab: (launch?: Partial<StudyLabLaunchState>) => void;
+  clearStudyLabLaunch: () => void;
 
   focusTimer: FocusTimerState;
   focusClock: { at: number; timer: FocusTimerState };
   applyPhoneFocusAction: (command: PhoneFocusAction) => void;
   setFocusMode: (mode: FocusTimerState['mode'], customMinutes?: number) => void;
+  setFocusDuration: (hours: number, minutes: number, mode?: 'Countdown' | 'Custom') => void;
+  useCurrentSessionRemainder: () => void;
+  startCurrentSessionFocus: () => void;
   toggleFocusRunning: () => void;
+  takeFocusBreak: (breakMinutes?: number) => void;
+  endFocusBreak: () => void;
   resetFocusTimer: () => void;
   setFocusContext: (subjectId: string, taskTitle: string, calendarSessionId?: string) => void;
   setMiniTimerVisible: (visible: boolean) => void;
   triggerCompleteFocusSession: () => void;
   submitFocusCompletion: (rating: number) => void;
   dismissFocusCompletion: () => void;
+  pendingSessionPrompt: PendingSessionPrompt | null;
+  switchToPendingSession: () => void;
+  dismissPendingSessionPrompt: () => void;
   focusHistory: FocusHistoryItem[];
 
 
@@ -278,16 +315,7 @@ export interface WorkspacePersistence {
 }
 
 function advanceFocusTimer(timer: FocusTimerState, seconds: number): FocusTimerState {
-  if (!timer.running || seconds <= 0) return timer;
-  if (timer.mode === 'Stopwatch') return { ...timer, elapsedSeconds: timer.elapsedSeconds + seconds };
-  if (seconds >= timer.secondsLeft) {
-    return {
-      ...timer, secondsLeft: 0, elapsedSeconds: timer.elapsedSeconds + timer.secondsLeft,
-      running: false, completionModalOpen: true,
-      lastCompletedMinutes: Math.max(1, Math.round(timer.totalSeconds / 60)),
-    };
-  }
-  return { ...timer, secondsLeft: timer.secondsLeft - seconds, elapsedSeconds: timer.elapsedSeconds + seconds };
+  return advanceFocusTimerState(timer, seconds);
 }
 
 export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: WorkspacePersistence }> = ({ children, workspace }) => {
@@ -300,6 +328,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<ActiveModalType>(null);
+  const [studyLabLaunch, setStudyLabLaunch] = useState<StudyLabLaunchState | null>(null);
 
   const [theme, setTheme] = useState<ThemeId>(initial?.theme ?? 'light');
   const [accentColor, setAccentColor] = useState<string>(initial?.accentColor ?? '#4F46E5');
@@ -308,6 +337,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetConfig[]>(initial?.dashboardWidgets ?? INITIAL_DASHBOARD_WIDGETS);
   const [subjects, setSubjects] = useState<Subject[]>(initial?.subjects ?? (desktop ? [] : INITIAL_SUBJECTS));
   const [tasks, setTasks] = useState<TaskItem[]>(initial?.tasks ?? (desktop ? [] : INITIAL_TASKS));
+  const tasksRef = useRef<TaskItem[]>(tasks);
+  tasksRef.current = tasks;
   const [savedSessions, setSessions] = useState<StudySession[]>(initial?.sessions ?? (desktop ? [] : INITIAL_SESSIONS));
   const [goals, setGoals] = useState<GoalItem[]>(initial?.goals ?? (desktop ? [] : INITIAL_GOALS));
   const [folders] = useState<NoteFolder[]>(initial?.folders ?? (desktop ? [{ id: 'notes', name: 'Notes' }] : INITIAL_FOLDERS));
@@ -332,7 +363,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     weeklyGoalHours: 32,
     pomodoroFocusMin: 25,
     pomodoroBreakMin: 5,
-    autoStartBreaks: true,
+    breaksEnabled: true,
+    autoStartBreaks: false,
     ambientSound: 'None',
     desktopNotifications: true,
     examReminders: true,
@@ -381,6 +413,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     focusTimer.running, focusTimer.mode, focusTimer.phase, focusTimer.totalSeconds,
     focusTimer.subjectId, focusTimer.taskTitle, focusTimer.calendarSessionId, focusTimer.cycleCount, focusTimer.miniVisible,
     focusTimer.completionModalOpen, focusTimer.lastCompletedMinutes, focusTimer.startedAtMs, focusTimer.mobileRunId,
+    focusTimer.pausedFocus, focusTimer.breakDurationMin,
     focusTimer.running ? undefined : focusTimer.secondsLeft,
     focusTimer.running ? undefined : focusTimer.elapsedSeconds,
   ]);
@@ -482,38 +515,273 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     return () => window.clearInterval(interval);
   }, [focusTimer.running]);
 
+  // Planned-session interruption watcher: chimes & prompts when a scheduled session starts during another timer
+  const [pendingSessionPrompt, setPendingSessionPrompt] = useState<PendingSessionPrompt | null>(null);
+  const alertedSessionKeysRef = useRef<Set<string>>(new Set());
+
+  const isFocusEngaged =
+    focusTimer.running || focusTimer.elapsedSeconds > 0 || Boolean(focusTimer.pausedFocus);
+
+  useEffect(() => {
+    if (!isFocusEngaged) {
+      setPendingSessionPrompt(null);
+      return;
+    }
+
+    const evaluate = () => {
+      const now = new Date();
+      // Keep an existing banner's remaining countdown fresh, or clear it once the session ends / matches current timer
+      setPendingSessionPrompt((existing) => {
+        if (!existing) return null;
+        if (focusTimer.calendarSessionId === existing.session.id) return null;
+        const freshRemaining = studySessionRemainingSeconds(existing.session, now);
+        if (freshRemaining === null) return null;
+        return { ...existing, remainingSeconds: freshRemaining };
+      });
+
+      const detected = detectPlannedSessionInterruption({
+        sessions,
+        timer: focusTimer,
+        now,
+        alertedKeys: alertedSessionKeysRef.current,
+      });
+      if (detected) {
+        alertedSessionKeysRef.current.add(detected.occurrenceKey);
+        setPendingSessionPrompt(detected);
+        playSessionStartChime();
+        const sub = subjects.find((s) => s.id === detected.session.subjectId);
+        if (preferences.desktopNotifications) {
+          showBrowserSessionNotification(
+            'Planned study session starting',
+            `${sub ? `${sub.code} · ` : ''}${detected.session.title} (${formatHoursMinutesCompact(detected.remainingSeconds)} left)`
+          );
+        }
+      }
+    };
+
+    evaluate();
+    const interval = window.setInterval(evaluate, 1000);
+    return () => window.clearInterval(interval);
+  }, [
+    isFocusEngaged,
+    focusTimer.running,
+    focusTimer.elapsedSeconds,
+    focusTimer.pausedFocus,
+    focusTimer.calendarSessionId,
+    focusTimer.phase,
+    sessions,
+    subjects,
+    preferences.desktopNotifications,
+  ]);
+
+  const dismissPendingSessionPrompt = useCallback(() => {
+    setPendingSessionPrompt(null);
+  }, []);
+
+  const switchToPendingSession = useCallback(() => {
+    if (!pendingSessionPrompt) return;
+    const target = pendingSessionPrompt.session;
+    const outgoingMinutes = computeSwitchElapsedMinutes(focusTimer);
+
+    if (outgoingMinutes >= 1) {
+      const outgoingMode = focusTimer.pausedFocus?.mode ?? focusTimer.mode;
+      setFocusHistory((prev) => [
+        {
+          id: focusTimer.mobileRunId || `fh-${Date.now()}`,
+          startedAtMs: focusTimer.startedAtMs ?? Date.now() - outgoingMinutes * 60000,
+          endedAtMs: Date.now(),
+          source: focusTimer.mobileRunId ? 'phone' : 'pc',
+          subjectId: focusTimer.subjectId,
+          taskTitle: focusTimer.taskTitle,
+          calendarSessionId: focusTimer.calendarSessionId ?? null,
+          mode: outgoingMode,
+          durationMinutes: outgoingMinutes,
+          completedAt: workspace ? localDay() : 'Just now',
+          qualityRating: 4,
+        },
+        ...prev,
+      ]);
+      setXpPoints((x) => x + 60);
+    }
+
+    const freshRemaining =
+      studySessionRemainingSeconds(target, new Date()) ?? pendingSessionPrompt.remainingSeconds;
+
+    setFocusTimer((prev) => ({
+      ...prev,
+      mode: 'Custom',
+      phase: 'focus',
+      running: true,
+      pausedFocus: undefined,
+      manualDurationOverride: false,
+      completionModalOpen: false,
+      startedAtMs: Date.now(),
+      mobileRunId: undefined,
+      calendarSessionId: target.id,
+      subjectId: target.subjectId,
+      taskTitle: target.title,
+      totalSeconds: freshRemaining,
+      secondsLeft: freshRemaining,
+      elapsedSeconds: 0,
+    }));
+
+    setPendingSessionPrompt(null);
+    pushToast(
+      outgoingMinutes >= 1
+        ? `Logged ${outgoingMinutes}m & started ${target.title}`
+        : `Started ${target.title}`
+    );
+  }, [pendingSessionPrompt, focusTimer, workspace, pushToast]);
+
   const setFocusMode = useCallback((mode: FocusTimerState['mode'], customMinutes?: number) => {
     const mins =
       mode === 'Pomodoro'
-        ? 25
+        ? clampFocusMinutes(preferences.pomodoroFocusMin || 25)
         : mode === 'Countdown'
-          ? 45
+          ? clampFocusMinutes(customMinutes ?? 45)
           : mode === 'Custom'
-            ? customMinutes ?? 35
+            ? clampFocusMinutes(customMinutes ?? 35)
             : 0;
+    const manualOverride = mode === 'Stopwatch' ? true : customMinutes !== undefined || mode === 'Pomodoro' || mode === 'Countdown';
     setFocusTimer((prev) => ({
       ...prev,
       mode,
       phase: 'focus',
+      pausedFocus: undefined,
+      manualDurationOverride: manualOverride,
+      calendarSessionId: null,
       startedAtMs: undefined, mobileRunId: undefined,
       running: false,
       secondsLeft: mins * 60,
       totalSeconds: Math.max(60, mins * 60),
       elapsedSeconds: 0,
     }));
+  }, [preferences.pomodoroFocusMin]);
+
+  const setFocusDuration = useCallback((hours: number, minutes: number, mode: 'Countdown' | 'Custom' = 'Custom') => {
+    const clamped = clampFocusHoursMinutes(hours, minutes);
+    setFocusTimer((prev) => ({
+      ...prev,
+      mode,
+      phase: 'focus',
+      pausedFocus: undefined,
+      manualDurationOverride: true,
+      calendarSessionId: null,
+      startedAtMs: undefined,
+      mobileRunId: undefined,
+      running: false,
+      secondsLeft: clamped.totalSeconds,
+      totalSeconds: clamped.totalSeconds,
+      elapsedSeconds: 0,
+    }));
   }, []);
 
-  const toggleFocusRunning = useCallback(() => {
-    const current = currentStudySession(sessions);
-    setFocusTimer(prev => {
-      const useDefault = !prev.running && prev.phase === 'focus' && prev.elapsedSeconds === 0 &&
-        (prev.mode === 'Stopwatch' || prev.secondsLeft === prev.totalSeconds) && prev.calendarSessionId !== null;
-      if (!useDefault) return { ...prev, running: !prev.running,
-        startedAtMs: !prev.running && prev.elapsedSeconds === 0 ? Date.now() : prev.startedAtMs };
-      return { ...prev, running: true, startedAtMs: Date.now(), mobileRunId: undefined, calendarSessionId: current?.id,
-        subjectId: current?.subjectId ?? '', taskTitle: current?.title ?? '' };
+  const useCurrentSessionRemainder = useCallback(() => {
+    const active = currentStudySessionRemaining(sessions);
+    if (!active) return;
+    setFocusTimer((prev) => ({
+      ...prev,
+      mode: 'Custom',
+      phase: 'focus',
+      pausedFocus: undefined,
+      manualDurationOverride: false,
+      startedAtMs: undefined,
+      mobileRunId: undefined,
+      running: false,
+      calendarSessionId: active.session.id,
+      subjectId: active.session.subjectId,
+      taskTitle: active.session.title,
+      totalSeconds: active.remainingSeconds,
+      secondsLeft: active.remainingSeconds,
+      elapsedSeconds: 0,
+    }));
+  }, [sessions]);
+
+  const startCurrentSessionFocus = useCallback(() => {
+    const active = currentStudySessionRemaining(sessions);
+    setFocusTimer((prev) => {
+      if (prev.phase === 'break') {
+        return { ...prev, running: !prev.running };
+      }
+      const isIdle = !prev.running && prev.elapsedSeconds === 0 && !prev.pausedFocus &&
+        (prev.mode === 'Stopwatch' || prev.secondsLeft === prev.totalSeconds);
+      if (isIdle && active) {
+        return {
+          ...prev,
+          mode: 'Custom',
+          phase: 'focus',
+          running: true,
+          pausedFocus: undefined,
+          manualDurationOverride: false,
+          startedAtMs: Date.now(),
+          mobileRunId: undefined,
+          calendarSessionId: active.session.id,
+          subjectId: active.session.subjectId,
+          taskTitle: active.session.title,
+          totalSeconds: active.remainingSeconds,
+          secondsLeft: active.remainingSeconds,
+          elapsedSeconds: 0,
+        };
+      }
+      return {
+        ...prev,
+        running: !prev.running,
+        startedAtMs: !prev.running && prev.elapsedSeconds === 0 ? Date.now() : prev.startedAtMs,
+      };
     });
   }, [sessions]);
+
+  const toggleFocusRunning = useCallback(() => {
+    const active = currentStudySessionRemaining(sessions);
+    setFocusTimer(prev => {
+      if (prev.phase === 'break') {
+        return { ...prev, running: !prev.running };
+      }
+      const isFreshIdle = !prev.running && prev.phase === 'focus' && prev.elapsedSeconds === 0 && !prev.pausedFocus &&
+        (prev.mode === 'Stopwatch' || prev.secondsLeft === prev.totalSeconds) && prev.calendarSessionId !== null;
+      if (!isFreshIdle) {
+        return {
+          ...prev,
+          running: !prev.running,
+          startedAtMs: !prev.running && prev.elapsedSeconds === 0 ? Date.now() : prev.startedAtMs,
+        };
+      }
+      if (active && !prev.manualDurationOverride) {
+        return {
+          ...prev,
+          mode: prev.mode === 'Stopwatch' ? 'Stopwatch' : 'Custom',
+          running: true,
+          startedAtMs: Date.now(),
+          mobileRunId: undefined,
+          calendarSessionId: active.session.id,
+          subjectId: active.session.subjectId,
+          taskTitle: active.session.title,
+          totalSeconds: active.remainingSeconds,
+          secondsLeft: prev.mode === 'Stopwatch' ? 0 : active.remainingSeconds,
+        };
+      }
+      return {
+        ...prev,
+        running: true,
+        startedAtMs: Date.now(),
+        mobileRunId: undefined,
+        calendarSessionId: active?.session.id,
+        subjectId: active?.session.subjectId ?? prev.subjectId,
+        taskTitle: active?.session.title ?? prev.taskTitle,
+      };
+    });
+  }, [sessions]);
+
+  const takeFocusBreak = useCallback((breakMinutes?: number) => {
+    const mins = clampBreakMinutes(breakMinutes ?? preferences.pomodoroBreakMin ?? 5);
+    setFocusTimer((prev) => takeFocusBreakState(prev, mins));
+    pushToast(`Break started (${mins} min) · session paused`);
+  }, [preferences.pomodoroBreakMin, pushToast]);
+
+  const endFocusBreak = useCallback(() => {
+    setFocusTimer((prev) => endFocusBreakState(prev, clampFocusMinutes(preferences.pomodoroFocusMin || 25) * 60));
+    pushToast('Returned to paused session — press Resume when ready');
+  }, [preferences.pomodoroFocusMin, pushToast]);
 
   const applyPhoneFocusAction = useCallback((command: PhoneFocusAction) => {
     if (command.action === 'offline_sync') {
@@ -536,11 +804,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         }, ...prev]);
         setFocusTimer(prev => prev.mobileRunId !== record.id ? prev : {
           ...prev, running: false, elapsedSeconds: 0, secondsLeft: prev.totalSeconds,
-          completionModalOpen: false, startedAtMs: undefined, mobileRunId: undefined,
+          pausedFocus: undefined, completionModalOpen: false, startedAtMs: undefined, mobileRunId: undefined,
         });
       } else if (decision === 'adopted') {
         setFocusTimer(prev => ({
-          ...prev, mode: 'Custom', phase: 'focus',
+          ...prev, mode: 'Custom', phase: 'focus', pausedFocus: undefined,
           secondsLeft: record.remainingSeconds, totalSeconds: record.totalSeconds,
           elapsedSeconds: record.elapsedSeconds, running: record.state === 'running',
           subjectId: subject?.id ?? '', taskTitle: record.title,
@@ -554,40 +822,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       return;
     }
     const session = command.sessionId ? sessions.find(item => item.id === command.sessionId) : undefined;
+    const active = currentStudySessionRemaining(sessions);
     setFocusTimer(prev => {
       switch (command.action) {
         case 'start': {
           if (prev.running) return prev;
-          return { ...prev, running: true, completionModalOpen: false,
+          const nowDate = new Date();
+          const targetSession = session ?? active?.session;
+          const remainingSec = targetSession ? studySessionRemainingSeconds(targetSession, nowDate) : null;
+          const isIdle = prev.elapsedSeconds === 0 && !prev.pausedFocus && prev.phase === 'focus';
+          if (isIdle && targetSession && remainingSec !== null) {
+            return {
+              ...prev,
+              mode: 'Custom',
+              phase: 'focus',
+              running: true,
+              pausedFocus: undefined,
+              manualDurationOverride: false,
+              completionModalOpen: false,
+              startedAtMs: Date.now(),
+              calendarSessionId: targetSession.id,
+              subjectId: targetSession.subjectId ?? '',
+              taskTitle: targetSession.title,
+              totalSeconds: remainingSec,
+              secondsLeft: remainingSec,
+              elapsedSeconds: 0,
+            };
+          }
+          return {
+            ...prev,
+            running: true,
+            completionModalOpen: false,
             startedAtMs: prev.elapsedSeconds === 0 ? Date.now() : prev.startedAtMs,
-            ...(session ? { calendarSessionId: session.id, subjectId: session.subjectId ?? '',
-              taskTitle: session.title } : {}) };
+            ...(session ? { calendarSessionId: session.id, subjectId: session.subjectId ?? '', taskTitle: session.title } : {}),
+          };
         }
         case 'pause':
           return prev.running ? { ...prev, running: false } : prev;
         case 'resume':
           return !prev.running && !prev.completionModalOpen
             ? { ...prev, running: true, startedAtMs: prev.startedAtMs ?? Date.now() } : prev;
+        case 'take_break':
+          return takeFocusBreakState(prev, clampBreakMinutes(preferences.pomodoroBreakMin ?? 5));
+        case 'end_break':
+          return endFocusBreakState(prev, clampFocusMinutes(preferences.pomodoroFocusMin || 25) * 60);
         case 'reset':
-          return { ...prev, running: false, elapsedSeconds: 0, completionModalOpen: false,
-            startedAtMs: undefined, mobileRunId: undefined, secondsLeft: prev.mode === 'Stopwatch' ? 0 : prev.totalSeconds };
+          return {
+            ...prev,
+            phase: 'focus',
+            pausedFocus: undefined,
+            manualDurationOverride: false,
+            running: false,
+            elapsedSeconds: 0,
+            completionModalOpen: false,
+            startedAtMs: undefined,
+            mobileRunId: undefined,
+            secondsLeft: prev.mode === 'Stopwatch' ? 0 : prev.totalSeconds,
+          };
         case 'complete': {
           if (prev.completionModalOpen) return prev;
-          const minutes = prev.mode === 'Stopwatch'
-            ? Math.max(1, Math.round(prev.elapsedSeconds / 60) || 25)
-            : Math.max(1, Math.round((prev.totalSeconds - prev.secondsLeft) / 60) || Math.round(prev.totalSeconds / 60));
-          return { ...prev, running: false, completionModalOpen: true,
-            lastCompletedMinutes: minutes };
+          const source = prev.pausedFocus ?? prev;
+          const minutes = source.mode === 'Stopwatch'
+            ? Math.max(1, Math.round(source.elapsedSeconds / 60) || 25)
+            : Math.max(1, Math.round((source.elapsedSeconds || (source.totalSeconds - source.secondsLeft)) / 60) || Math.round(source.totalSeconds / 60));
+          return {
+            ...prev,
+            phase: 'focus',
+            mode: source.mode,
+            pausedFocus: undefined,
+            running: false,
+            completionModalOpen: true,
+            lastCompletedMinutes: minutes,
+          };
         }
         default:
           return prev;
       }
     });
-  }, [sessions, subjects, focusTimer, focusHistory, preferences.offlineFocusReceipts]);
+  }, [sessions, subjects, focusTimer, focusHistory, preferences.offlineFocusReceipts, preferences.pomodoroBreakMin, preferences.pomodoroFocusMin]);
 
   const resetFocusTimer = useCallback(() => {
     setFocusTimer((prev) => ({
       ...prev,
+      phase: 'focus',
+      pausedFocus: undefined,
+      manualDurationOverride: false,
       running: false,
       startedAtMs: undefined, mobileRunId: undefined,
       secondsLeft: prev.mode === 'Stopwatch' ? 0 : prev.totalSeconds,
@@ -605,12 +924,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
 
   const triggerCompleteFocusSession = useCallback(() => {
     setFocusTimer((prev) => {
+      const source = prev.pausedFocus ?? prev;
       const mins =
-        prev.mode === 'Stopwatch'
-          ? Math.max(1, Math.round(prev.elapsedSeconds / 60) || 25)
-          : Math.max(1, Math.round((prev.totalSeconds - prev.secondsLeft) / 60) || Math.round(prev.totalSeconds / 60));
+        source.mode === 'Stopwatch'
+          ? Math.max(1, Math.round(source.elapsedSeconds / 60) || 25)
+          : Math.max(1, Math.round((source.elapsedSeconds || (source.totalSeconds - source.secondsLeft)) / 60) || Math.round(source.totalSeconds / 60));
       return {
         ...prev,
+        phase: 'focus',
+        mode: source.mode,
+        pausedFocus: undefined,
         running: false,
         completionModalOpen: true,
         lastCompletedMinutes: mins,
@@ -620,6 +943,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
 
   const submitFocusCompletion = useCallback(
     (rating: number) => {
+      const breaksEnabled = preferences.breaksEnabled !== false;
+      const breakSec = clampBreakMinutes(preferences.pomodoroBreakMin ?? 5) * 60;
       setFocusHistory((prev) => [
         {
           id: focusTimer.mobileRunId || `fh-${Date.now()}`,
@@ -639,15 +964,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       setFocusTimer((prev) => ({
         ...prev,
         completionModalOpen: false,
+        pausedFocus: undefined,
+        manualDurationOverride: false,
         cycleCount: prev.cycleCount + 1,
         startedAtMs: undefined, mobileRunId: undefined,
-        phase: prev.phase === 'focus' ? 'break' : 'focus',
-        secondsLeft: prev.phase === 'focus' ? 5 * 60 : prev.totalSeconds,
+        running: false,
+        phase: breaksEnabled && prev.phase === 'focus' ? 'break' : 'focus',
+        breakDurationMin: clampBreakMinutes(preferences.pomodoroBreakMin ?? 5),
+        totalSeconds: breaksEnabled && prev.phase === 'focus' ? breakSec : prev.totalSeconds,
+        secondsLeft: breaksEnabled && prev.phase === 'focus' ? breakSec : prev.mode === 'Stopwatch' ? 0 : prev.totalSeconds,
         elapsedSeconds: 0,
       }));
       pushToast(`Focus session logged (+60 XP)`);
     },
-    [focusTimer.lastCompletedMinutes, focusTimer.mode, focusTimer.subjectId, focusTimer.taskTitle, focusTimer.calendarSessionId, focusTimer.startedAtMs, focusTimer.mobileRunId, pushToast, workspace]
+    [focusTimer.lastCompletedMinutes, focusTimer.mode, focusTimer.subjectId, focusTimer.taskTitle, focusTimer.calendarSessionId, focusTimer.startedAtMs, focusTimer.mobileRunId, preferences.breaksEnabled, preferences.pomodoroBreakMin, pushToast, workspace]
   );
 
   const dismissFocusCompletion = useCallback(() => {
@@ -935,6 +1265,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
 
   const updateTask = useCallback((id: string, patch: Partial<TaskItem>) => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+    if (patch.status !== undefined) {
+      const nextDone = patch.status === 'done';
+      setGoals((prev) => syncGoalsForTaskStatusChange(prev, id, nextDone));
+    }
   }, []);
 
   const deleteTasks = useCallback(
@@ -946,9 +1280,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   );
 
   const toggleTaskStatus = useCallback((id: string) => {
+    const existing = tasksRef.current.find((t) => t.id === id);
+    const nextDone = existing ? existing.status !== 'done' : true;
     setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, status: t.status === 'done' ? 'todo' : 'done' } : t))
+      prev.map((t) => (t.id === id ? { ...t, status: nextDone ? 'done' : 'todo' } : t))
     );
+    setGoals((prev) => syncGoalsForTaskStatusChange(prev, id, nextDone));
   }, []);
 
   const toggleSubtask = useCallback((taskId: string, subtaskId: string) => {
@@ -1025,7 +1362,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   // Goal mutations
   const addGoal = useCallback(
     (g: Omit<GoalItem, 'id'>) => {
-      setGoals((prev) => [{ ...g, id: `g-${Date.now()}` }, ...prev]);
+      const nextGoal: GoalItem = {
+        ...g,
+        id: `g-${Date.now()}`,
+        ...(g.target > 0 && g.current >= g.target
+          ? { completedAt: g.completedAt ?? new Date().toISOString() }
+          : {}),
+      };
+      setGoals((prev) => [nextGoal, ...prev]);
       pushToast(`Goal added: ${g.title}`);
     },
     [pushToast]
@@ -1104,6 +1448,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     [pushToast]
   );
 
+  const deleteDeck = useCallback(
+    (id: string) => {
+      setDecks((prev) => prev.filter((d) => d.id !== id));
+      setFlashcards((prev) => prev.filter((c) => c.deckId !== id));
+      pushToast('Flashcard deck deleted');
+    },
+    [pushToast]
+  );
+
   const addFlashcard = useCallback(
     (card: Omit<FlashcardItem, 'id' | 'intervalDays' | 'easeFactor' | 'dueToday' | 'mastery'>) => {
       setFlashcards((prev) => [
@@ -1122,11 +1475,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     [pushToast]
   );
 
+  const importFlashcardsBulk = useCallback(
+    (deckId: string, cards: Array<{ front: string; back: string; hint?: string }>) => {
+      if (!cards.length) return 0;
+      const newItems: FlashcardItem[] = cards.map((card) => ({
+        id: crypto.randomUUID(),
+        deckId,
+        front: card.front,
+        back: card.back,
+        ...(card.hint ? { hint: card.hint } : {}),
+        intervalDays: 1,
+        easeFactor: 2.5,
+        dueToday: true,
+        mastery: 'new',
+      }));
+      setFlashcards((prev) => [...newItems, ...prev]);
+      pushToast(`Imported ${newItems.length} flashcard${newItems.length === 1 ? '' : 's'}`);
+      return newItems.length;
+    },
+    [pushToast]
+  );
+
   const reviewFlashcard = useCallback((cardId: string, rating: ReviewRating) => {
-    if (desktop) setCardReviews(previous => {
-      const day = localDay();
-      return { ...previous, [day]: (previous[day] ?? 0) + 1 };
-    });
+    const today = localDay();
+    if (desktop) setCardReviews(previous => ({ ...previous, [today]: (previous[today] ?? 0) + 1 }));
     setFlashcards((prev) =>
       prev.map((c) => {
         if (c.id !== cardId) return c;
@@ -1139,7 +1511,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
           easeFactor: next.easeFactor,
           mastery: next.mastery,
           dueToday: rating === 'again',
-          nextReviewDate: desktop ? localDay(date) : undefined,
+          nextReviewDate: localDay(date),
+          lastReviewedAt: new Date().toISOString(),
+          reviewCount: (c.reviewCount ?? 0) + 1,
+          lapses: (c.lapses ?? 0) + (rating === 'again' ? 1 : 0),
         };
       })
     );
@@ -1163,6 +1538,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     setExams(previous => previous.filter(exam => exam.id !== id));
     pushToast('Exam deleted');
   }, [pushToast]);
+
+  const deleteQuiz = useCallback((id: string) => {
+    setQuizzes((previous) => previous.filter((quiz) => quiz.id !== id));
+    pushToast('Practice test deleted');
+  }, [pushToast]);
+
+  const updateQuizQuestionExplanation = useCallback(
+    (quizId: string, questionId: string, explanation: string) => {
+      setQuizzes((previous) =>
+        previous.map((quiz) => {
+          if (quiz.id !== quizId) return quiz;
+          return {
+            ...quiz,
+            questions: quiz.questions.map((q) =>
+              q.id === questionId ? { ...q, explanation } : q
+            ),
+          };
+        })
+      );
+      pushToast('Explanation updated');
+    },
+    [pushToast]
+  );
+
+  const openStudyLab = useCallback((launch?: Partial<StudyLabLaunchState>) => {
+    setStudyLabLaunch({
+      tab: launch?.tab ?? 'playground',
+      ...launch,
+    });
+    setRoute('lab');
+  }, []);
+
+  const clearStudyLabLaunch = useCallback(() => {
+    setStudyLabLaunch(null);
+  }, []);
 
   const recordQuizScore = useCallback((quizId: string, attempt: PracticeAttempt) => {
     setQuizzes(previous => previous.map(quiz => {
@@ -1307,25 +1717,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         createNote,
         decks,
         addDeck,
+        deleteDeck,
         flashcards,
         addFlashcard,
+        importFlashcardsBulk,
         reviewFlashcard,
         exams,
         addExam, updateExam, deleteExam,
         quizzes,
         addQuiz: quiz=>setQuizzes(prev=>[quiz,...prev]),
+        deleteQuiz,
+        updateQuizQuestionExplanation,
         recordQuizScore,
+        studyLabLaunch,
+        openStudyLab,
+        clearStudyLabLaunch,
         focusTimer,
         focusClock,
         applyPhoneFocusAction,
         setFocusMode,
+        setFocusDuration,
+        useCurrentSessionRemainder,
+        startCurrentSessionFocus,
         toggleFocusRunning,
+        takeFocusBreak,
+        endFocusBreak,
         resetFocusTimer,
         setFocusContext,
         setMiniTimerVisible,
         triggerCompleteFocusSession,
         submitFocusCompletion,
         dismissFocusCompletion,
+        pendingSessionPrompt,
+        switchToPendingSession,
+        dismissPendingSessionPrompt,
         focusHistory,
         achievements,
         challenges,

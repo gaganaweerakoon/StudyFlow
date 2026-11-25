@@ -21,6 +21,64 @@ import type {
 export const USER_AVATAR_URL = '/src/assets/images/avatar_student_profile_1795370871897.jpg';
 export const COMPANION_DESK_URL = '/src/assets/images/study_companion_desk_1795370873168.jpg';
 
+function toLocalIsoDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function offsetLocalDate(daysOffset: number, base = new Date()): Date {
+  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 12, 0, 0, 0);
+  d.setDate(d.getDate() + daysOffset);
+  return d;
+}
+
+function offsetIso(daysOffset: number, base = new Date()): string {
+  return toLocalIsoDate(offsetLocalDate(daysOffset, base));
+}
+
+function formatShortMonthDay(daysOffset: number, base = new Date()): string {
+  return offsetLocalDate(daysOffset, base).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function formatWeekdayMonthDay(daysOffset: number, base = new Date()): string {
+  return offsetLocalDate(daysOffset, base).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function formatFullMonthDayYear(daysOffset: number, base = new Date()): string {
+  return offsetLocalDate(daysOffset, base).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+const ANCHOR_TODAY = new Date();
+const TODAY_WEEKDAY_INDEX = (ANCHOR_TODAY.getDay() + 6) % 7; // Mon=0..Sun=6
+const OTHER_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== TODAY_WEEKDAY_INDEX);
+
+function weekSlot(slotIndex: number): { dayIndex: number; date: string; statusDefault: 'completed' | 'upcoming' } {
+  const dayIndex = OTHER_WEEKDAYS[slotIndex] ?? 0;
+  const delta = dayIndex - TODAY_WEEKDAY_INDEX;
+  return {
+    dayIndex,
+    date: offsetIso(delta, ANCHOR_TODAY),
+    statusDefault: delta < 0 ? 'completed' : 'upcoming',
+  };
+}
+
+const SUNDAY_DELTA = 6 - TODAY_WEEKDAY_INDEX;
+const WEDNESDAY_DELTA = 2 - TODAY_WEEKDAY_INDEX;
+const SATURDAY_DELTA = 5 - TODAY_WEEKDAY_INDEX;
+
 export const THEME_OPTIONS: {
   id: ThemeId;
   name: string;
@@ -69,7 +127,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     totalHours: 46.5,
     weeklyTargetHours: 8,
     lastStudied: 'Today, 9:15 AM',
-    nextExamDate: '2026-12-04',
+    nextExamDate: offsetIso(12, ANCHOR_TODAY),
     nextExamTitle: 'Final Examination',
     currentGrade: 'A-',
     targetGrade: 'A',
@@ -112,7 +170,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     totalHours: 38.2,
     weeklyTargetHours: 7,
     lastStudied: 'Yesterday, 6:40 PM',
-    nextExamDate: '2026-11-29',
+    nextExamDate: offsetIso(7, ANCHOR_TODAY),
     nextExamTitle: 'Midterm III: Vector Fields',
     currentGrade: 'A',
     targetGrade: 'A',
@@ -154,7 +212,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     totalHours: 34.0,
     weeklyTargetHours: 6.5,
     lastStudied: 'Yesterday, 3:10 PM',
-    nextExamDate: '2026-12-08',
+    nextExamDate: offsetIso(16, ANCHOR_TODAY),
     nextExamTitle: 'Synthesis & Spectroscopy Final',
     currentGrade: 'B+',
     targetGrade: 'A-',
@@ -188,7 +246,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     totalHours: 29.4,
     weeklyTargetHours: 5.5,
     lastStudied: '2 days ago',
-    nextExamDate: '2026-12-11',
+    nextExamDate: offsetIso(19, ANCHOR_TODAY),
     nextExamTitle: 'Cortical Circuits Practical',
     currentGrade: 'A-',
     targetGrade: 'A',
@@ -221,7 +279,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     totalHours: 21.8,
     weeklyTargetHours: 4.5,
     lastStudied: '3 days ago',
-    nextExamDate: '2026-12-14',
+    nextExamDate: offsetIso(22, ANCHOR_TODAY),
     nextExamTitle: 'Causal Inference Paper & Exam',
     currentGrade: 'A',
     targetGrade: 'A',
@@ -251,7 +309,7 @@ export const INITIAL_TASKS: TaskItem[] = [
     id: 'tsk-1',
     title: 'Complete Problem Set 8: NP-Completeness Reductions',
     subjectId: 'cs340',
-    dueDate: '2026-11-22',
+    dueDate: offsetIso(0, ANCHOR_TODAY),
     dueLabel: 'Today, 11:59 PM',
     priority: 'high',
     status: 'in_progress',
@@ -267,7 +325,7 @@ export const INITIAL_TASKS: TaskItem[] = [
     id: 'tsk-2',
     title: "Solve 12 practice integrals for Stokes' Theorem",
     subjectId: 'math241',
-    dueDate: '2026-11-22',
+    dueDate: offsetIso(0, ANCHOR_TODAY),
     dueLabel: 'Today, 6:00 PM',
     priority: 'high',
     status: 'todo',
@@ -282,7 +340,7 @@ export const INITIAL_TASKS: TaskItem[] = [
     id: 'tsk-3',
     title: 'Map Robinson Annulation retrosynthesis pathways',
     subjectId: 'chem210',
-    dueDate: '2026-11-23',
+    dueDate: offsetIso(1, ANCHOR_TODAY),
     dueLabel: 'Tomorrow',
     priority: 'medium',
     status: 'todo',
@@ -297,8 +355,8 @@ export const INITIAL_TASKS: TaskItem[] = [
     id: 'tsk-4',
     title: 'Annotate Bliss & Lømo (1973) LTP paper figures',
     subjectId: 'neur302',
-    dueDate: '2026-11-24',
-    dueLabel: 'Tue, Nov 24',
+    dueDate: offsetIso(2, ANCHOR_TODAY),
+    dueLabel: formatWeekdayMonthDay(2, ANCHOR_TODAY),
     priority: 'medium',
     status: 'review',
     estimatedMinutes: 45,
@@ -312,8 +370,8 @@ export const INITIAL_TASKS: TaskItem[] = [
     id: 'tsk-5',
     title: 'Run 2SLS IV regression diagnostics in R Markdown',
     subjectId: 'econ205',
-    dueDate: '2026-11-25',
-    dueLabel: 'Wed, Nov 25',
+    dueDate: offsetIso(3, ANCHOR_TODAY),
+    dueLabel: formatWeekdayMonthDay(3, ANCHOR_TODAY),
     priority: 'low',
     status: 'todo',
     estimatedMinutes: 50,
@@ -327,7 +385,7 @@ export const INITIAL_TASKS: TaskItem[] = [
     id: 'tsk-6',
     title: 'Review Max-Flow Min-Cut proof & residual graphs',
     subjectId: 'cs340',
-    dueDate: '2026-11-22',
+    dueDate: offsetIso(0, ANCHOR_TODAY),
     dueLabel: 'Today, 10:00 AM',
     priority: 'medium',
     status: 'done',
@@ -341,7 +399,7 @@ export const INITIAL_TASKS: TaskItem[] = [
     id: 'tsk-7',
     title: 'Complete Hückel aromaticity flashcard deck',
     subjectId: 'chem210',
-    dueDate: '2026-11-21',
+    dueDate: offsetIso(-1, ANCHOR_TODAY),
     dueLabel: 'Yesterday',
     priority: 'low',
     status: 'done',
@@ -358,8 +416,8 @@ export const INITIAL_SESSIONS: StudySession[] = [
     id: 'ses-1',
     title: 'NP-Completeness Reductions Deep Work',
     subjectId: 'cs340',
-    dayIndex: 6, // Today (Sun Nov 22)
-    date: '2026-11-22',
+    dayIndex: TODAY_WEEKDAY_INDEX,
+    date: offsetIso(0, ANCHOR_TODAY),
     startHour: 9,
     durationHours: 1.5,
     status: 'completed',
@@ -371,8 +429,8 @@ export const INITIAL_SESSIONS: StudySession[] = [
     id: 'ses-2',
     title: "Stokes' Theorem Problem Drill",
     subjectId: 'math241',
-    dayIndex: 6,
-    date: '2026-11-22',
+    dayIndex: TODAY_WEEKDAY_INDEX,
+    date: offsetIso(0, ANCHOR_TODAY),
     startHour: 11,
     durationHours: 1.5,
     status: 'upcoming',
@@ -384,8 +442,8 @@ export const INITIAL_SESSIONS: StudySession[] = [
     id: 'ses-3',
     title: 'Carbonyl Condensation Mechanisms',
     subjectId: 'chem210',
-    dayIndex: 6,
-    date: '2026-11-22',
+    dayIndex: TODAY_WEEKDAY_INDEX,
+    date: offsetIso(0, ANCHOR_TODAY),
     startHour: 14,
     durationHours: 1.5,
     status: 'upcoming',
@@ -397,8 +455,8 @@ export const INITIAL_SESSIONS: StudySession[] = [
     id: 'ses-4',
     title: 'Active Recall: Cortical Plasticity',
     subjectId: 'neur302',
-    dayIndex: 6,
-    date: '2026-11-22',
+    dayIndex: TODAY_WEEKDAY_INDEX,
+    date: offsetIso(0, ANCHOR_TODAY),
     startHour: 16.5,
     durationHours: 1.0,
     status: 'upcoming',
@@ -409,11 +467,11 @@ export const INITIAL_SESSIONS: StudySession[] = [
     id: 'ses-5',
     title: 'Dynamic Programming Recitation Prep',
     subjectId: 'cs340',
-    dayIndex: 0, // Mon Nov 16
-    date: '2026-11-16',
+    dayIndex: weekSlot(0).dayIndex,
+    date: weekSlot(0).date,
     startHour: 9.5,
     durationHours: 2.0,
-    status: 'completed',
+    status: weekSlot(0).statusDefault,
     recurring: true,
     location: 'Gates Hall 204',
   },
@@ -421,22 +479,22 @@ export const INITIAL_SESSIONS: StudySession[] = [
     id: 'ses-6',
     title: 'Multiple Integrals & Jacobians',
     subjectId: 'math241',
-    dayIndex: 1, // Tue Nov 17
-    date: '2026-11-17',
+    dayIndex: weekSlot(1).dayIndex,
+    date: weekSlot(1).date,
     startHour: 13,
     durationHours: 1.5,
-    status: 'completed',
+    status: weekSlot(1).statusDefault,
     location: 'Science Library',
   },
   {
     id: 'ses-7',
     title: 'Aromatic Substitution Synthesis Drill',
     subjectId: 'chem210',
-    dayIndex: 2, // Wed Nov 18
-    date: '2026-11-18',
+    dayIndex: weekSlot(2).dayIndex,
+    date: weekSlot(2).date,
     startHour: 10,
     durationHours: 1.5,
-    status: 'completed',
+    status: weekSlot(2).statusDefault,
     recurring: true,
     location: 'Home Desk',
   },
@@ -444,11 +502,11 @@ export const INITIAL_SESSIONS: StudySession[] = [
     id: 'ses-8',
     title: 'Econometrics 2SLS Lab Walkthrough',
     subjectId: 'econ205',
-    dayIndex: 3, // Thu Nov 19
-    date: '2026-11-19',
+    dayIndex: weekSlot(3).dayIndex,
+    date: weekSlot(3).date,
     startHour: 15,
     durationHours: 1.5,
-    status: 'missed',
+    status: weekSlot(3).statusDefault === 'completed' ? 'missed' : 'upcoming',
     location: 'Quant Lab',
     notes: 'Deferred due to seminar overrun — suggested for Monday 10:00 AM.',
   },
@@ -456,22 +514,22 @@ export const INITIAL_SESSIONS: StudySession[] = [
     id: 'ses-9',
     title: 'Hippocampal LTP & STDP Reading',
     subjectId: 'neur302',
-    dayIndex: 4, // Fri Nov 20
-    date: '2026-11-20',
+    dayIndex: weekSlot(4).dayIndex,
+    date: weekSlot(4).date,
     startHour: 11,
     durationHours: 1.5,
-    status: 'completed',
+    status: weekSlot(4).statusDefault,
     location: 'Bio Library',
   },
   {
     id: 'ses-10',
     title: 'Vector Calculus Mock Midterm',
     subjectId: 'math241',
-    dayIndex: 5, // Sat Nov 21
-    date: '2026-11-21',
+    dayIndex: weekSlot(5).dayIndex,
+    date: weekSlot(5).date,
     startHour: 10,
     durationHours: 2.0,
-    status: 'completed',
+    status: weekSlot(5).statusDefault,
     location: 'Quiet Reading Room',
   },
 ];
@@ -498,11 +556,11 @@ export const INITIAL_GOALS: GoalItem[] = [
     current: 28.6,
     target: 32.0,
     unit: 'hrs',
-    deadline: 'Sun, Nov 22',
+    deadline: formatWeekdayMonthDay(SUNDAY_DELTA, ANCHOR_TODAY),
     milestones: [
-      { id: 'm4', label: 'Cross 15h midpoint by Wednesday', done: true, date: 'Nov 18' },
-      { id: 'm5', label: 'Complete weekend exam simulation', done: true, date: 'Nov 21' },
-      { id: 'm6', label: 'Finish final 3.4h Sunday blocks', done: false, date: 'Nov 22' },
+      { id: 'm4', label: 'Cross 15h midpoint by Wednesday', done: true, date: formatShortMonthDay(WEDNESDAY_DELTA, ANCHOR_TODAY) },
+      { id: 'm5', label: 'Complete weekend exam simulation', done: true, date: formatShortMonthDay(SATURDAY_DELTA, ANCHOR_TODAY) },
+      { id: 'm6', label: 'Finish final weekly focus blocks', done: false, date: formatShortMonthDay(SUNDAY_DELTA, ANCHOR_TODAY) },
     ],
   },
   {
@@ -513,11 +571,11 @@ export const INITIAL_GOALS: GoalItem[] = [
     current: 5,
     target: 8,
     unit: 'topics',
-    deadline: 'Dec 2, 2026',
+    deadline: formatFullMonthDayYear(10, ANCHOR_TODAY),
     milestones: [
-      { id: 'm7', label: 'Network Flow & Cut theorems', done: true, date: 'Nov 16' },
-      { id: 'm8', label: 'Karp 21 canonical reductions', done: false, date: 'Nov 26' },
-      { id: 'm9', label: '2-Approximation proofs', done: false, date: 'Dec 1' },
+      { id: 'm7', label: 'Network Flow & Cut theorems', done: true, date: formatShortMonthDay(-4, ANCHOR_TODAY) },
+      { id: 'm8', label: 'Karp 21 canonical reductions', done: false, date: formatShortMonthDay(4, ANCHOR_TODAY) },
+      { id: 'm9', label: '2-Approximation proofs', done: false, date: formatShortMonthDay(9, ANCHOR_TODAY) },
     ],
   },
   {
@@ -528,10 +586,10 @@ export const INITIAL_GOALS: GoalItem[] = [
     current: 142,
     target: 180,
     unit: 'cards',
-    deadline: 'Nov 28, 2026',
+    deadline: formatFullMonthDayYear(6, ANCHOR_TODAY),
     milestones: [
-      { id: 'm10', label: 'Aromaticity & EAS deck >90%', done: true, date: 'Nov 19' },
-      { id: 'm11', label: 'Carbonyl condensations 60 cards', done: false, date: 'Nov 25' },
+      { id: 'm10', label: 'Aromaticity & EAS deck >90%', done: true, date: formatShortMonthDay(-2, ANCHOR_TODAY) },
+      { id: 'm11', label: 'Carbonyl condensations 60 cards', done: false, date: formatShortMonthDay(3, ANCHOR_TODAY) },
     ],
   },
   {
@@ -541,10 +599,10 @@ export const INITIAL_GOALS: GoalItem[] = [
     current: 11,
     target: 14,
     unit: 'tasks',
-    deadline: 'Nov 25, 2026',
+    deadline: formatFullMonthDayYear(3, ANCHOR_TODAY),
     milestones: [
-      { id: 'm12', label: 'MATH 241 PSet 9 submitted', done: true, date: 'Nov 19' },
-      { id: 'm13', label: 'CS 340 PSet 8 submitted', done: false, date: 'Nov 22' },
+      { id: 'm12', label: 'MATH 241 PSet 9 submitted', done: true, date: formatShortMonthDay(-2, ANCHOR_TODAY) },
+      { id: 'm13', label: 'CS 340 PSet 8 submitted', done: false, date: formatShortMonthDay(0, ANCHOR_TODAY) },
     ],
   },
 ];
@@ -649,7 +707,7 @@ $$\\iint_S (\\nabla \\times \\mathbf{F}) \\cdot d\\mathbf{S} = \\oint_C \\mathbf
     folderId: 'fld-chem',
     subjectId: 'chem210',
     title: 'Carbonyl Enolate Selectivity: Kinetic vs Thermodynamic',
-    updatedAt: 'Nov 20, 4:05 PM',
+    updatedAt: `${formatShortMonthDay(-2, ANCHOR_TODAY)}, 4:05 PM`,
     pinned: false,
     tags: ['Mechanisms', 'Enolates'],
     content: `# Kinetic vs. Thermodynamic Enolates
@@ -676,7 +734,7 @@ $$\\iint_S (\\nabla \\times \\mathbf{F}) \\cdot d\\mathbf{S} = \\oint_C \\mathbf
     folderId: 'fld-neur',
     subjectId: 'neur302',
     title: 'NMDA Receptors & Synaptic Plasticity (LTP / LTD)',
-    updatedAt: 'Nov 19, 8:20 PM',
+    updatedAt: `${formatShortMonthDay(-3, ANCHOR_TODAY)}, 8:20 PM`,
     pinned: false,
     tags: ['Hippocampus', 'Plasticity'],
     content: `# Hippocampal CA1 Long-Term Potentiation
@@ -817,7 +875,7 @@ export const INITIAL_EXAMS: ExamItem[] = [
     id: 'ex-1',
     title: 'Midterm III: Vector Fields & Stokes',
     subjectId: 'math241',
-    date: '2026-11-29',
+    date: offsetIso(7, ANCHOR_TODAY),
     time: '09:30 AM – 11:15 AM',
     room: 'Hilbert Hall 108',
     weightPercent: 25,
@@ -825,16 +883,16 @@ export const INITIAL_EXAMS: ExamItem[] = [
     targetGrade: 'A (93%+)',
     syllabusTopics: ["Green's Theorem", "Stokes' Theorem", 'Divergence Theorem', 'Flux Integrals'],
     mockHistory: [
-      { date: 'Nov 14', score: 78, label: 'Diagnostic Quiz' },
-      { date: 'Nov 18', score: 86, label: 'Timed Mock A' },
-      { date: 'Nov 21', score: 91, label: 'Timed Mock B' },
+      { date: formatShortMonthDay(-8, ANCHOR_TODAY), score: 78, label: 'Diagnostic Quiz' },
+      { date: formatShortMonthDay(-4, ANCHOR_TODAY), score: 86, label: 'Timed Mock A' },
+      { date: formatShortMonthDay(-1, ANCHOR_TODAY), score: 91, label: 'Timed Mock B' },
     ],
   },
   {
     id: 'ex-2',
     title: 'Algorithms Final Examination',
     subjectId: 'cs340',
-    date: '2026-12-04',
+    date: offsetIso(12, ANCHOR_TODAY),
     time: '01:00 PM – 04:00 PM',
     room: 'Turing Auditorium',
     weightPercent: 35,
@@ -842,15 +900,15 @@ export const INITIAL_EXAMS: ExamItem[] = [
     targetGrade: 'A (92%+)',
     syllabusTopics: ['Divide & Conquer', 'Dynamic Programming', 'Network Flows', 'NP-Completeness'],
     mockHistory: [
-      { date: 'Nov 12', score: 80, label: 'Practice Paper 2024' },
-      { date: 'Nov 20', score: 88, label: 'Practice Paper 2025' },
+      { date: formatShortMonthDay(-10, ANCHOR_TODAY), score: 80, label: 'Practice Paper 2024' },
+      { date: formatShortMonthDay(-2, ANCHOR_TODAY), score: 88, label: 'Practice Paper 2025' },
     ],
   },
   {
     id: 'ex-3',
     title: 'Synthesis & Spectroscopy Final',
     subjectId: 'chem210',
-    date: '2026-12-08',
+    date: offsetIso(16, ANCHOR_TODAY),
     time: '10:00 AM – 12:30 PM',
     room: 'Curie Science 302',
     weightPercent: 30,
@@ -858,22 +916,22 @@ export const INITIAL_EXAMS: ExamItem[] = [
     targetGrade: 'A- (89%+)',
     syllabusTopics: ['Aromaticity', 'EAS Mechanisms', 'Aldol & Claisen', 'Robinson Annulation', 'NMR'],
     mockHistory: [
-      { date: 'Nov 15', score: 74, label: 'Mechanism Drill' },
-      { date: 'Nov 21', score: 82, label: 'Synthesis Mock 1' },
+      { date: formatShortMonthDay(-7, ANCHOR_TODAY), score: 74, label: 'Mechanism Drill' },
+      { date: formatShortMonthDay(-1, ANCHOR_TODAY), score: 82, label: 'Synthesis Mock 1' },
     ],
   },
   {
     id: 'ex-4',
     title: 'Cortical Circuits Practical',
     subjectId: 'neur302',
-    date: '2026-12-11',
+    date: offsetIso(19, ANCHOR_TODAY),
     time: '02:00 PM – 04:00 PM',
     room: 'Pavlov Lab 12',
     weightPercent: 30,
     prepProgress: 78,
     targetGrade: 'A (94%+)',
     syllabusTopics: ['Retinotopy', 'V1 Columns', 'NMDA Plasticity', 'STDP'],
-    mockHistory: [{ date: 'Nov 19', score: 89, label: 'Lab Practical Mock' }],
+    mockHistory: [{ date: formatShortMonthDay(-3, ANCHOR_TODAY), score: 89, label: 'Lab Practical Mock' }],
   },
 ];
 
@@ -979,9 +1037,9 @@ export const INITIAL_QUIZZES: PracticeQuiz[] = [
 export const INITIAL_FOCUS_HISTORY: FocusHistoryItem[] = [
   { id: 'fh-1', subjectId: 'cs340', taskTitle: 'NP-Completeness Reductions', mode: 'Pomodoro', durationMinutes: 50, completedAt: 'Today, 10:15 AM', qualityRating: 5 },
   { id: 'fh-2', subjectId: 'math241', taskTitle: "Stokes' Theorem Integrals", mode: 'Pomodoro', durationMinutes: 45, completedAt: 'Yesterday, 7:05 PM', qualityRating: 4 },
-  { id: 'fh-3', subjectId: 'chem210', taskTitle: 'Carbonyl Enolate Mechanisms', mode: 'Countdown', durationMinutes: 40, completedAt: 'Yesterday, 3:55 PM', qualityRating: 4 },
-  { id: 'fh-4', subjectId: 'neur302', taskTitle: 'Bliss & Lømo LTP Figures', mode: 'Pomodoro', durationMinutes: 25, completedAt: 'Nov 20, 4:30 PM', qualityRating: 5 },
-  { id: 'fh-5', subjectId: 'econ205', taskTitle: '2SLS Weak Instruments', mode: 'Custom', durationMinutes: 60, completedAt: 'Nov 19, 11:20 AM', qualityRating: 3 },
+  { id: 'fh-3', subjectId: 'chem210', taskTitle: 'Carbonyl Enolate Mechanisms', mode: 'Custom', durationMinutes: 40, completedAt: 'Yesterday, 3:55 PM', qualityRating: 4 },
+  { id: 'fh-4', subjectId: 'neur302', taskTitle: 'Bliss & Lømo LTP Figures', mode: 'Pomodoro', durationMinutes: 25, completedAt: `${formatShortMonthDay(-2, ANCHOR_TODAY)}, 4:30 PM`, qualityRating: 5 },
+  { id: 'fh-5', subjectId: 'econ205', taskTitle: '2SLS Weak Instruments', mode: 'Custom', durationMinutes: 60, completedAt: `${formatShortMonthDay(-3, ANCHOR_TODAY)}, 11:20 AM`, qualityRating: 3 },
 ];
 
 export const DASHBOARD_CHART_DATA = {
@@ -1012,14 +1070,14 @@ export const DASHBOARD_CHART_DATA = {
 };
 
 export const ANALYTICS_PRODUCTIVITY_TREND = [
-  { label: 'Nov 09', score: 76, focusHours: 3.8 },
-  { label: 'Nov 11', score: 81, focusHours: 4.4 },
-  { label: 'Nov 13', score: 79, focusHours: 4.1 },
-  { label: 'Nov 15', score: 86, focusHours: 5.0 },
-  { label: 'Nov 17', score: 88, focusHours: 4.7 },
-  { label: 'Nov 19', score: 84, focusHours: 4.0 },
-  { label: 'Nov 21', score: 92, focusHours: 5.2 },
-  { label: 'Nov 22', score: 90, focusHours: 4.6 },
+  { label: formatShortMonthDay(-13, ANCHOR_TODAY), score: 76, focusHours: 3.8 },
+  { label: formatShortMonthDay(-11, ANCHOR_TODAY), score: 81, focusHours: 4.4 },
+  { label: formatShortMonthDay(-9, ANCHOR_TODAY), score: 79, focusHours: 4.1 },
+  { label: formatShortMonthDay(-7, ANCHOR_TODAY), score: 86, focusHours: 5.0 },
+  { label: formatShortMonthDay(-5, ANCHOR_TODAY), score: 88, focusHours: 4.7 },
+  { label: formatShortMonthDay(-3, ANCHOR_TODAY), score: 84, focusHours: 4.0 },
+  { label: formatShortMonthDay(-1, ANCHOR_TODAY), score: 92, focusHours: 5.2 },
+  { label: formatShortMonthDay(0, ANCHOR_TODAY), score: 90, focusHours: 4.6 },
 ];
 
 export const ANALYTICS_FOCUS_DURATION = [
@@ -1063,14 +1121,14 @@ export const ANALYTICS_EXAM_PROGRESSION = [
 ];
 
 export const ANALYTICS_SESSIONS_TABLE: AnalyticsSessionRow[] = [
-  { id: 'as-1', date: '2026-11-22', subjectId: 'cs340', topic: 'NP-Completeness Reductions', plannedMin: 90, actualMin: 95, focusScore: 94, mode: 'Pomodoro' },
-  { id: 'as-2', date: '2026-11-21', subjectId: 'math241', topic: 'Vector Calculus Mock Midterm', plannedMin: 120, actualMin: 118, focusScore: 92, mode: 'Countdown' },
-  { id: 'as-3', date: '2026-11-21', subjectId: 'chem210', topic: 'Aldol Condensation Kinetics', plannedMin: 75, actualMin: 65, focusScore: 81, mode: 'Pomodoro' },
-  { id: 'as-4', date: '2026-11-20', subjectId: 'neur302', topic: 'Hippocampal CA1 LTP', plannedMin: 60, actualMin: 62, focusScore: 90, mode: 'Pomodoro' },
-  { id: 'as-5', date: '2026-11-19', subjectId: 'econ205', topic: '2SLS Instrument Diagnostics', plannedMin: 60, actualMin: 50, focusScore: 78, mode: 'Custom' },
-  { id: 'as-6', date: '2026-11-18', subjectId: 'cs340', topic: 'Ford-Fulkerson & Bipartite Matching', plannedMin: 90, actualMin: 92, focusScore: 95, mode: 'Pomodoro' },
-  { id: 'as-7', date: '2026-11-17', subjectId: 'math241', topic: 'Spherical Triple Integrals', plannedMin: 90, actualMin: 85, focusScore: 88, mode: 'Countdown' },
-  { id: 'as-8', date: '2026-11-16', subjectId: 'chem210', topic: 'Friedel-Crafts Directing Groups', plannedMin: 60, actualMin: 64, focusScore: 86, mode: 'Pomodoro' },
+  { id: 'as-1', date: offsetIso(0, ANCHOR_TODAY), subjectId: 'cs340', topic: 'NP-Completeness Reductions', plannedMin: 90, actualMin: 95, focusScore: 94, mode: 'Pomodoro' },
+  { id: 'as-2', date: offsetIso(-1, ANCHOR_TODAY), subjectId: 'math241', topic: 'Vector Calculus Mock Midterm', plannedMin: 120, actualMin: 118, focusScore: 92, mode: 'Custom' },
+  { id: 'as-3', date: offsetIso(-1, ANCHOR_TODAY), subjectId: 'chem210', topic: 'Aldol Condensation Kinetics', plannedMin: 75, actualMin: 65, focusScore: 81, mode: 'Pomodoro' },
+  { id: 'as-4', date: offsetIso(-2, ANCHOR_TODAY), subjectId: 'neur302', topic: 'Hippocampal CA1 LTP', plannedMin: 60, actualMin: 62, focusScore: 90, mode: 'Pomodoro' },
+  { id: 'as-5', date: offsetIso(-3, ANCHOR_TODAY), subjectId: 'econ205', topic: '2SLS Instrument Diagnostics', plannedMin: 60, actualMin: 50, focusScore: 78, mode: 'Custom' },
+  { id: 'as-6', date: offsetIso(-4, ANCHOR_TODAY), subjectId: 'cs340', topic: 'Ford-Fulkerson & Bipartite Matching', plannedMin: 90, actualMin: 92, focusScore: 95, mode: 'Pomodoro' },
+  { id: 'as-7', date: offsetIso(-5, ANCHOR_TODAY), subjectId: 'math241', topic: 'Spherical Triple Integrals', plannedMin: 90, actualMin: 85, focusScore: 88, mode: 'Custom' },
+  { id: 'as-8', date: offsetIso(-6, ANCHOR_TODAY), subjectId: 'chem210', topic: 'Friedel-Crafts Directing Groups', plannedMin: 60, actualMin: 64, focusScore: 86, mode: 'Pomodoro' },
 ];
 
 // 14 weeks x 7 days consistency matrix (0..4 intensity)
@@ -1103,10 +1161,10 @@ export const PEAK_HOURS_HEATMAP: { day: string; slots: number[] }[] = [
 ];
 
 export const INITIAL_ACHIEVEMENTS: AchievementBadge[] = [
-  { id: 'ach-1', title: 'Fourteen-Day Cadence', description: 'Log focused study blocks for 14 consecutive days.', unlocked: true, unlockedDate: 'Nov 20, 2026', progress: 14, target: 14, xpReward: 350, category: 'Consistency' },
-  { id: 'ach-2', title: 'Deep Work Architect', description: 'Complete 25 uninterrupted Pomodoro blocks rated 4+ stars.', unlocked: true, unlockedDate: 'Nov 18, 2026', progress: 25, target: 25, xpReward: 400, category: 'Focus' },
-  { id: 'ach-3', title: 'Active Recall Scholar', description: 'Maintain 85%+ flashcard retention over 7 consecutive days.', unlocked: true, unlockedDate: 'Nov 15, 2026', progress: 7, target: 7, xpReward: 300, category: 'Mastery' },
-  { id: 'ach-4', title: 'Schedule Precision', description: 'Achieve 90% Planned vs Actual study adherence in a week.', unlocked: true, unlockedDate: 'Nov 10, 2026', progress: 92, target: 90, xpReward: 250, category: 'Planning' },
+  { id: 'ach-1', title: 'Fourteen-Day Cadence', description: 'Log focused study blocks for 14 consecutive days.', unlocked: true, unlockedDate: formatFullMonthDayYear(-2, ANCHOR_TODAY), progress: 14, target: 14, xpReward: 350, category: 'Consistency' },
+  { id: 'ach-2', title: 'Deep Work Architect', description: 'Complete 25 uninterrupted Pomodoro blocks rated 4+ stars.', unlocked: true, unlockedDate: formatFullMonthDayYear(-4, ANCHOR_TODAY), progress: 25, target: 25, xpReward: 400, category: 'Focus' },
+  { id: 'ach-3', title: 'Active Recall Scholar', description: 'Maintain 85%+ flashcard retention over 7 consecutive days.', unlocked: true, unlockedDate: formatFullMonthDayYear(-7, ANCHOR_TODAY), progress: 7, target: 7, xpReward: 300, category: 'Mastery' },
+  { id: 'ach-4', title: 'Schedule Precision', description: 'Achieve 90% Planned vs Actual study adherence in a week.', unlocked: true, unlockedDate: formatFullMonthDayYear(-12, ANCHOR_TODAY), progress: 92, target: 90, xpReward: 250, category: 'Planning' },
   { id: 'ach-5', title: 'Centurion Hours', description: 'Accumulate 200 total focused study hours this semester.', unlocked: false, progress: 170, target: 200, xpReward: 600, category: 'Focus' },
   { id: 'ach-6', title: 'Exam Ready', description: 'Reach 90% syllabus completion across all enrolled courses.', unlocked: false, progress: 68, target: 90, xpReward: 500, category: 'Mastery' },
 ];

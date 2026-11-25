@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { X, Star, CheckCircle2 } from 'lucide-react';
 import { localDay } from '../../assistant/workspaceContext';
 import { useApp } from '../../context/AppContext';
+import { computeInitialGoalProgress } from '../../utils/goalProgress';
 import type { Priority, GoalItem, GoalMilestone } from '../../types/studyflow';
 
 import { CalendarBlockFields, readCalendarBlockFields, RepeatWeekdays } from './CalendarBlockFields';
@@ -33,7 +34,7 @@ export const QuickModals: React.FC = () => {
   const [taskTitle, setTaskTitle] = useState('');
   const [taskSubject, setTaskSubject] = useState(subjects[0]?.id ?? '');
   const [taskPriority, setTaskPriority] = useState<Priority>('medium');
-  const [taskDue, setTaskDue] = useState(legacyCalendar ? localDay() : '2026-11-24');
+  const [taskDue, setTaskDue] = useState(() => localDay());
   const [taskMinutes, setTaskMinutes] = useState(45);
   const [taskDesc, setTaskDesc] = useState('');
 
@@ -57,13 +58,13 @@ export const QuickModals: React.FC = () => {
   const [goalDeadline, setGoalDeadline] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 7);
-    return legacyCalendar ? localDay(d) : '2026-12-05';
+    return localDay(d);
   });
   const [goalDraftMilestones, setGoalDraftMilestones] = useState<
     (GoalMilestone & { createAsTask?: boolean; dueIso?: string })[]
   >([]);
   const [goalMsLabel, setGoalMsLabel] = useState('');
-  const [goalMsDate, setGoalMsDate] = useState(legacyCalendar ? localDay() : '2026-11-28');
+  const [goalMsDate, setGoalMsDate] = useState(() => localDay());
   const [goalMsCreateTask, setGoalMsCreateTask] = useState(false);
   const [goalExistingTaskId, setGoalExistingTaskId] = useState('');
 
@@ -106,7 +107,7 @@ export const QuickModals: React.FC = () => {
       title: taskTitle.trim(),
       subjectId: subjects.find(item => item.id === taskSubject)?.id ?? subjects[0]?.id ?? '',
       dueDate: taskDue,
-      dueLabel: taskDue === '2026-11-22' ? 'Today' : taskDue,
+      dueLabel: taskDue === localDay() ? 'Today' : taskDue,
       priority: taskPriority,
       status: 'todo',
       estimatedMinutes: taskMinutes,
@@ -133,7 +134,11 @@ export const QuickModals: React.FC = () => {
       totalHours: 0,
       weeklyTargetHours: subTarget,
       lastStudied: 'Just added',
-      nextExamDate: '2026-12-15',
+      nextExamDate: (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 21);
+        return localDay(d);
+      })(),
       nextExamTitle: 'Final Examination',
       currentGrade: '—',
       targetGrade: 'A',
@@ -277,13 +282,21 @@ export const QuickModals: React.FC = () => {
         })
       : 'No deadline';
 
+    const cleanUnit = goalUnit.trim() || 'units';
+    const initialCurrent = computeInitialGoalProgress(
+      goalTarget,
+      cleanUnit,
+      goalCategory,
+      resolvedMilestones,
+    );
+
     addGoal({
       title: goalTitle.trim(),
       category: goalCategory,
       ...(goalSubject ? { subjectId: goalSubject } : {}),
-      current: 0,
+      current: initialCurrent,
       target: goalTarget,
-      unit: goalUnit.trim() || 'units',
+      unit: cleanUnit,
       deadline: formattedDeadline,
       milestones: resolvedMilestones,
     });
@@ -599,7 +612,7 @@ export const QuickModals: React.FC = () => {
                 </div>
                 <label className="grid gap-1 text-xs">
                   Date
-                  <input type="date" name="date" required defaultValue={legacyCalendar ? localDay() : '2026-11-22'}
+                  <input type="date" name="date" required defaultValue={localDay()}
                     className="w-full rounded-lg px-2.5 py-1.5 text-[13px]" style={inputStyle} />
                 </label>
                 <SessionTimeFields />

@@ -23,11 +23,17 @@ import {
   Clock,
   Flame,
   Calendar,
+  Coffee,
+  ArrowLeft,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { DashboardAiOverviewCard } from '../dashboard/DashboardAiOverviewCard';
 import { localDay } from '../../assistant/workspaceContext';
-import { currentStudySession, layoutCalendarDay } from '../../utils/calendarLayout';
+import { layoutCalendarDay } from '../../utils/calendarLayout';
+import {
+  currentStudySessionRemaining,
+  formatHoursMinutesCompact,
+} from '../../utils/focusTimerLogic';
 import { studyChart } from '../../utils/workspaceMetrics';
 import { DASHBOARD_CHART_DATA } from '../../data/mockData';
 import {
@@ -50,7 +56,10 @@ export const DashboardView: React.FC = () => {
     sessions,
     notes,
     focusTimer,
+    startCurrentSessionFocus,
     toggleFocusRunning,
+    takeFocusBreak,
+    endFocusBreak,
     setRoute,
     setSelectedSubjectId,
     setSelectedNoteId,
@@ -71,10 +80,10 @@ export const DashboardView: React.FC = () => {
   const pendingTasks = tasks.length - completedTasks;
   const [now, setNow] = useState(() => new Date());
   React.useEffect(() => {
-    const interval = window.setInterval(() => setNow(new Date()), 15000);
+    const interval = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(interval);
   }, []);
-  const hour = now.getHours() + now.getMinutes() / 60;
+  const hour = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
   const todayIso = localDay(now);
   const todaySessions = layoutCalendarDay(sessions, todayIso)
     .filter(block => block.to > hour && block.session.status === 'upcoming' && block.session.countsTowardStudy !== false);
@@ -384,15 +393,30 @@ export const DashboardView: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                    <span
-                      className={`text-[11.5px] font-medium shrink-0 ${
-                        ses.status === 'completed'
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-[var(--text-muted)]'
-                      }`}
-                    >
-                      {from <= hour ? 'In progress' : 'Upcoming'}
-                    </span>
+                    {from <= hour ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          startCurrentSessionFocus();
+                          setRoute('focus');
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11.5px] font-medium shrink-0 transition-opacity hover:opacity-90"
+                        style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-border)' }}
+                      >
+                        <Play className="w-3 h-3" />
+                        Focus
+                      </button>
+                    ) : (
+                      <span
+                        className={`text-[11.5px] font-medium shrink-0 ${
+                          ses.status === 'completed'
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-[var(--text-muted)]'
+                        }`}
+                      >
+                        Upcoming
+                      </span>
+                    )}
                   </div>
                 );
               })}
@@ -401,14 +425,26 @@ export const DashboardView: React.FC = () => {
         );
 
       case 'quick_focus': {
-        const idle = !focusTimer.running && !focusTimer.elapsedSeconds && focusTimer.phase === 'focus' && (focusTimer.mode === 'Stopwatch' || focusTimer.secondsLeft === focusTimer.totalSeconds);
-        const current = idle && focusTimer.calendarSessionId !== null ? currentStudySession(sessions, now) : undefined;
+        const idle =
+          !focusTimer.running &&
+          focusTimer.elapsedSeconds === 0 &&
+          !focusTimer.pausedFocus &&
+          focusTimer.phase === 'focus' &&
+          (focusTimer.mode === 'Stopwatch' || focusTimer.secondsLeft === focusTimer.totalSeconds);
+        const activeSessionInfo = idle
+          ? currentStudySessionRemaining(sessions, now)
+          : null;
+        const current = activeSessionInfo?.session;
         const next = idle && !current ? todaySessions.find(block => block.from > hour) : undefined;
         const sub = subjects.find(s => s.id === (current?.subjectId ?? focusTimer.subjectId));
+        const isBreak = focusTimer.phase === 'break';
+        const canTakeBreak = focusTimer.phase === 'focus' && (focusTimer.running || focusTimer.elapsedSeconds > 0);
         const timeStr =
-          focusTimer.mode === 'Stopwatch'
-            ? formatTimerSeconds(focusTimer.elapsedSeconds)
-            : formatTimerSeconds(focusTimer.secondsLeft);
+          activeSessionInfo
+            ? formatTimerSeconds(activeSessionInfo.remainingSeconds)
+            : focusTimer.phase === 'focus' && focusTimer.mode === 'Stopwatch'
+              ? formatTimerSeconds(focusTimer.elapsedSeconds)
+              : formatTimerSeconds(focusTimer.secondsLeft);
 
         return (
           <section key={id} className="grid min-w-0 grid-rows-[auto_1fr_auto] gap-4 rounded-xl p-4" style={surfaceStyle}>
@@ -418,7 +454,11 @@ export const DashboardView: React.FC = () => {
                   Quick-Start Focus
                 </h2>
                 <p className="text-[12px] text-[var(--text-muted)] truncate">
-                  {sub ? sub.code + ' · ' : ''}{focusTimer.mode}
+                  {isBreak
+                    ? focusTimer.pausedFocus
+                      ? `Break · ${formatTimerSeconds(focusTimer.pausedFocus.secondsLeft)} paused`
+                      : 'Optional break'
+                    : `${sub ? sub.code + ' · ' : ''}${activeSessionInfo ? `Remainder (${formatHoursMinutesCompact(activeSessionInfo.remainingSeconds)})` : focusTimer.mode}`}
                 </p>
               </div>
               <button
@@ -431,7 +471,7 @@ export const DashboardView: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex items-center justify-between gap-4 self-center">
+            <div className="flex flex-wrap items-center justify-between gap-3 self-center">
               <div className="min-w-0">
                 <div className="font-mono-num text-[32px] font-semibold tracking-tight text-[var(--text-primary)] leading-none">
                   {timeStr}
@@ -440,23 +480,69 @@ export const DashboardView: React.FC = () => {
                   {current?.title || ((!idle || focusTimer.calendarSessionId === null) && focusTimer.taskTitle) || 'No current study session'}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={toggleFocusRunning}
-                aria-label={focusTimer.running ? 'Pause quick focus timer' : 'Start quick focus timer'}
-                className="h-10 px-4 rounded-xl inline-flex items-center gap-2 text-[13px] font-medium shrink-0 transition-opacity hover:opacity-90"
-                style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
-              >
-                {focusTimer.running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                {focusTimer.running ? 'Pause' : idle ? 'Start' : 'Resume'}
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                {canTakeBreak && (
+                  <button
+                    type="button"
+                    onClick={() => takeFocusBreak(preferences.pomodoroBreakMin)}
+                    aria-label="Take a break without ending session"
+                    title="Take break (pauses session)"
+                    className="h-10 px-3 rounded-xl inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+                    style={{ border: '1px solid var(--border-subtle)' }}
+                  >
+                    <Coffee className="w-4 h-4 text-emerald-500" />
+                    Break
+                  </button>
+                )}
+                {isBreak && (
+                  <button
+                    type="button"
+                    onClick={endFocusBreak}
+                    aria-label="Return to paused session"
+                    className="h-10 px-3 rounded-xl inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+                    style={{ border: '1px solid var(--border-subtle)' }}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Return
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={idle && activeSessionInfo ? startCurrentSessionFocus : toggleFocusRunning}
+                  aria-label={focusTimer.running ? 'Pause quick focus timer' : 'Start quick focus timer'}
+                  className="h-10 px-4 rounded-xl inline-flex items-center gap-2 text-[13px] font-medium shrink-0 transition-opacity hover:opacity-90"
+                  style={{
+                    backgroundColor: isBreak ? '#10B981' : 'var(--accent)',
+                    color: '#FFFFFF',
+                  }}
+                >
+                  {focusTimer.running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                  {isBreak
+                    ? focusTimer.running
+                      ? 'Pause'
+                      : 'Start'
+                    : focusTimer.running
+                      ? 'Pause'
+                      : idle
+                        ? 'Start'
+                        : 'Resume'}
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-2.5 text-[11.5px] text-[var(--text-muted)]" style={{ borderTop: '1px solid var(--border-subtle)' }}>
               <span className="flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5" /> Cycle {focusTimer.cycleCount} of 4
               </span>
-              <span>{next ? 'Up next · ' + next.session.title + ' · ' + formatHourLabel(next.from) : 'Next break · ' + preferences.pomodoroBreakMin + ' min'}</span>
+              <span>
+                {isBreak && focusTimer.pausedFocus
+                  ? 'Session stays paused after break'
+                  : next
+                    ? 'Up next · ' + next.session.title + ' · ' + formatHourLabel(next.from)
+                    : preferences.breaksEnabled !== false
+                      ? `Optional break · ${preferences.pomodoroBreakMin} min`
+                      : 'Optional breaks off'}
+              </span>
             </div>
           </section>
         );
@@ -672,7 +758,7 @@ export const DashboardView: React.FC = () => {
         <div>
           <div className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
             <Calendar className="w-3.5 h-3.5" />
-            <span>{legacyCalendar ? new Date().toLocaleDateString(undefined, { dateStyle: 'full' }) : 'Sunday, November 22, 2026 · Week 12 of Fall Term'}</span>
+            <span>{now.toLocaleDateString(undefined, { dateStyle: 'full' })}</span>
           </div>
           <h1 className="font-display text-[22px] font-semibold tracking-tight text-[var(--text-primary)] mt-0.5">
             {getTimeOfDayGreeting()}, {extractFirstName(preferences.name)}

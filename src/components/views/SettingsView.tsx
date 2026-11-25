@@ -458,27 +458,38 @@ export const SettingsView: React.FC = () => {
               <h2 className="font-display text-[16px] font-semibold text-[var(--text-primary)]">
                 Focus Timer Defaults
               </h2>
+              <p className="text-[12.5px] text-[var(--text-muted)]">
+                Starting focus during a scheduled calendar session automatically uses the remaining time of that session (up to 10 hours).
+              </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[12px] text-[var(--text-muted)] mb-1">Pomodoro Focus (min)</label>
+                  <label className="block text-[12px] text-[var(--text-muted)] mb-1">Default Focus (min, max 600 / 10h)</label>
                   <input
                     type="number"
-                    min={15}
-                    max={90}
+                    min={1}
+                    max={600}
                     value={preferences.pomodoroFocusMin}
-                    onChange={(e) => updatePreferences({ pomodoroFocusMin: Number(e.target.value) })}
+                    onChange={(e) =>
+                      updatePreferences({
+                        pomodoroFocusMin: Math.max(1, Math.min(600, Number(e.target.value) || 25)),
+                      })
+                    }
                     className="w-full px-3 py-2 rounded-lg text-[13px] font-mono-num"
                     style={inputStyle}
                   />
                 </div>
                 <div>
-                  <label className="block text-[12px] text-[var(--text-muted)] mb-1">Short Break (min)</label>
+                  <label className="block text-[12px] text-[var(--text-muted)] mb-1">Optional Break Length (min)</label>
                   <input
                     type="number"
-                    min={3}
-                    max={20}
+                    min={1}
+                    max={60}
                     value={preferences.pomodoroBreakMin}
-                    onChange={(e) => updatePreferences({ pomodoroBreakMin: Number(e.target.value) })}
+                    onChange={(e) =>
+                      updatePreferences({
+                        pomodoroBreakMin: Math.max(1, Math.min(60, Number(e.target.value) || 5)),
+                      })
+                    }
                     className="w-full px-3 py-2 rounded-lg text-[13px] font-mono-num"
                     style={inputStyle}
                   />
@@ -486,10 +497,10 @@ export const SettingsView: React.FC = () => {
               </div>
               <div className="divide-y divide-[var(--border-subtle)]">
                 <ToggleRow
-                  label="Auto-start break countdown"
-                  description="Immediately begin short break timer after saving focus quality."
-                  checked={preferences.autoStartBreaks}
-                  onChange={(v) => updatePreferences({ autoStartBreaks: v })}
+                  label="Enable optional breaks"
+                  description="Offer optional breaks after sessions or mid-session without ending focus. Sessions stay paused until you explicitly resume."
+                  checked={preferences.breaksEnabled !== false}
+                  onChange={(v) => updatePreferences({ breaksEnabled: v })}
                 />
               </div>
             </div>

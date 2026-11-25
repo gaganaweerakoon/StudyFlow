@@ -21,6 +21,11 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { localDay } from '../../assistant/workspaceContext';
+import {
+  applyMilestoneAdd,
+  applyMilestoneRemove,
+  applyMilestoneToggle,
+} from '../../utils/goalProgress';
 import type { GoalItem, GoalMilestone, Priority, TaskItem } from '../../types/studyflow';
 
 type ComposerTab = 'milestone' | 'existing_task' | 'new_task';
@@ -53,7 +58,7 @@ export const GoalsView: React.FC = () => {
   const [composerTab, setComposerTab] = useState<ComposerTab>('milestone');
 
   // Standalone milestone draft
-  const defaultDateIso = legacyCalendar ? localDay() : '2026-11-28';
+  const defaultDateIso = localDay();
   const [msLabel, setMsLabel] = useState('');
   const [msDate, setMsDate] = useState(defaultDateIso);
 
@@ -120,29 +125,24 @@ export const GoalsView: React.FC = () => {
 
   const handleToggleMilestone = (goal: GoalItem, milestone: GoalMilestone) => {
     const linkedTask = milestone.taskId ? taskById.get(milestone.taskId) : undefined;
-    const currentDone = linkedTask ? linkedTask.status === 'done' : milestone.done;
-    const nextDone = !currentDone;
-
     if (linkedTask) {
+      // toggleTaskStatus atomically updates both the task and all linked goals
       toggleTaskStatus(linkedTask.id);
+      return;
     }
 
-    const updatedMilestones = goal.milestones.map((m) =>
-      m.id === milestone.id ? { ...m, done: nextDone } : m,
-    );
-
-    const patch: Partial<GoalItem> = { milestones: updatedMilestones };
-    if (goal.category === 'tasks' && goal.unit === 'tasks') {
-      const delta = nextDone ? 1 : -1;
-      patch.current = Math.max(0, Math.min(goal.target, goal.current + delta));
-    }
-
-    updateGoal(goal.id, patch);
+    const updated = applyMilestoneToggle(goal, milestone.id, !milestone.done);
+    updateGoal(goal.id, {
+      milestones: updated.milestones,
+      current: updated.current,
+    });
   };
 
   const handleRemoveMilestone = (goal: GoalItem, milestoneId: string) => {
+    const updated = applyMilestoneRemove(goal, milestoneId);
     updateGoal(goal.id, {
-      milestones: goal.milestones.filter((m) => m.id !== milestoneId),
+      milestones: updated.milestones,
+      current: updated.current,
     });
     pushToast('Milestone removed from goal');
   };
@@ -176,10 +176,16 @@ export const GoalsView: React.FC = () => {
       date: task.dueLabel || formatShortDate(task.dueDate),
       taskId: task.id,
     };
+    const updated = applyMilestoneAdd(goal, nextMilestone);
     updateGoal(goal.id, {
-      milestones: [...goal.milestones, nextMilestone],
+      milestones: updated.milestones,
+      current: updated.current,
     });
-    pushToast(`Linked task "${task.title}"`);
+    pushToast(
+      task.status === 'done'
+        ? `Linked completed task "${task.title}" and updated progress`
+        : `Linked task "${task.title}"`,
+    );
   };
 
   const handleCreateTaskAndAttach = (e: React.FormEvent, goal: GoalItem) => {

@@ -12,6 +12,7 @@ export type NavRoute =
   | 'flashcards'
   | 'practice'
   | 'exams'
+  | 'lab'
   | 'analytics'
   | 'assistant'
   | 'achievements'
@@ -174,7 +175,60 @@ export interface FlashcardItem {
   easeFactor: number;
   dueToday: boolean;
   nextReviewDate?: string;
+  lastReviewedAt?: string;
+  reviewCount?: number;
+  lapses?: number;
   mastery: 'new' | 'learning' | 'mature';
+}
+
+export type StudyLabLanguage = 'math' | 'python' | 'javascript' | 'sql' | 'cpp';
+
+export interface StudyLabLaunchState {
+  tab: 'playground' | 'whiteboard';
+  language?: StudyLabLanguage;
+  code?: string;
+  svg?: string;
+  title?: string;
+  targetNoteId?: string;
+  targetQuizId?: string;
+  targetQuestionId?: string;
+}
+
+export interface SyllabusExtractedExam {
+  title: string;
+  date: string;
+  time?: string;
+  room?: string;
+  weightPercent: number;
+  syllabusTopics?: string[];
+}
+
+export interface SyllabusExtractedTask {
+  title: string;
+  dueDate: string;
+  priority: Priority;
+  estimatedMinutes: number;
+  description?: string;
+}
+
+export interface SyllabusExtractedChapter {
+  title: string;
+  topics: string[];
+}
+
+export interface SyllabusExtractedGoal {
+  title: string;
+  deadline: string;
+  category: GoalItem['category'];
+  milestones: Array<{ label: string; date: string }>;
+}
+
+export interface SyllabusExtractionBundle {
+  courseTitle?: string;
+  exams: SyllabusExtractedExam[];
+  tasks: SyllabusExtractedTask[];
+  chapters: SyllabusExtractedChapter[];
+  goals: SyllabusExtractedGoal[];
 }
 
 export interface FlashcardDeck {

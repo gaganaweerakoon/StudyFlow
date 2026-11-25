@@ -55,7 +55,7 @@ export const TasksView: React.FC = () => {
   const [newSubtaskText, setNewSubtaskText] = useState('');
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
 
-  const today = legacyCalendar ? localDay() : '2026-11-22';
+  const today = localDay();
   const calendarDates = Array.from({ length: 5 }, (_, index) => {
     const day = new Date(today + 'T12:00:00');
     day.setDate(day.getDate() + index - 1);

@@ -1,28 +1,49 @@
-import { currentStudySession } from '../../utils/calendarLayout';
-import { focusScenes, focusTracks } from '../../utils/focusScenes';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Play,
-  Pause,
-  RotateCcw,
+  ArrowLeft,
+  CheckCircle2,
+  Clock,
+  Coffee,
   Maximize2,
   Minimize2,
+  Pause,
   PictureInPicture2,
-  CheckCircle2,
+  Play,
+  RotateCcw,
   Star,
-  Coffee,
-  Volume2,
+  X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { formatTimerSeconds } from '../../utils/studyLogic';
+import { formatHourLabel, formatTimerSeconds } from '../../utils/studyLogic';
+import {
+  clampBreakMinutes,
+  clampFocusHoursMinutes,
+  currentStudySessionRemaining,
+  formatHoursMinutesCompact,
+  MAX_BREAK_MINUTES,
+  MAX_FOCUS_HOURS,
+  MIN_BREAK_MINUTES,
+  splitMinutesToHoursMinutes,
+} from '../../utils/focusTimerLogic';
 
-const MODES = ['Pomodoro', 'Countdown', 'Stopwatch', 'Custom'] as const;
+const MODES = ['Pomodoro', 'Custom'] as const;
+const CUSTOM_PRESETS = [
+  { label: '25m', hours: 0, minutes: 25 },
+  { label: '45m', hours: 0, minutes: 45 },
+  { label: '1h', hours: 1, minutes: 0 },
+  { label: '2h', hours: 2, minutes: 0 },
+] as const;
+const BREAK_PRESETS = [5, 10, 15, 20, 30] as const;
 
 export const FocusTimerView: React.FC = () => {
   const {
-    focusTimer, xpPoints,
+    focusTimer,
     setFocusMode,
+    setFocusDuration,
+    startCurrentSessionFocus,
     toggleFocusRunning,
+    takeFocusBreak,
+    endFocusBreak,
     resetFocusTimer,
     setFocusContext,
     setMiniTimerVisible,
@@ -37,209 +58,547 @@ export const FocusTimerView: React.FC = () => {
     pushToast,
   } = useApp();
 
-  const [customMin, setCustomMin] = useState(35);
+  const initialSplit = splitMinutesToHoursMinutes(Math.round(focusTimer.totalSeconds / 60));
+  const [customHours, setCustomHours] = useState(initialSplit.hours);
+  const [customMinutes, setCustomMinutes] = useState(initialSplit.minutes);
   const [fullScreenMode, setFullScreenMode] = useState(false);
+  const [breakPopupOpen, setBreakPopupOpen] = useState(false);
+  const [selectedBreakMin, setSelectedBreakMin] = useState(() =>
+    clampBreakMinutes(preferences.pomodoroBreakMin ?? 5),
+  );
 
-  const level=Math.floor(xpPoints/500)+1;
-  const scene = focusScenes.find(option => option.id === preferences.focusScene && level >= option.level) ?? focusScenes[0];
-  const background = scene.image ? { backgroundImage: scene.image, backgroundSize: 'cover', backgroundPosition: 'center', color: 'white' } : {};
-  const audio=React.useRef<HTMLAudioElement>(null);
-  const track = focusTracks.find(option => option.id === preferences.focusTrack && level >= option.level)?.id ?? '';
-  React.useEffect(()=>{
-    if(!audio.current)return;
-    audio.current.volume=preferences.musicVolume ?? 0.35;
-    audio.current.muted=Boolean(preferences.musicMuted);
-    if(focusTimer.running && track) void audio.current.play().catch(()=>{});
-    else audio.current.pause();
-  },[focusTimer.running,track,preferences.musicVolume,preferences.musicMuted,fullScreenMode]);
-  const music=<audio ref={audio} loop src={track ? '/focus/'+track+'.ogg':undefined}/>;
   const [now, setNow] = useState(() => new Date());
-  React.useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 15000);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
-  const automatic = !focusTimer.running && !focusTimer.elapsedSeconds && focusTimer.phase === 'focus' &&
-    (focusTimer.mode === 'Stopwatch' || focusTimer.secondsLeft === focusTimer.totalSeconds) && focusTimer.calendarSessionId !== null;
-  const current = automatic ? currentStudySession(sessions, now) : undefined;
-  const focusSubject = automatic ? current?.subjectId ?? '' : focusTimer.subjectId;
-  const focusTitle = automatic ? current?.title ?? '' : focusTimer.taskTitle;
-  const activeSubject = subjects.find(subject => subject.id === focusSubject);
+
+  const isIdle =
+    !focusTimer.running &&
+    focusTimer.elapsedSeconds === 0 &&
+    !focusTimer.pausedFocus &&
+    focusTimer.phase === 'focus' &&
+    (focusTimer.mode === 'Stopwatch' || focusTimer.secondsLeft === focusTimer.totalSeconds);
+
+  const activeSessionInfo = currentStudySessionRemaining(sessions, now);
+
+  // When a scheduled session is currently active and the timer is idle, default directly to it
+  // with one-click Start and zero time/mode adjustment clutter.
+  const showingCurrentSessionOneClick = isIdle && Boolean(activeSessionInfo);
+
+  // Normalize any legacy Countdown/Stopwatch mode into Pomodoro/Custom when no session is active
+  const visibleIdleMode: 'Pomodoro' | 'Custom' =
+    focusTimer.mode === 'Custom' || focusTimer.mode === 'Countdown' ? 'Custom' : 'Pomodoro';
+
+  const focusSubject =
+    showingCurrentSessionOneClick && activeSessionInfo
+      ? activeSessionInfo.session.subjectId
+      : focusTimer.subjectId;
+  const focusTitle =
+    showingCurrentSessionOneClick && activeSessionInfo
+      ? activeSessionInfo.session.title
+      : focusTimer.taskTitle;
+  const activeSubject = subjects.find((subject) => subject.id === focusSubject);
+
+  const effectiveTotalSeconds =
+    showingCurrentSessionOneClick && activeSessionInfo
+      ? activeSessionInfo.remainingSeconds
+      : focusTimer.totalSeconds;
+  const effectiveSecondsLeft =
+    showingCurrentSessionOneClick && activeSessionInfo
+      ? activeSessionInfo.remainingSeconds
+      : focusTimer.secondsLeft;
+
   const displayTime =
-    focusTimer.mode === 'Stopwatch'
+    focusTimer.phase === 'focus' && focusTimer.mode === 'Stopwatch'
       ? formatTimerSeconds(focusTimer.elapsedSeconds)
-      : formatTimerSeconds(focusTimer.secondsLeft);
+      : formatTimerSeconds(effectiveSecondsLeft);
 
   const progressRatio =
-    focusTimer.mode === 'Stopwatch'
-      ? Math.min(1, focusTimer.elapsedSeconds / 3600)
-      : Math.min(1, Math.max(0, (focusTimer.totalSeconds - focusTimer.secondsLeft) / focusTimer.totalSeconds));
+    focusTimer.phase === 'focus' && focusTimer.mode === 'Stopwatch'
+      ? Math.min(1, focusTimer.elapsedSeconds / 36000)
+      : Math.min(
+          1,
+          Math.max(0, (effectiveTotalSeconds - effectiveSecondsLeft) / Math.max(1, effectiveTotalSeconds)),
+        );
 
-  const radius = 114;
+  const radius = 122;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference * (1 - progressRatio);
+
+  const canTakeMidBreak =
+    focusTimer.phase === 'focus' && (focusTimer.running || focusTimer.elapsedSeconds > 0);
+  const isBreakPhase = focusTimer.phase === 'break';
+  const hasPausedSession = Boolean(focusTimer.pausedFocus);
+
+  const totalLoggedMinutes = useMemo(
+    () => focusHistory.reduce((acc, item) => acc + (Number(item.durationMinutes) || 0), 0),
+    [focusHistory],
+  );
+
+  const applyHoursMinutes = (nextH: number, nextM: number) => {
+    const clamped = clampFocusHoursMinutes(nextH, nextM);
+    setCustomHours(clamped.hours);
+    setCustomMinutes(clamped.minutes);
+    setFocusDuration(clamped.hours, clamped.minutes, 'Custom');
+  };
+
+  const openBreakPopup = () => {
+    setSelectedBreakMin(clampBreakMinutes(preferences.pomodoroBreakMin ?? 5));
+    setBreakPopupOpen(true);
+  };
+
+  const confirmStartBreak = (minutes: number) => {
+    const clean = clampBreakMinutes(minutes);
+    updatePreferences({ pomodoroBreakMin: clean });
+    setBreakPopupOpen(false);
+    takeFocusBreak(clean);
+  };
+
+  const handlePrimaryClick = () => {
+    if (showingCurrentSessionOneClick) {
+      startCurrentSessionFocus();
+      return;
+    }
+    toggleFocusRunning();
+  };
+
+  // Keyboard shortcuts: Escape closes popup or full-screen; Space toggles play/pause when not in inputs
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (breakPopupOpen) {
+          setBreakPopupOpen(false);
+        } else if (fullScreenMode) {
+          setFullScreenMode(false);
+        }
+        return;
+      }
+      if (e.key === ' ' && !breakPopupOpen) {
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return;
+        e.preventDefault();
+        if (showingCurrentSessionOneClick) {
+          startCurrentSessionFocus();
+        } else {
+          toggleFocusRunning();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [breakPopupOpen, fullScreenMode, showingCurrentSessionOneClick, startCurrentSessionFocus, toggleFocusRunning]);
 
   const surfaceStyle: React.CSSProperties = {
     backgroundColor: 'var(--bg-surface)',
     border: '1px solid var(--border-subtle)',
   };
 
-  const timerContent = (
-    <div className="flex flex-col items-center justify-center py-6 px-4">
-      {/* Mode selector */}
-      <div
-        className="inline-flex items-center p-1 rounded-xl text-[12.5px] mb-6"
-        style={{ backgroundColor: 'var(--bg-surface-subtle)', border: '1px solid var(--border-subtle)' }}
-        role="tablist"
-        aria-label="Focus timer modes"
-      >
-        {MODES.map((m) => (
-          <button
-            key={m}
-            type="button"
-            role="tab"
-            aria-selected={focusTimer.mode === m}
-            onClick={() => setFocusMode(m, m === 'Custom' ? customMin : undefined)}
-            className="px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap"
-            style={{
-              backgroundColor: focusTimer.mode === m ? 'var(--bg-surface)' : 'transparent',
-              color: focusTimer.mode === m ? 'var(--text-primary)' : 'var(--text-muted)',
-              boxShadow: focusTimer.mode === m ? 'var(--shadow-subtle)' : 'none',
-            }}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
+  const primaryButtonLabel = isBreakPhase
+    ? focusTimer.running
+      ? 'Pause Break'
+      : focusTimer.secondsLeft < focusTimer.totalSeconds
+        ? 'Resume Break'
+        : 'Start Break'
+    : focusTimer.running
+      ? 'Pause'
+      : focusTimer.elapsedSeconds > 0
+        ? 'Resume'
+        : showingCurrentSessionOneClick && activeSessionInfo
+          ? `Start Focus (${formatHoursMinutesCompact(activeSessionInfo.remainingSeconds)})`
+          : 'Start Focus';
 
-      {/* Custom minutes control */}
-      {focusTimer.mode === 'Custom' && (
-        <div className="flex items-center gap-2 mb-5 text-[12.5px]">
-          <label htmlFor="custom-focus-min" className="text-[var(--text-secondary)]">
-            Duration (min):
+  const breakDurationPopup = breakPopupOpen && (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(15, 23, 42, 0.55)', backdropFilter: 'blur(3px)' }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) setBreakPopupOpen(false);
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="break-popup-title"
+        className="w-full max-w-sm rounded-2xl p-5 space-y-4 shadow-xl"
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          border: '1px solid var(--border-subtle)',
+        }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2
+              id="break-popup-title"
+              className="font-display text-[16px] font-semibold text-[var(--text-primary)]"
+            >
+              Choose break duration
+            </h2>
+            <p className="text-[12.5px] text-[var(--text-muted)] mt-0.5">
+              Your focus session pauses and waits until you resume.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBreakPopupOpen(false)}
+            aria-label="Close break duration popup"
+            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-5 gap-1.5">
+          {BREAK_PRESETS.map((minutes) => {
+            const active = selectedBreakMin === minutes;
+            return (
+              <button
+                key={minutes}
+                type="button"
+                onClick={() => setSelectedBreakMin(minutes)}
+                className="h-9 rounded-lg font-mono-num text-[12.5px] font-medium transition-colors whitespace-nowrap"
+                style={{
+                  backgroundColor: active ? 'var(--accent-soft)' : 'var(--bg-surface-subtle)',
+                  color: active ? 'var(--accent)' : 'var(--text-primary)',
+                  border: active ? '1px solid var(--accent)' : '1px solid var(--border-subtle)',
+                }}
+              >
+                {minutes}m
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 pt-1">
+          <label htmlFor="popup-break-minutes" className="text-[12.5px] text-[var(--text-secondary)]">
+            Custom minutes
           </label>
-          <input
-            id="custom-focus-min"
-            type="number"
-            min={5}
-            max={180}
-            value={customMin}
-            onChange={(e) => {
-              const v = Math.max(5, Math.min(180, Number(e.target.value)));
-              setCustomMin(v);
-              setFocusMode('Custom', v);
-            }}
-            className="w-18 px-2.5 py-1 rounded-lg font-mono-num text-center"
-            style={{
-              backgroundColor: 'var(--bg-surface-subtle)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-primary)',
-            }}
-          />
+          <div className="inline-flex items-center gap-1.5">
+            <input
+              id="popup-break-minutes"
+              type="number"
+              min={MIN_BREAK_MINUTES}
+              max={MAX_BREAK_MINUTES}
+              value={selectedBreakMin}
+              onChange={(e) => setSelectedBreakMin(clampBreakMinutes(Number(e.target.value)))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  confirmStartBreak(selectedBreakMin);
+                }
+              }}
+              className="w-20 h-9 px-2.5 rounded-lg font-mono-num text-center text-[13px]"
+              style={{
+                backgroundColor: 'var(--bg-surface-subtle)',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-primary)',
+              }}
+            />
+            <span className="text-[12px] text-[var(--text-muted)]">min</span>
+          </div>
+        </div>
+
+        <div
+          className="flex items-center justify-end gap-2 pt-3"
+          style={{ borderTop: '1px solid var(--border-subtle)' }}
+        >
+          <button
+            type="button"
+            onClick={() => setBreakPopupOpen(false)}
+            className="h-9 px-3.5 rounded-lg text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors whitespace-nowrap"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => confirmStartBreak(selectedBreakMin)}
+            className="h-9 px-4 rounded-lg inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90 whitespace-nowrap"
+            style={{ backgroundColor: '#10B981' }}
+          >
+            <Coffee className="w-3.5 h-3.5" />
+            Start Break
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const timerContent = (
+    <div className="flex flex-col items-center justify-center py-9 px-5">
+      {/* Scheduled session clean unboxed metadata kicker */}
+      {showingCurrentSessionOneClick && activeSessionInfo && (
+        <div className="mb-6 flex flex-wrap items-center justify-center gap-2 text-[12.5px] text-[var(--text-secondary)]">
+          <Clock className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
+          <span className="font-medium text-[var(--text-primary)]">Scheduled now</span>
+          <span aria-hidden="true" className="text-[var(--text-muted)]">·</span>
+          <span className="font-mono-num font-semibold" style={{ color: 'var(--accent)' }}>
+            {formatHoursMinutesCompact(activeSessionInfo.remainingSeconds)} remaining
+          </span>
+        </div>
+      )}
+
+      {/* Idle Mode Switcher (Pomodoro / Custom) when no scheduled session is active */}
+      {isIdle && !activeSessionInfo && (
+        <div className="flex flex-col items-center gap-3.5 mb-7 w-full max-w-sm">
+          <div
+            className="inline-flex items-center p-1 rounded-xl text-[12.5px]"
+            style={{ backgroundColor: 'var(--bg-surface-subtle)', border: '1px solid var(--border-subtle)' }}
+            role="tablist"
+            aria-label="Focus timer modes"
+          >
+            {MODES.map((m) => {
+              const selected = visibleIdleMode === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => {
+                    if (m === 'Custom') {
+                      const split = splitMinutesToHoursMinutes(customHours * 60 + customMinutes || 45);
+                      setCustomHours(split.hours);
+                      setCustomMinutes(split.minutes);
+                      setFocusDuration(split.hours, split.minutes, 'Custom');
+                    } else {
+                      setFocusMode('Pomodoro');
+                    }
+                  }}
+                  className="px-4 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap"
+                  style={{
+                    backgroundColor: selected ? 'var(--bg-surface)' : 'transparent',
+                    color: selected ? 'var(--text-primary)' : 'var(--text-muted)',
+                    boxShadow: selected ? 'var(--shadow-subtle)' : 'none',
+                  }}
+                >
+                  {m}
+                </button>
+              );
+            })}
+          </div>
+
+          {visibleIdleMode === 'Custom' && (
+            <div className="flex flex-col items-center gap-2.5 w-full">
+              <div className="flex flex-wrap items-center justify-center gap-1.5">
+                {CUSTOM_PRESETS.map((preset) => {
+                  const active = customHours === preset.hours && customMinutes === preset.minutes;
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => applyHoursMinutes(preset.hours, preset.minutes)}
+                      className="h-7 px-2.5 rounded-lg font-mono-num text-[11.5px] font-medium transition-colors whitespace-nowrap"
+                      style={{
+                        backgroundColor: active ? 'var(--accent-soft)' : 'var(--bg-surface-subtle)',
+                        color: active ? 'var(--accent)' : 'var(--text-secondary)',
+                        border: active ? '1px solid var(--accent-border)' : '1px solid var(--border-subtle)',
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center justify-center gap-2 text-[12.5px]">
+                <div className="inline-flex items-center gap-1.5">
+                  <label htmlFor="focus-duration-hours" className="text-[var(--text-muted)]">
+                    Hr
+                  </label>
+                  <input
+                    id="focus-duration-hours"
+                    type="number"
+                    min={0}
+                    max={MAX_FOCUS_HOURS}
+                    value={customHours}
+                    onChange={(e) => {
+                      const nextH = Math.max(0, Math.min(MAX_FOCUS_HOURS, Number(e.target.value) || 0));
+                      const nextM = nextH >= MAX_FOCUS_HOURS ? 0 : customMinutes;
+                      applyHoursMinutes(nextH, nextM);
+                    }}
+                    className="w-15 h-8 px-2 rounded-lg font-mono-num text-center text-[13px]"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-subtle)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
+                </div>
+
+                <span className="text-[var(--text-muted)] font-mono-num">:</span>
+
+                <div className="inline-flex items-center gap-1.5">
+                  <label htmlFor="focus-duration-minutes" className="text-[var(--text-muted)]">
+                    Min
+                  </label>
+                  <input
+                    id="focus-duration-minutes"
+                    type="number"
+                    min={0}
+                    max={customHours >= MAX_FOCUS_HOURS ? 0 : 59}
+                    value={customHours >= MAX_FOCUS_HOURS ? 0 : customMinutes}
+                    onChange={(e) => {
+                      const rawM = Math.max(0, Math.min(59, Number(e.target.value) || 0));
+                      applyHoursMinutes(customHours, customHours >= MAX_FOCUS_HOURS ? 0 : rawM);
+                    }}
+                    className="w-15 h-8 px-2 rounded-lg font-mono-num text-center text-[13px]"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-subtle)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Mid-session break notice */}
+      {isBreakPhase && hasPausedSession && focusTimer.pausedFocus && (
+        <div
+          role="status"
+          className="mb-5 px-3.5 py-2 rounded-xl text-[12px] flex flex-wrap items-center justify-center gap-2"
+          style={{
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            color: 'var(--text-primary)',
+          }}
+        >
+          <Coffee className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          <span>
+            Session paused with{' '}
+            <strong className="font-mono-num">{formatTimerSeconds(focusTimer.pausedFocus.secondsLeft)}</strong>{' '}
+            left · stays paused until you resume
+          </span>
         </div>
       )}
 
       {/* Central Circular Progress Timer */}
-      <div className="relative w-64 h-64 flex items-center justify-center">
-        <svg className="w-full h-full -rotate-90" viewBox="0 0 256 256" aria-hidden="true">
+      <div className="relative w-68 h-68 sm:w-72 sm:h-72 flex items-center justify-center">
+        <svg className="w-full h-full -rotate-90" viewBox="0 0 272 272" aria-hidden="true">
           <circle
-            cx="128"
-            cy="128"
+            cx="136"
+            cy="136"
             r={radius}
             fill="none"
             stroke="var(--bg-surface-hover)"
-            strokeWidth="7"
+            strokeWidth="6"
           />
           <circle
-            cx="128"
-            cy="128"
+            cx="136"
+            cy="136"
             r={radius}
             fill="none"
-            stroke={focusTimer.phase === 'break' ? '#10B981' : activeSubject?.color ?? 'var(--accent)'}
-            strokeWidth="7"
+            stroke={isBreakPhase ? '#10B981' : activeSubject?.color ?? 'var(--accent)'}
+            strokeWidth="6.5"
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={dashOffset}
-            className="transition-all duration-500"
+            className="transition-[stroke-dashoffset] duration-500"
           />
         </svg>
 
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
-          <div className="text-[11.5px] font-medium text-[var(--text-muted)] flex items-center gap-1.5">
-            {focusTimer.phase === 'break' ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-7">
+          <div className="text-[12px] font-medium text-[var(--text-muted)] flex items-center gap-1.5">
+            {isBreakPhase ? (
               <>
-                <Coffee className="w-3.5 h-3.5 text-emerald-500" /> Short Break
+                <Coffee className="w-3.5 h-3.5 text-emerald-500" />
+                <span>{hasPausedSession ? 'Mid-Session Break' : 'Break'}</span>
               </>
             ) : (
-              <>
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: activeSubject?.color ?? 'var(--accent)' }}
-                />
-                {activeSubject?.code ?? 'Focus'} · Cycle {focusTimer.cycleCount}/4
-              </>
+              <span>
+                {activeSubject?.code ?? 'Focus'} · {showingCurrentSessionOneClick ? 'Current Session' : visibleIdleMode}
+              </span>
             )}
           </div>
           <div
             data-testid="focus-timer-readout"
-            className="font-mono-num text-[48px] font-semibold tracking-tight text-[var(--text-primary)] leading-none my-2"
+            className="font-mono-num text-[44px] sm:text-[50px] font-semibold tracking-tight text-[var(--text-primary)] leading-none my-2.5"
           >
             {displayTime}
           </div>
-          <div className="text-[12px] text-[var(--text-secondary)] truncate max-w-[190px]">
-            {focusTitle || 'No current study session'}
+          <div className="text-[12.5px] text-[var(--text-secondary)] truncate max-w-[200px]">
+            {focusTitle || 'Ready to focus'}
           </div>
         </div>
       </div>
 
       {/* Primary Controls */}
-      <div className="mt-7 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={resetFocusTimer}
-          aria-label="Reset focus timer"
-          className="h-10 w-10 rounded-xl flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
-          style={{ border: '1px solid var(--border-subtle)' }}
-        >
-          <RotateCcw className="w-4 h-4" />
-        </button>
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-2.5">
+        {!showingCurrentSessionOneClick && (
+          <button
+            type="button"
+            onClick={resetFocusTimer}
+            aria-label="Reset focus timer"
+            title="Reset timer"
+            className="h-10 w-10 rounded-xl flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+            style={{ border: '1px solid var(--border-subtle)' }}
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        )}
 
         <button
           type="button"
-          onClick={toggleFocusRunning}
-          className="h-11 px-7 rounded-xl inline-flex items-center gap-2 text-[14px] font-semibold transition-opacity hover:opacity-90"
-          style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
+          onClick={handlePrimaryClick}
+          className="h-11 px-7 rounded-xl inline-flex items-center gap-2 text-[14px] font-semibold transition-opacity hover:opacity-90 whitespace-nowrap"
+          style={{
+            backgroundColor: isBreakPhase ? '#10B981' : 'var(--accent)',
+            color: '#FFFFFF',
+          }}
         >
           {focusTimer.running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-          {focusTimer.running ? 'Pause' : focusTimer.elapsedSeconds > 0 ? 'Resume' : 'Start Focus'}
+          {primaryButtonLabel}
         </button>
 
-        <button
-          type="button"
-          onClick={triggerCompleteFocusSession}
-          aria-label="Complete session and rate focus"
-          title="Finish & rate session"
-          className="h-10 px-3 rounded-xl inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
-          style={{ border: '1px solid var(--border-subtle)' }}
-        >
-          <CheckCircle2 className="w-4 h-4" /> Complete
-        </button>
-      </div>
-
-      {/* Session Progress Indicators */}
-      <div className="mt-6 flex items-center gap-2">
-        {[1, 2, 3, 4].map((cycle) => (
-          <div
-            key={cycle}
-            className="w-8 h-1.5 rounded-full transition-colors"
+        {canTakeMidBreak && (
+          <button
+            type="button"
+            onClick={openBreakPopup}
+            aria-label="Take a break without ending session"
+            title="Pause session and choose a break duration"
+            className="h-10 px-4 rounded-xl inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors whitespace-nowrap"
             style={{
-              backgroundColor:
-                cycle <= focusTimer.cycleCount ? 'var(--accent)' : 'var(--bg-surface-hover)',
+              backgroundColor: 'var(--bg-surface-subtle)',
+              border: '1px solid var(--border-subtle)',
             }}
-          />
-        ))}
-        <span className="text-[11.5px] text-[var(--text-muted)] ml-1.5 font-mono-num">
-          {focusTimer.cycleCount}/4 before 15m break
-        </span>
+          >
+            <Coffee className="w-4 h-4 text-emerald-500" />
+            Take Break
+          </button>
+        )}
+
+        {isBreakPhase && (
+          <button
+            type="button"
+            onClick={endFocusBreak}
+            aria-label="Return to paused focus session"
+            className="h-10 px-4 rounded-xl inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors whitespace-nowrap"
+            style={{
+              backgroundColor: 'var(--bg-surface-subtle)',
+              border: '1px solid var(--border-subtle)',
+            }}
+          >
+            <ArrowLeft className="w-4 h-4" />
+            {hasPausedSession ? 'Return to Session' : 'Skip Break'}
+          </button>
+        )}
+
+        {!showingCurrentSessionOneClick && (
+          <button
+            type="button"
+            onClick={triggerCompleteFocusSession}
+            aria-label="Complete session and rate focus"
+            title="Finish & rate session"
+            className="h-10 px-3.5 rounded-xl inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors whitespace-nowrap"
+            style={{ border: '1px solid var(--border-subtle)' }}
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            Complete
+          </button>
+        )}
       </div>
     </div>
   );
@@ -248,34 +607,30 @@ export const FocusTimerView: React.FC = () => {
     return (
       <div
         className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6"
-        style={{ backgroundColor: 'var(--bg-canvas)', ...background }}
+        style={{ backgroundColor: 'var(--bg-canvas)' }}
       >
         <div className="absolute top-5 right-5 flex items-center gap-2">
           <button
             type="button"
             onClick={() => setFullScreenMode(false)}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors whitespace-nowrap"
             style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}
           >
-            <Minimize2 className="w-3.5 h-3.5" /> Exit Distraction-Free
+            <Minimize2 className="w-3.5 h-3.5" /> Exit Full-Screen
           </button>
         </div>
-        {music}{timerContent}
+        {timerContent}
+        {breakDurationPopup}
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 pb-6">
+    <div className="space-y-5 pb-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-[19px] font-semibold text-[var(--text-primary)]">
-            Focus Timer
-          </h1>
-          <p className="text-[12.5px] text-[var(--text-muted)]">
-            Deep work cycles with break pacing, focus ratings, and floating mini-timer
-          </p>
-        </div>
+        <h1 className="font-display text-[20px] font-semibold tracking-tight text-[var(--text-primary)]">
+          Focus Timer
+        </h1>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -284,7 +639,7 @@ export const FocusTimerView: React.FC = () => {
               setRoute('dashboard');
               pushToast('Floating mini-timer docked');
             }}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors whitespace-nowrap"
             style={surfaceStyle}
           >
             <PictureInPicture2 className="w-3.5 h-3.5" /> Mini-Timer
@@ -292,7 +647,7 @@ export const FocusTimerView: React.FC = () => {
           <button
             type="button"
             onClick={() => setFullScreenMode(true)}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors whitespace-nowrap"
             style={surfaceStyle}
           >
             <Maximize2 className="w-3.5 h-3.5" /> Full-Screen
@@ -300,141 +655,129 @@ export const FocusTimerView: React.FC = () => {
         </div>
       </div>
 
-      <details className="rounded-lg border border-[var(--border-subtle)] p-3 text-sm"><summary>Focus background and music</summary>
-        <div className="mt-2 flex flex-wrap gap-3">
-        <label>Background <select value={scene.id} onChange={e => updatePreferences({ focusScene: e.target.value })}>
-          {focusScenes.map(option => <option key={option.id} value={option.id} disabled={level < option.level}>
-            {option.label}{level < option.level ? ` · Level ${option.level}` : ''}
-          </option>)}
-        </select></label>
-        <label>Music <select value={track} onChange={e => updatePreferences({ focusTrack: e.target.value })}>
-          {focusTracks.map(option => <option key={option.id} value={option.id} disabled={level < option.level}>
-            {option.label}{level < option.level ? ` · Level ${option.level}` : ''}
-          </option>)}
-        </select></label>
-        <label>Volume <input type="range" min="0" max="1" step=".05" value={preferences.musicVolume ?? .35} onChange={e=>updatePreferences({musicVolume:Number(e.target.value)})}/></label>
-        <label><input type="checkbox" checked={!!preferences.musicMuted} onChange={e=>updatePreferences({musicMuted:e.target.checked})}/> Mute</label></div></details>
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* Main Centered Timer Surface */}
-        <div className="lg:col-span-8 rounded-xl" style={{...surfaceStyle,...background}}>
-          {music}{timerContent}
+        <div className="lg:col-span-8 rounded-2xl" style={surfaceStyle}>
+          {timerContent}
         </div>
 
-        {/* Right Side: Context Selector & Session History */}
+        {/* Right Sidebar: Session Context & Recent History */}
         <div className="lg:col-span-4 space-y-4">
-          <div className="rounded-xl p-4 space-y-3" style={surfaceStyle}>
+          <div className="rounded-2xl p-4 space-y-3.5" style={surfaceStyle}>
             <h2 className="font-display text-[14px] font-semibold text-[var(--text-primary)]">
               Session Context
             </h2>
-            <div>
-              <label htmlFor="focus-subject" className="block text-[11.5px] text-[var(--text-muted)] mb-1">
-                Subject
-              </label>
-              <select
-                id="focus-subject"
-                value={focusSubject}
-                onChange={(e) => setFocusContext(e.target.value, focusTitle)}
-                className="w-full px-2.5 py-2 rounded-lg text-[13px]"
-                style={{
-                  backgroundColor: 'var(--bg-surface-subtle)',
-                  border: '1px solid var(--border-subtle)',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                {subjects.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.code} · {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
 
-            <div>
-              <label htmlFor="focus-task" className="block text-[11.5px] text-[var(--text-muted)] mb-1">
-                Linked Task
-              </label>
-              <select
-                id="focus-task"
-                value={focusTitle}
-                onChange={(e) => setFocusContext(focusSubject, e.target.value)}
-                className="w-full px-2.5 py-2 rounded-lg text-[13px]"
-                style={{
-                  backgroundColor: 'var(--bg-surface-subtle)',
-                  border: '1px solid var(--border-subtle)',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                {tasks.map((t) => (
-                  <option key={t.id} value={t.title}>
-                    {t.title}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {showingCurrentSessionOneClick && activeSessionInfo ? (
+              <div className="space-y-1.5 text-[12.5px]">
+                <div className="font-medium text-[var(--text-primary)]">
+                  {activeSessionInfo.session.title}
+                </div>
+                <div className="text-[var(--text-muted)] font-mono-num">
+                  {activeSubject ? `${activeSubject.code} · ` : ''}
+                  {formatHourLabel(activeSessionInfo.session.startHour)} –{' '}
+                  {formatHourLabel(activeSessionInfo.session.startHour + activeSessionInfo.session.durationHours)}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="focus-subject" className="block text-[11.5px] text-[var(--text-muted)] mb-1">
+                    Subject
+                  </label>
+                  <select
+                    id="focus-subject"
+                    value={focusSubject}
+                    onChange={(e) => setFocusContext(e.target.value, focusTitle)}
+                    className="w-full px-2.5 py-2 rounded-lg text-[13px]"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-subtle)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    {subjects.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.code} · {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <div>
-              <label htmlFor="focus-ambient" className="flex items-center gap-1.5 text-[11.5px] text-[var(--text-muted)] mb-1">
-                <Volume2 className="w-3.5 h-3.5" /> Ambient Audio Preset
-              </label>
-              <select
-                id="focus-ambient"
-                value={preferences.ambientSound}
-                onChange={(e) =>
-                  updatePreferences({
-                    ambientSound: e.target.value as typeof preferences.ambientSound,
-                  })
-                }
-                className="w-full px-2.5 py-2 rounded-lg text-[13px]"
-                style={{
-                  backgroundColor: 'var(--bg-surface-subtle)',
-                  border: '1px solid var(--border-subtle)',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                <option value="None">Silent</option>
-                <option value="Soft Rain">Soft Rain</option>
-                <option value="Library Hum">Quiet Library</option>
-                <option value="Brown Noise">Brown Noise</option>
-              </select>
-            </div>
+                <div>
+                  <label htmlFor="focus-task" className="block text-[11.5px] text-[var(--text-muted)] mb-1">
+                    Linked Task
+                  </label>
+                  <select
+                    id="focus-task"
+                    value={focusTitle}
+                    onChange={(e) => setFocusContext(focusSubject, e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg text-[13px]"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-subtle)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    {tasks.map((t) => (
+                      <option key={t.id} value={t.title}>
+                        {t.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Previous Session History */}
-          <div className="rounded-xl p-4" style={surfaceStyle}>
-            <div className="flex items-center justify-between mb-2.5">
+          {/* Recent Focus Sessions */}
+          <div className="rounded-2xl p-4 space-y-3" style={surfaceStyle}>
+            <div className="flex items-center justify-between gap-2">
               <h2 className="font-display text-[14px] font-semibold text-[var(--text-primary)]">
                 Recent Sessions
               </h2>
               <span className="text-[11.5px] font-mono-num text-[var(--text-muted)]">
-                {focusHistory.length} logged
+                {focusHistory.length} · {formatHoursMinutesCompact(totalLoggedMinutes * 60)}
               </span>
             </div>
-            <div className="divide-y divide-[var(--border-subtle)] max-h-64 overflow-y-auto">
-              {focusHistory.map((item) => {
-                const sub = subjects.find((s) => s.id === item.subjectId);
-                return (
-                  <div key={item.id} className="py-2.5 flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-[12.5px] font-medium text-[var(--text-primary)] truncate">
-                        {item.taskTitle}
+
+            {focusHistory.length === 0 ? (
+              <p className="text-[12.5px] text-[var(--text-muted)] py-3">
+                Completed focus sessions will appear here.
+              </p>
+            ) : (
+              <div className="divide-y divide-[var(--border-subtle)] max-h-72 overflow-y-auto">
+                {focusHistory.map((item) => {
+                  const sub = subjects.find((s) => s.id === item.subjectId);
+                  return (
+                    <div key={item.id} className="py-2.5 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[12.5px] font-medium text-[var(--text-primary)] truncate">
+                          {item.taskTitle}
+                        </div>
+                        <div className="text-[11px] text-[var(--text-muted)]">
+                          {sub?.code} · {item.durationMinutes}m {item.mode} · {item.completedAt}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-[var(--text-muted)]">
-                        {sub?.code} · {item.durationMinutes}m {item.mode} · {item.completedAt}
+                      <div
+                        className="flex items-center gap-0.5 shrink-0"
+                        aria-label={`Rated ${item.qualityRating} of 5`}
+                      >
+                        <Star className="w-3.5 h-3.5 text-amber-500" fill="#F59E0B" />
+                        <span className="font-mono-num text-[11.5px] font-medium text-[var(--text-secondary)]">
+                          {item.qualityRating}
+                        </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-0.5 shrink-0" aria-label={`Rated ${item.qualityRating} of 5`}>
-                      <Star className="w-3.5 h-3.5 text-amber-500" fill="#F59E0B" />
-                      <span className="font-mono-num text-[11.5px] font-medium text-[var(--text-secondary)]">
-                        {item.qualityRating}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      {breakDurationPopup}
     </div>
   );
 };

@@ -42,7 +42,6 @@ type DragPayload =
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const HOUR_HEIGHT = 60;
-const DEMO_TODAY_ISO = '2026-11-22';
 
 function parseIso(iso: string): Date {
   return new Date(`${iso}T12:00:00`);
@@ -134,8 +133,8 @@ export const PlannerView: React.FC = () => {
     return () => window.clearInterval(id);
   }, []);
 
-  const todayIso = legacyCalendar ? localDay(now) : DEMO_TODAY_ISO;
-  const currentHourFloat = legacyCalendar ? now.getHours() + now.getMinutes() / 60 : 10.25;
+  const todayIso = localDay(now);
+  const currentHourFloat = now.getHours() + now.getMinutes() / 60;
 
   const [viewMode, setViewMode] = useState<PlannerMode>('week');
   const [anchorDate, setAnchorDate] = useState<string>(todayIso);
