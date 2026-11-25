@@ -78,7 +78,7 @@ fn validate(request: &ChatRequest, key: &str) -> Result<(), String> {
         || request.prompt.trim().is_empty()
         || request.prompt.encode_utf16().count() > 3000
         || request.client_context.as_ref().is_some_and(|value| value.encode_utf16().count() > 300)
-        || request.study_generation.as_deref().is_some_and(|kind| !matches!(kind, "flashcards" | "practice" | "syllabus" | "grading" | "overview"))
+        || request.study_generation.as_deref().is_some_and(|kind| !matches!(kind, "flashcards" | "practice" | "syllabus" | "syllabus_bundle" | "grading" | "overview"))
         || request.context.encode_utf16().count() > 120_000
         || request.history.len() > 20
         || request.history.iter().any(|turn| {
