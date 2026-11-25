@@ -413,7 +413,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     focusTimer.running, focusTimer.mode, focusTimer.phase, focusTimer.totalSeconds,
     focusTimer.subjectId, focusTimer.taskTitle, focusTimer.calendarSessionId, focusTimer.cycleCount, focusTimer.miniVisible,
     focusTimer.completionModalOpen, focusTimer.lastCompletedMinutes, focusTimer.startedAtMs, focusTimer.mobileRunId,
-    focusTimer.pausedFocus, focusTimer.breakDurationMin,
+    focusTimer.pausedFocus, focusTimer.breakDurationMin, focusTimer.manualDurationOverride,
     focusTimer.running ? undefined : focusTimer.secondsLeft,
     focusTimer.running ? undefined : focusTimer.elapsedSeconds,
   ]);
@@ -831,7 +831,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         case 'start': {
           if (prev.running) return prev;
           const nowDate = new Date();
-          const targetSession = session ?? active?.session;
+          const targetSession = session ?? (prev.manualDurationOverride ? undefined : active?.session);
           const remainingSec = targetSession ? studySessionRemainingSeconds(targetSession, nowDate) : null;
           const isIdle = prev.elapsedSeconds === 0 && !prev.pausedFocus && prev.phase === 'focus';
           if (isIdle && targetSession && remainingSec !== null) {
