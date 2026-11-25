@@ -57,7 +57,7 @@ function isRequest(value: unknown): value is ChatRequest {
     context.length > CHAT_LIMITS.context ||
     !Array.isArray(history) ||
     history.length > CHAT_LIMITS.history ||
-    !CHAT_LIMITS.response.some((limit) => limit === maxOutput)
+    typeof maxOutput !== 'number' || !Number.isInteger(maxOutput) || maxOutput < 0 || maxOutput > 65536
   ) {
     return false;
   }
@@ -75,7 +75,7 @@ function isRequest(value: unknown): value is ChatRequest {
   if (value.workspaceActions !== undefined && typeof value.workspaceActions !== 'boolean') return false;
   if (
     value.studyGeneration !== undefined &&
-    !['flashcards', 'practice', 'syllabus', 'grading'].some((kind) => kind === value.studyGeneration)
+    !['flashcards', 'practice', 'syllabus', 'syllabus_bundle', 'grading', 'overview'].some((kind) => kind === value.studyGeneration)
   ) {
     return false;
   }
