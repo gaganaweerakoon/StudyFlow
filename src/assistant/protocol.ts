@@ -39,15 +39,15 @@ export const STATUS_ENDPOINT = '/api/study-assistant/status';
 export const OVERVIEW_ENDPOINT = '/api/study-assistant/overview';
 export const NOTES_RESTRUCTURE_ENDPOINT = '/api/notes/restructure';
 export const CHAT_LIMITS = {
-  prompt: 3000,
-  context: 120_000,
-  history: 20,
-  historyMessage: 6000,
+  prompt: Number.MAX_SAFE_INTEGER,
+  context: Number.MAX_SAFE_INTEGER,
+  history: Number.MAX_SAFE_INTEGER,
+  historyMessage: Number.MAX_SAFE_INTEGER,
   imageBytes: 1_500_000,
   pdfBytes: 6_000_000,
   maxDocuments: 4,
-  documentTextTotal: 100_000,
-  response: [300, 650, 1200, 16384],
+  documentTextTotal: 12_000_000,
+  response: [0, 300, 650, 1200, 16384],
 } as const;
 export type ReplyLimit = (typeof CHAT_LIMITS.response)[number];
 
