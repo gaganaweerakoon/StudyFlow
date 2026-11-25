@@ -28,8 +28,8 @@ export const usageKey = 'studyflow.assistant.usage.v1';
 const defaults: AssistantSettings = {
   provider: 'gemini',
   models: {},
-  maxOutput: 1200,
-  dailyLimit: 50000,
+  maxOutput: 0,
+  dailyLimit: 0,
   showUsageInChat: true,
   showRateLimits: true,
 };
