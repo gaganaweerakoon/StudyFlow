@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   Play,
   Sparkles,
+  PenTool,
 } from 'lucide-react';
 import type { PracticeAttempt } from '../../types/studyflow';
 import { useApp } from '../../context/AppContext';
@@ -26,7 +27,7 @@ import { formatTimerSeconds, gradePracticeTest } from '../../utils/studyLogic';
 const AssistantMarkdown = lazy(() => import('../../assistant/AssistantMarkdown'));
 
 export const PracticeTestsView: React.FC = () => {
-  const { quizzes, subjects, recordQuizScore, pushToast, notes, setSelectedNoteId, setRoute } = useApp();
+  const { quizzes, subjects, recordQuizScore, pushToast, notes, setSelectedNoteId, setRoute, openStudyLab } = useApp();
 
   const [activeQuizId, setActiveQuizId] = useState<string | null>(null);
   const [questionIdx, setQuestionIdx] = useState(0);
@@ -208,6 +209,8 @@ export const PracticeTestsView: React.FC = () => {
         {/* Question-by-Question Review */}
         <div className="rounded-xl divide-y divide-[var(--border-subtle)]" style={surfaceStyle}>
           {questions.map((q, idx) => {
+            const liveQuestion = activeQuiz.questions.find((item) => item.id === q.id) ?? q;
+            const explanationText = liveQuestion.explanation || q.explanation;
             const given = (answers[q.id] ?? '').trim();
             const isCorrect = gradePracticeTest([q],answers,shortMarks).correctCount === 1;
 
@@ -220,11 +223,30 @@ export const PracticeTestsView: React.FC = () => {
                       <AssistantMarkdown text={q.prompt} />
                     </Suspense>
                   </div>
-                  {isCorrect ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                  ) : (
-                    <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openStudyLab({
+                          tab: 'whiteboard',
+                          targetQuizId: activeQuiz.id,
+                          targetQuestionId: q.id,
+                          title: `${q.topic} Diagram`,
+                        })
+                      }
+                      title="Draw or generate an SVG diagram and attach it to this explanation"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium whitespace-nowrap text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+                      style={{ border: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-surface-subtle)' }}
+                    >
+                      <PenTool className="w-3 h-3" style={{ color: 'var(--accent)' }} />
+                      Visual Diagram
+                    </button>
+                    {isCorrect ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                    )}
+                  </div>
                 </div>
                 <div className="text-[12px] text-[var(--text-secondary)]">
                   Your answer:{' '}
@@ -238,8 +260,8 @@ export const PracticeTestsView: React.FC = () => {
                   )}
                 </div>
                 <div className="text-[12px] text-[var(--text-muted)] note-markdown">
-                  <Suspense fallback={<span>{q.explanation}</span>}>
-                    <AssistantMarkdown text={q.explanation} />
+                  <Suspense fallback={<span>{explanationText}</span>}>
+                    <AssistantMarkdown text={explanationText} />
                   </Suspense>
                 </div>
                 {q.rubric && <p className="text-xs text-[var(--text-secondary)]">Rubric · {q.rubric}</p>}

@@ -12,16 +12,20 @@ import {
   FilePlus2,
   FileSpreadsheet,
   FileText,
+  FlaskConical,
   Folder,
   Heading2,
   Image as ImageIcon,
   Italic,
   Link2,
   List,
+  ListTodo,
   Loader2,
+  MessageSquare,
   PanelRightClose,
   PanelRightOpen,
   Paperclip,
+  PenTool,
   Pencil,
   Pin,
   Plus,
@@ -33,7 +37,9 @@ import {
   Table,
   Trash2,
   Type,
+  Undo2,
   Upload,
+  Wand2,
   X,
 } from 'lucide-react';
 import AssistantMarkdown from '../../assistant/AssistantMarkdown';
@@ -84,8 +90,9 @@ export const NotesView: React.FC = () => {
     deleteNote,
     subjects,
     pushToast,
+    openStudyLab,
   } = useApp();
-  const { askPip } = useAssistant();
+  const { askPip, restructureMarkdown, busy: aiBusy } = useAssistant();
 
   const [activeFolderId, setActiveFolderId] = useState<string>('fld-all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -99,6 +106,13 @@ export const NotesView: React.FC = () => {
   const [linkUrlInput, setLinkUrlInput] = useState('');
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [rightDragActive, setRightDragActive] = useState(false);
+  const [aiAction, setAiAction] = useState<'polish' | 'summary' | null>(null);
+  const [undoAiBackup, setUndoAiBackup] = useState<{
+    noteId: string;
+    content: string;
+    label: string;
+  } | null>(null);
+  const [selectedExcerpt, setSelectedExcerpt] = useState('');
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const rightFileInputRef = useRef<HTMLInputElement>(null);
@@ -122,6 +136,7 @@ export const NotesView: React.FC = () => {
 
   // If a brand-new empty note is opened, switch straight to Edit mode so typing works immediately
   useEffect(() => {
+    setSelectedExcerpt('');
     if (activeNote && !activeNote.content.trim()) {
       setViewMode('edit');
     }
@@ -169,6 +184,89 @@ export const NotesView: React.FC = () => {
     setSaveState('Saving...');
     updateNote(activeNote.id, { content: nextContent, updatedAt: 'Just now' });
     window.setTimeout(() => setSaveState('Saved'), 450);
+  };
+
+  const handleSyncSelection = () => {
+    const ta = textareaRef.current;
+    if (!ta || !activeNote) {
+      setSelectedExcerpt('');
+      return;
+    }
+    const raw = activeNote.content.slice(ta.selectionStart, ta.selectionEnd).trim();
+    if (raw.length >= 8) {
+      setSelectedExcerpt(raw.slice(0, 600));
+    } else {
+      setSelectedExcerpt('');
+    }
+  };
+
+  const handleAskSelection = () => {
+    if (!activeNote || !selectedExcerpt) return;
+    askPip(
+      `Explain this passage from my note "${activeNote.title}" clearly with a concrete example and one quick self-check question:\n\n> ${selectedExcerpt}`,
+      { openFloating: true },
+    );
+  };
+
+  const handleAiTransform = async (mode: 'polish' | 'summary') => {
+    if (!activeNote || aiBusy || aiAction) return;
+    const originalContent = activeNote.content;
+    if (!originalContent.trim()) {
+      if (mode === 'summary' && activeNote.pdf?.pages?.length) {
+        askPip(
+          `Create a concise exam cheat sheet (key definitions, formulas, and 3 quick self-check questions) from my note "${activeNote.title}" and its attached PDF.`,
+          { openFloating: true },
+        );
+      }
+      return;
+    }
+
+    const noteId = activeNote.id;
+    const label = mode === 'polish' ? 'AI Polish' : 'Cheat Sheet';
+    setUndoAiBackup({ noteId, content: originalContent, label });
+    setAiAction(mode);
+    setSaveState('Saving...');
+
+    const instructions =
+      mode === 'polish'
+        ? 'Organize headings cleanly, tighten formatting, preserve every fact, equation, and example verbatim, convert tabular data into GFM Markdown tables, format chemical formulas with Unicode subscripts/superscripts, and keep KaTeX math clean.'
+        : 'Prepend a concise "## Key Takeaways & Exam Cheat Sheet" section at the very top with: (1) core definitions/concepts, (2) essential formulas or rules, and (3) 3 quick active-recall self-check questions. Then place a horizontal rule (---) and preserve the full original note intact below it.';
+
+    try {
+      const result = await restructureMarkdown(originalContent, {
+        instructions,
+        filterUnwantedImages: false,
+        onStream: (streamed) => {
+          if (streamed.trim()) {
+            updateNote(noteId, { content: streamed, updatedAt: 'Just now' });
+          }
+        },
+      });
+      updateNote(noteId, { content: result.markdown, updatedAt: 'Just now' });
+      if (viewMode === 'edit') setViewMode('split');
+      setSaveState('Saved');
+      pushToast(
+        mode === 'polish'
+          ? 'Note polished with AI — click Undo AI to revert'
+          : 'Exam cheat sheet inserted — click Undo AI to revert',
+      );
+    } catch (err) {
+      updateNote(noteId, { content: originalContent, updatedAt: 'Just now' });
+      setUndoAiBackup(null);
+      setSaveState('Saved');
+      pushToast(
+        err instanceof Error ? err.message : 'AI note update failed. Check your connection and try again.',
+      );
+    } finally {
+      setAiAction(null);
+    }
+  };
+
+  const handleUndoAi = () => {
+    if (!activeNote || !undoAiBackup || undoAiBackup.noteId !== activeNote.id) return;
+    updateNote(activeNote.id, { content: undoAiBackup.content, updatedAt: 'Just now' });
+    pushToast(`Reverted ${undoAiBackup.label}`);
+    setUndoAiBackup(null);
   };
 
   const applyMarkdownFormatting = (
@@ -708,8 +806,100 @@ export const NotesView: React.FC = () => {
               )}
             </div>
 
-            {/* Right Toolbar Utilities: Font Preservation, Save State, Pin, Delete, Panel Toggle */}
+            {/* Right Toolbar Utilities: AI Assist, Font Preservation, Save State, Pin, Delete, Panel Toggle */}
             <div className="flex items-center gap-2 shrink-0 text-[11.5px]">
+              {selectedExcerpt && (viewMode === 'edit' || viewMode === 'split') && (
+                <button
+                  type="button"
+                  onClick={handleAskSelection}
+                  className="inline-flex items-center gap-1 rounded-lg px-2.5 h-7 text-[11.5px] font-medium transition-colors whitespace-nowrap"
+                  style={{
+                    backgroundColor: 'var(--accent-soft)',
+                    border: '1px solid var(--accent)',
+                    color: 'var(--accent)',
+                  }}
+                  title="Ask Pip to explain the highlighted passage"
+                >
+                  <MessageSquare className="w-3 h-3 shrink-0" />
+                  Explain selection
+                </button>
+              )}
+
+              <button
+                type="button"
+                disabled={!activeNote.content.trim() || aiBusy || Boolean(aiAction)}
+                onClick={() => void handleAiTransform('polish')}
+                className="inline-flex items-center gap-1 rounded-lg px-2.5 h-7 text-[11.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 transition-colors whitespace-nowrap"
+                style={{
+                  backgroundColor: 'var(--bg-surface-subtle)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+                title="Cleanly structure headings, tables, formulas, and Markdown in-place with AI"
+              >
+                {aiAction === 'polish' ? (
+                  <Loader2 className="w-3 h-3 animate-spin shrink-0" style={{ color: 'var(--accent)' }} />
+                ) : (
+                  <Wand2 className="w-3 h-3 shrink-0" style={{ color: 'var(--accent)' }} />
+                )}
+                {aiAction === 'polish' ? 'Polishing…' : 'AI Polish'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  openStudyLab({
+                    tab: 'playground',
+                    targetNoteId: activeNote.id,
+                    title: activeNote.title || 'Note Snippet',
+                  })
+                }
+                className="inline-flex items-center gap-1 rounded-lg px-2.5 h-7 text-[11.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors whitespace-nowrap"
+                style={{
+                  backgroundColor: 'var(--bg-surface-subtle)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+                title="Open Math & Code Playground linked to this note"
+              >
+                <FlaskConical className="w-3 h-3 shrink-0" style={{ color: 'var(--accent)' }} />
+                Lab
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  openStudyLab({
+                    tab: 'whiteboard',
+                    targetNoteId: activeNote.id,
+                    title: activeNote.title || 'Note Diagram',
+                  })
+                }
+                className="inline-flex items-center gap-1 rounded-lg px-2.5 h-7 text-[11.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors whitespace-nowrap"
+                style={{
+                  backgroundColor: 'var(--bg-surface-subtle)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+                title="Draw or generate an SVG diagram and insert it into this note"
+              >
+                <PenTool className="w-3 h-3 shrink-0" style={{ color: 'var(--accent)' }} />
+                Diagram
+              </button>
+
+              {undoAiBackup?.noteId === activeNote.id && !aiAction && (
+                <button
+                  type="button"
+                  onClick={handleUndoAi}
+                  className="inline-flex items-center gap-1 rounded-lg px-2 h-7 text-[11.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors whitespace-nowrap"
+                  style={{
+                    backgroundColor: 'var(--bg-surface-subtle)',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                  title={`Revert ${undoAiBackup.label}`}
+                >
+                  <Undo2 className="w-3 h-3 shrink-0" />
+                  Undo AI
+                </button>
+              )}
+
               {/* Font Preservation Selector */}
               <div
                 className="inline-flex items-center gap-1 rounded-lg px-2 h-7"
@@ -867,6 +1057,9 @@ export const NotesView: React.FC = () => {
                   dir="auto"
                   value={activeNote.content}
                   onChange={(e) => handleContentChange(e.target.value)}
+                  onSelect={handleSyncSelection}
+                  onKeyUp={handleSyncSelection}
+                  onMouseUp={handleSyncSelection}
                   placeholder="Write in Markdown, or drop a PDF, DOCX, TXT, or MD file in the right pane to auto-convert…"
                   aria-label="Note markdown editor"
                   className="flex-1 w-full resize-none bg-transparent px-6 py-5 text-[14px] leading-[1.75] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
@@ -1051,66 +1244,85 @@ export const NotesView: React.FC = () => {
               </span>
               <span className="text-[10.5px] text-[var(--text-muted)]">From this note</span>
             </div>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5">
               <button
                 type="button"
                 disabled={!activeNote.content.trim() && !activeNote.pdf?.pages?.length}
                 aria-label="Generate Flashcards from Note"
-                title="Create flashcards from this note with Pip"
+                title="Create high-yield flashcards from this note with Pip"
                 onClick={() =>
                   askPip(
-                    `Create 6 high-yield flashcards from my note "${activeNote.title}" and save them to a matching deck (or create a new deck for this note).`,
+                    `Create 6 high-yield flashcards with concise active-recall hints from my note "${activeNote.title}" and save them to a matching subject deck (or create a new deck for this note).`,
                     { openFloating: true },
                   )
                 }
-                className="inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 transition-colors whitespace-nowrap"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 transition-colors whitespace-nowrap"
                 style={{
                   backgroundColor: 'var(--bg-surface-subtle)',
                   border: '1px solid var(--border-subtle)',
                 }}
               >
                 <Layers className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
-                Cards
+                Flashcards
               </button>
               <button
                 type="button"
                 disabled={!activeNote.content.trim() && !activeNote.pdf?.pages?.length}
                 aria-label="Generate Practice Test"
-                title="Generate a practice test from this note with Pip"
+                title="Generate an exam-style practice test from this note with Pip"
                 onClick={() =>
                   askPip(
-                    `Create a 5-question mixed practice test from my note "${activeNote.title}" with explanations.`,
+                    `Create a 6-question exam-style mixed practice test (MCQs and short-answer) from my note "${activeNote.title}" with clear explanations, and save it to Practice Tests.`,
                     { openFloating: true },
                   )
                 }
-                className="inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 transition-colors whitespace-nowrap"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 transition-colors whitespace-nowrap"
                 style={{
                   backgroundColor: 'var(--bg-surface-subtle)',
                   border: '1px solid var(--border-subtle)',
                 }}
               >
                 <ClipboardCheck className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
-                Quiz
+                Practice Quiz
               </button>
               <button
                 type="button"
-                disabled={!activeNote.content.trim() && !activeNote.pdf?.pages?.length}
-                aria-label="Summarize & Advise"
-                title="Analyze this note and suggest a study plan with Pip"
-                onClick={() =>
-                  askPip(
-                    `Analyze my note "${activeNote.title}", summarize the core concepts, and suggest a focused study plan.`,
-                    { openFloating: true },
-                  )
-                }
-                className="inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11.5px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 transition-colors whitespace-nowrap"
+                disabled={(!activeNote.content.trim() && !activeNote.pdf?.pages?.length) || aiBusy || Boolean(aiAction)}
+                aria-label="Insert Exam Cheat Sheet"
+                title="Insert a concise exam cheat sheet & self-check questions at the top of this note"
+                onClick={() => void handleAiTransform('summary')}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 transition-colors whitespace-nowrap"
                 style={{
                   backgroundColor: 'var(--bg-surface-subtle)',
                   border: '1px solid var(--border-subtle)',
                 }}
               >
-                <Sparkles className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
-                Advise
+                {aiAction === 'summary' ? (
+                  <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" style={{ color: 'var(--accent)' }} />
+                ) : (
+                  <BookOpen className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
+                )}
+                {aiAction === 'summary' ? 'Summarizing…' : 'Cheat Sheet'}
+              </button>
+              <button
+                type="button"
+                disabled={!activeNote.content.trim() && !activeNote.pdf?.pages?.length}
+                aria-label="Extract Study Tasks"
+                title="Extract follow-up tasks, problem sets, and review items from this note into StudyFlow Tasks"
+                onClick={() =>
+                  askPip(
+                    `Read my note "${activeNote.title}", extract concrete follow-up study tasks, practice problems, or weak areas to review, add them as tasks in StudyFlow under the matching subject, and suggest where they fit in my open schedule.`,
+                    { openFloating: true },
+                  )
+                }
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 transition-colors whitespace-nowrap"
+                style={{
+                  backgroundColor: 'var(--bg-surface-subtle)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <ListTodo className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
+                Extract Tasks
               </button>
             </div>
           </div>

@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { Plus, Calendar, MapPin, Target, ArrowRight } from 'lucide-react';
+import { Plus, Calendar, MapPin, Target, ArrowRight, Sparkles, ClipboardCheck, FileText } from 'lucide-react';
+import { useAssistant } from '../../assistant/AssistantContext';
 import { useApp } from '../../context/AppContext';
+import { SyllabusDeepImportModal } from '../../notes/SyllabusDeepImportModal';
 
 export const ExamsView: React.FC = () => {
   const { exams, subjects, setActiveModal, setRoute, updateExam, deleteExam } = useApp();
+  const { askPip } = useAssistant();
   const [selectedExamId, setSelectedExamId] = useState<string>(exams[0]?.id ?? '');
+  const [syllabusOpen, setSyllabusOpen] = useState(false);
 
   const [editingId, setEditingId] = useState<string>();
 
@@ -47,11 +51,19 @@ export const ExamsView: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSyllabusOpen(true)}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+            style={surfaceStyle}
+          >
+            <FileText className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} /> Import Syllabus PDF
+          </button>
           <button
             type="button"
             onClick={() => setRoute('practice')}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             style={surfaceStyle}
           >
             Practice Tests <ArrowRight className="w-3.5 h-3.5" />
@@ -59,7 +71,7 @@ export const ExamsView: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveModal('create_exam')}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap"
             style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
           >
             <Plus className="w-3.5 h-3.5" /> Add Exam
@@ -146,14 +158,62 @@ export const ExamsView: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex flex-wrap gap-2 text-sm">
-              <button type="button" className="rounded-lg border border-[var(--border-subtle)] px-3 py-2" onClick={() => setEditingId(selectedExam.id)}>Edit exam</button>
-              <button type="button" className="rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-red-500" onClick={() => {
-                if (window.confirm(`Delete “${selectedExam.title}” and its mock exam history?`)) {
-                  deleteExam(selectedExam.id);
-                  setEditingId(undefined);
-                }
-              }}>Delete exam</button>
+            <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
+              <button
+                type="button"
+                onClick={() => {
+                  const sub = subjects.find((s) => s.id === selectedExam.subjectId);
+                  const topics = selectedExam.syllabusTopics.length
+                    ? selectedExam.syllabusTopics.join(', ')
+                    : 'the mapped subject syllabus';
+                  askPip(
+                    `Build a focused prep plan for my exam "${selectedExam.title}" (${sub?.name ?? 'General'}, ${selectedExam.date}, ${selectedExam.weightPercent}% weight, currently ${selectedExam.prepProgress}% ready). Prioritize weak or incomplete syllabus topics across ${topics}, and schedule concrete study sessions into my open calendar slots.`,
+                    { openFloating: true },
+                  );
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-opacity hover:opacity-95"
+                style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Build Prep Plan
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const sub = subjects.find((s) => s.id === selectedExam.subjectId);
+                  const topics = selectedExam.syllabusTopics.length
+                    ? selectedExam.syllabusTopics.join(', ')
+                    : 'its core syllabus topics';
+                  askPip(
+                    `Create a 6-question exam-style mock practice test for "${selectedExam.title}" (${sub?.name ?? 'General'}) covering ${topics}, with worked explanations, and save it to StudyFlow Practice Tests.`,
+                    { openFloating: true },
+                  );
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+                style={{ backgroundColor: 'var(--bg-surface-subtle)' }}
+              >
+                <ClipboardCheck className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+                Generate Mock Quiz
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+                onClick={() => setEditingId(selectedExam.id)}
+              >
+                Edit exam
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 font-medium text-red-500 hover:bg-red-500/10 transition-colors"
+                onClick={() => {
+                  if (window.confirm(`Delete “${selectedExam.title}” and its mock exam history?`)) {
+                    deleteExam(selectedExam.id);
+                    setEditingId(undefined);
+                  }
+                }}
+              >
+                Delete exam
+              </button>
             </div>
             {editingId === selectedExam.id && (
               <form key={selectedExam.id} className="grid gap-3 sm:grid-cols-2 [&_label]:grid [&_label]:gap-1 [&_label]:text-sm [&_input]:rounded-lg [&_input]:border [&_input]:border-[var(--border-subtle)] [&_input]:p-2" onSubmit={event => {
@@ -238,7 +298,15 @@ export const ExamsView: React.FC = () => {
           {/* Exam Schedule Calendar Strip */}
           <div className="lg:col-span-5 rounded-xl p-5 space-y-3" style={surfaceStyle}>
             <h2 className="font-display text-[14.5px] font-semibold text-[var(--text-primary)]">
-              Finals Window Calendar · Nov–Dec 2026
+              {(() => {
+                const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 27);
+                const startMonth = now.toLocaleDateString('en-US', { month: 'short' });
+                const endMonth = end.toLocaleDateString('en-US', { month: 'short' });
+                const range = startMonth === endMonth
+                  ? `${startMonth} ${now.getFullYear()}`
+                  : `${startMonth}–${endMonth} ${end.getFullYear()}`;
+                return `Exam Window Calendar · ${range}`;
+              })()}
             </h2>
             <div className="grid grid-cols-7 gap-1.5 text-center text-[11px]">
               {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
@@ -247,12 +315,11 @@ export const ExamsView: React.FC = () => {
                 </div>
               ))}
               {Array.from({ length: 28 }, (_, i) => {
-                // Nov 22 to Dec 19
-                const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate()+i);
+                const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
                 const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
                 const examOnDay = exams.find((e) => e.date === iso);
                 const sub = examOnDay ? subjects.find((s) => s.id === examOnDay.subjectId) : null;
-                const isToday = iso === '2026-11-22';
+                const isToday = i === 0;
 
                 return (
                   <button
@@ -287,6 +354,12 @@ export const ExamsView: React.FC = () => {
           </div>
         </div>
       )}
+
+      <SyllabusDeepImportModal
+        open={syllabusOpen}
+        onClose={() => setSyllabusOpen(false)}
+        defaultSubjectId={selectedExam?.subjectId}
+      />
     </div>
   );
 };
