@@ -546,7 +546,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       prompt,
       provider,
       model,
-      maxOutput: 16384,
+      maxOutput: 0,
       generateImage,
       workspaceActions: toolsAllowed && provider === 'gemini',
       context: toolsAllowed ? workspaceContext(currentApp.current, currentPage, prompt, clock).text : '',
@@ -560,7 +560,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         : baseMsgs
             .filter((message) => message.text && (message.role === 'user' || message.state === 'complete'))
             .slice(-CHAT_LIMITS.history)
-            .map(({ role, text }) => ({ role, text: text.slice(0, CHAT_LIMITS.historyMessage) })),
+            .map(({ role, text }) => ({ role, text })),
     };
     const records = mergeUsage(usage, desktopUsage ? [] : readUsage());
     const control = new AbortController();
@@ -982,7 +982,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           prompt,
           context: source,
           history: [],
-          maxOutput: 16384,
+          maxOutput: 0,
           studyGeneration: kind,
           clientContext: `Current local date and time: ${clock.label}. Default response language: ${settings.language ?? 'match the source'}.`,
         },
@@ -1058,7 +1058,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       throw new Error('Pip is already working on a request. Try again when it finishes.');
     }
     if (!source.trim()) throw new Error('Provide text or upload a file first.');
-    const trimmedSource = source.slice(0, CHAT_LIMITS.context);
+    const trimmedSource = source;
     let body = '';
     let complete = false;
     let valid = false;
@@ -1075,7 +1075,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           prompt,
           context: trimmedSource,
           history: [],
-          maxOutput: 16384,
+          maxOutput: 0,
           studyGeneration: kind,
           clientContext: `Current local date and time: ${clock.label}. Default response language: ${settings.language ?? 'match the source'}.`,
         },
@@ -1156,9 +1156,9 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           provider,
           model,
           prompt,
-          context: contextText.slice(0, CHAT_LIMITS.context),
+          context: contextText,
           history: [],
-          maxOutput: 16384,
+          maxOutput: 0,
           workspaceActions: false,
           clientContext: `Current local date and time: ${clock.label}.`,
         },
@@ -1320,7 +1320,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
             prompt,
             context: trimmedSource,
             history: [],
-            maxOutput: 16384,
+            maxOutput: 0,
             clientContext: `Current local date and time: ${clock.label}.`,
           },
           key,
