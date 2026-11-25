@@ -32,14 +32,22 @@ export type RestructureEvent =
   | { type: 'done'; truncated?: boolean }
   | { type: 'error'; message: string; status?: number };
 
+const PLACEHOLDER_GEMINI_KEY = 'MY_GEMINI_API_KEY';
+
+function cleanEnvGeminiKey(): string {
+  const value = process.env.GEMINI_API_KEY?.trim() ?? '';
+  if (!value || value === PLACEHOLDER_GEMINI_KEY) return '';
+  return value;
+}
+
 export function hasEnvGeminiKey(): boolean {
-  return Boolean(process.env.GEMINI_API_KEY?.trim());
+  return Boolean(cleanEnvGeminiKey());
 }
 
 export function resolveGeminiKey(clientKey?: string): string {
   const fromClient = clientKey?.trim();
   if (fromClient) return fromClient;
-  return process.env.GEMINI_API_KEY?.trim() ?? '';
+  return cleanEnvGeminiKey();
 }
 
 export function createGeminiClient(apiKey: string): GoogleGenAI {

@@ -434,9 +434,10 @@ async function handleOverview(req: IncomingMessage, res: ServerResponse) {
   }
 }
 
-export function studyAssistant(): Plugin {
-  const middleware = (req: IncomingMessage, res: ServerResponse, next: () => void) => {
-    const pathname = req.url?.split('?')[0];
+export function createStudyAssistantMiddleware() {
+  return (req: IncomingMessage & { originalUrl?: string }, res: ServerResponse, next: () => void) => {
+    const rawUrl = req.originalUrl ?? req.url ?? '';
+    const pathname = rawUrl.split('?')[0];
     if (pathname === STATUS_ENDPOINT) {
       handleStatus(req, res);
       return;
@@ -455,6 +456,10 @@ export function studyAssistant(): Plugin {
     }
     next();
   };
+}
+
+export function studyAssistant(): Plugin {
+  const middleware = createStudyAssistantMiddleware();
   return {
     name: 'studyflow-assistant',
     configureServer(server) { server.middlewares.use(middleware); },

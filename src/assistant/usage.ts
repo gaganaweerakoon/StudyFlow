@@ -6,6 +6,8 @@ export interface AssistantSettings {
   models: Partial<Record<Provider, string>>;
   maxOutput: ReplyLimit;
   dailyLimit: number;
+  showUsageInChat: boolean;
+  showRateLimits: boolean;
   language?: string;
   timezone?: string;
 }
@@ -23,7 +25,14 @@ export interface UsageEntry {
 
 const settingsKey = 'studyflow.assistant.settings.v1';
 export const usageKey = 'studyflow.assistant.usage.v1';
-const defaults: AssistantSettings = { provider: 'gemini', models: {}, maxOutput: 1200, dailyLimit: 50000 };
+const defaults: AssistantSettings = {
+  provider: 'gemini',
+  models: {},
+  maxOutput: 1200,
+  dailyLimit: 50000,
+  showUsageInChat: true,
+  showRateLimits: true,
+};
 
 function read(key: string) {
   try { return JSON.parse(localStorage.getItem(key) ?? 'null'); }
@@ -45,6 +54,8 @@ export function readSettings(): AssistantSettings {
     maxOutput: CHAT_LIMITS.response.some(limit => limit === saved.maxOutput) ? saved.maxOutput : defaults.maxOutput,
     dailyLimit: Number.isInteger(saved.dailyLimit) && saved.dailyLimit >= 0 && saved.dailyLimit <= 1_000_000
       ? saved.dailyLimit : defaults.dailyLimit,
+    showUsageInChat: typeof saved.showUsageInChat === 'boolean' ? saved.showUsageInChat : defaults.showUsageInChat,
+    showRateLimits: typeof saved.showRateLimits === 'boolean' ? saved.showRateLimits : defaults.showRateLimits,
     models,
     language: ['English', 'Sinhala', 'Tamil'].includes(saved.language) ? saved.language : undefined,
     timezone: validTimeZone(saved.timezone) ? saved.timezone : undefined,

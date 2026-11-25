@@ -139,5 +139,75 @@
         }
       }
     }
+  },
+  "syllabus_bundle": {
+    "type": "object",
+    "required": ["exams", "tasks", "chapters", "goals"],
+    "properties": {
+      "courseTitle": { "type": "string" },
+      "exams": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["title", "date", "weightPercent"],
+          "properties": {
+            "title": { "type": "string" },
+            "date": { "type": "string", "description": "YYYY-MM-DD if known or best inferred academic date." },
+            "time": { "type": "string" },
+            "room": { "type": "string" },
+            "weightPercent": { "type": "number" },
+            "syllabusTopics": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "tasks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["title", "dueDate", "priority", "estimatedMinutes"],
+          "properties": {
+            "title": { "type": "string" },
+            "dueDate": { "type": "string", "description": "YYYY-MM-DD" },
+            "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+            "estimatedMinutes": { "type": "integer" },
+            "description": { "type": "string" }
+          }
+        }
+      },
+      "chapters": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["title", "topics"],
+          "properties": {
+            "title": { "type": "string" },
+            "topics": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "goals": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["title", "deadline", "category", "milestones"],
+          "properties": {
+            "title": { "type": "string" },
+            "deadline": { "type": "string" },
+            "category": { "type": "string", "enum": ["daily", "weekly", "subject", "tasks", "syllabus", "revision"] },
+            "milestones": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["label", "date"],
+                "properties": {
+                  "label": { "type": "string" },
+                  "date": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }

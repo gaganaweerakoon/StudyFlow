@@ -79,15 +79,21 @@ test('the localhost assistant streams images, context, and normalized usage thro
   assert.match(gemini.body.contents[1].parts[0].text, /Open task: Chemistry/);
 
   assert.equal((await call('gemini', {}, 'https://unrelated.example')).status, 403);
-  assert.equal((await call('gemini', {}, origin, '')).status, 401);
+  const savedEnvKey = process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  try {
+    assert.equal((await call('gemini', {}, origin, '')).status, 401);
+  } finally {
+    if (savedEnvKey !== undefined) process.env.GEMINI_API_KEY = savedEnvKey;
+  }
   assert.equal((await call('gemini', { context: 'x'.repeat(120001) })).status, 400);
   assert.equal((await call('gemini', { image: { ...base.image, mime: 'image/jpeg' } })).status, 400);
-  assert.equal((await call('gemini', { model: 'gemini-3.1-flash-lite' })).status, 400);
+  assert.equal((await call('gemini', { model: 'unsupported-model-id' })).status, 400);
   assert.equal((await call('openai', { model: PROVIDERS.gemini.model })).status, 400);
   assert.equal((await call('claude', { model: PROVIDERS.gemini.model })).status, 400);
   assert.equal(calls.length, 1);
   const structured = await call('gemini', {
-    model: 'gemini-3.5-flash-lite',
+    model: 'gemini-4-hydrogen',
     studyGeneration: 'flashcards',
     image: undefined,
     history: [],
