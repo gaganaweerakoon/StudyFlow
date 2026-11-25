@@ -157,3 +157,144 @@ export function buildUsageCsv(entries: UsageEntry[], view: 'requests' | 'daily')
   );
   return [header.join(','), ...lines].join('\n');
 }
+
+export type RateLimitHealth = 'healthy' | 'near_limit' | 'limit_reached' | 'cooling_down';
+
+export interface RateLimitSnapshot {
+  requestsLastMinute: number;
+  tokensLastMinute: number;
+  modelRequestsLastMinute: number;
+  requestsToday: number;
+  tokensToday: number;
+  modelRequestsToday: number;
+  modelTokensToday: number;
+  dailyTokenLimit: number;
+  dailyTokenPct: number;
+  remainingDailyTokens: number | null;
+  rateLimitedCount24h: number;
+  errorCount24h: number;
+  cooldownSeconds: number;
+  status: RateLimitHealth;
+}
+
+export interface ModelUsageSummary {
+  model: string;
+  requestsToday: number;
+  tokensToday: number;
+  requests7d: number;
+  tokens7d: number;
+  rateLimited24h: number;
+}
+
+function localDayFromMs(nowMs: number): string {
+  const d = new Date(nowMs);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function computeRateLimitSnapshot(
+  entries: UsageEntry[],
+  activeModel: string,
+  dailyTokenLimit: number,
+  cooldownSeconds: number,
+  nowMs = Date.now(),
+): RateLimitSnapshot {
+  const oneMinuteAgo = nowMs - 60_000;
+  const oneDayAgo = nowMs - 86_400_000;
+  const today = localDayFromMs(nowMs);
+
+  let requestsLastMinute = 0;
+  let tokensLastMinute = 0;
+  let modelRequestsLastMinute = 0;
+  let requestsToday = 0;
+  let tokensToday = 0;
+  let modelRequestsToday = 0;
+  let modelTokensToday = 0;
+  let rateLimitedCount24h = 0;
+  let errorCount24h = 0;
+
+  for (const row of entries) {
+    const total = row.tokens?.total ?? 0;
+    if (row.at >= oneMinuteAgo) {
+      requestsLastMinute++;
+      tokensLastMinute += total;
+      if (row.model === activeModel) modelRequestsLastMinute++;
+    }
+    if (row.day === today) {
+      requestsToday++;
+      tokensToday += total;
+      if (row.model === activeModel) {
+        modelRequestsToday++;
+        modelTokensToday += total;
+      }
+    }
+    if (row.at >= oneDayAgo) {
+      if (row.errorStatus === 429) rateLimitedCount24h++;
+      if (row.status === 'error') errorCount24h++;
+    }
+  }
+
+  const safeLimit = Math.max(0, dailyTokenLimit);
+  const dailyTokenPct = safeLimit > 0 ? Math.min(100, Math.round((tokensToday / safeLimit) * 100)) : 0;
+  const remainingDailyTokens = safeLimit > 0 ? Math.max(0, safeLimit - tokensToday) : null;
+
+  let status: RateLimitHealth = 'healthy';
+  if (cooldownSeconds > 0) status = 'cooling_down';
+  else if (safeLimit > 0 && tokensToday >= safeLimit) status = 'limit_reached';
+  else if (safeLimit > 0 && dailyTokenPct >= 80) status = 'near_limit';
+
+  return {
+    requestsLastMinute,
+    tokensLastMinute,
+    modelRequestsLastMinute,
+    requestsToday,
+    tokensToday,
+    modelRequestsToday,
+    modelTokensToday,
+    dailyTokenLimit: safeLimit,
+    dailyTokenPct,
+    remainingDailyTokens,
+    rateLimitedCount24h,
+    errorCount24h,
+    cooldownSeconds: Math.max(0, Math.round(cooldownSeconds)),
+    status,
+  };
+}
+
+export function aggregateModelUsage(entries: UsageEntry[], nowMs = Date.now()): ModelUsageSummary[] {
+  const today = localDayFromMs(nowMs);
+  const sevenDaysAgo = nowMs - 7 * 86_400_000;
+  const oneDayAgo = nowMs - 86_400_000;
+  const byModel = new Map<string, ModelUsageSummary>();
+
+  for (const row of entries) {
+    const existing = byModel.get(row.model) ?? {
+      model: row.model,
+      requestsToday: 0,
+      tokensToday: 0,
+      requests7d: 0,
+      tokens7d: 0,
+      rateLimited24h: 0,
+    };
+    const total = row.tokens?.total ?? 0;
+    if (row.day === today) {
+      existing.requestsToday++;
+      existing.tokensToday += total;
+    }
+    if (row.at >= sevenDaysAgo) {
+      existing.requests7d++;
+      existing.tokens7d += total;
+    }
+    if (row.at >= oneDayAgo && row.errorStatus === 429) {
+      existing.rateLimited24h++;
+    }
+    byModel.set(row.model, existing);
+  }
+
+  return Array.from(byModel.values()).sort(
+    (a, b) => b.tokensToday - a.tokensToday || b.tokens7d - a.tokens7d || a.model.localeCompare(b.model),
+  );
+}
+

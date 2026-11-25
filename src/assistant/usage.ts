@@ -18,6 +18,7 @@ export interface UsageEntry {
   model: string;
   tokens?: TokenUsage;
   status: 'complete' | 'stopped' | 'error';
+  errorStatus?: number;
 }
 
 const settingsKey = 'studyflow.assistant.settings.v1';
