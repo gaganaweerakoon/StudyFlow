@@ -121,6 +121,12 @@ const AuthenticatedAppGate: React.FC<{
 }> = ({ desktopUsage, desktopHistory }) => {
   const { preferences } = useApp();
   const { user, authReady } = useAuth();
+  const [demoMode, setDemoMode] = React.useState(
+    () =>
+      !isTauri() &&
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('demo') === '1',
+  );
 
   const gateState = resolveAuthGateState({
     desktopMode: isTauri(),
@@ -129,12 +135,12 @@ const AuthenticatedAppGate: React.FC<{
     hasDesktopGoogleAccount: Boolean(preferences.googleAccount),
   });
 
-  if (gateState === 'loading') {
+  if (gateState === 'loading' && !demoMode) {
     return <AuthLoadingScreen />;
   }
 
-  if (gateState === 'locked') {
-    return <AuthLandingPage />;
+  if (gateState === 'locked' && !demoMode) {
+    return <AuthLandingPage onEnterDemo={() => setDemoMode(true)} />;
   }
 
   return (

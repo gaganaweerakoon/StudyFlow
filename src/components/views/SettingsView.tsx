@@ -66,6 +66,7 @@ export const SettingsView: React.FC = () => {
     preferences,
     updatePreferences,
     exportWorkspace,
+    loadDemoData,
     importLegacyBackup,
     wipeData, subjects, tasks, sessions, notes, goals, focusHistory, quizzes, exams, flashcards,
     legacyCalendar,
@@ -568,6 +569,13 @@ export const SettingsView: React.FC = () => {
                   style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
                 >
                   <Download className="w-3.5 h-3.5" /> Export Workspace JSON
+                </button>
+                <button
+                  type="button"
+                  onClick={loadDemoData}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3.5 py-2 text-[12.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Load Demo Data
                 </button>
                 {importLegacyBackup && <button
                   type="button"

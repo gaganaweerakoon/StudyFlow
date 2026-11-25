@@ -42,7 +42,7 @@ async function startServer() {
     });
   }
 
-  const host = process.env.STUDYFLOW_HOST || '127.0.0.1';
+  const host = process.env.STUDYFLOW_HOST || (process.env.K_SERVICE || process.env.APP_URL ? '0.0.0.0' : '127.0.0.1');
   app.listen(port, host, () => {
     console.log(`StudyFlow server listening on http://${host}:${port}`);
   });

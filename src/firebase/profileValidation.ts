@@ -320,6 +320,15 @@ export function formatGoogleAuthError(error: unknown): string {
     case 'auth/too-many-requests':
       return 'Too many sign-in attempts. Please wait a moment and try again.';
     default:
+      if (
+        code === 'unavailable' ||
+        code === 'firestore/unavailable' ||
+        message.toLowerCase().includes('client is offline') ||
+        message.toLowerCase().includes('temporarily offline') ||
+        message.toLowerCase().includes('could not reach cloud firestore backend')
+      ) {
+        return 'Cloud profile sync is temporarily offline. Your local workspace is saved and will sync once reconnected.';
+      }
       if (message.toLowerCase().includes('quota exceeded')) {
         return 'Cloud sync daily quota was reached. Your local workspace still works and cloud quota resets tomorrow.';
       }

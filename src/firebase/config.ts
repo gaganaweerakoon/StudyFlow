@@ -1,10 +1,56 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
+import {
+  doc,
+  getDocFromServer,
+  getFirestore,
+  initializeFirestore,
+  memoryLocalCache,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  type Firestore,
+} from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+function createFirestoreInstance(): Firestore {
+  const databaseId = firebaseConfig.firestoreDatabaseId;
+  if (typeof window === 'undefined') {
+    return getFirestore(app, databaseId);
+  }
+
+  // Force HTTP long-polling in browser/iframe environments to prevent WebChannel
+  // streaming timeouts ("Could not reach Cloud Firestore backend" after 10s)
+  // caused by proxies, VPNs, antivirus HTTPS scanners, or restricted iframes.
+  try {
+    return initializeFirestore(
+      app,
+      {
+        experimentalForceLongPolling: true,
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      },
+      databaseId,
+    );
+  } catch {
+    try {
+      return initializeFirestore(
+        app,
+        {
+          experimentalForceLongPolling: true,
+          localCache: memoryLocalCache(),
+        },
+        databaseId,
+      );
+    } catch {
+      return getFirestore(app, databaseId);
+    }
+  }
+}
+
+export const db = createFirestoreInstance();
 export const auth = getAuth(app);
 
 export const googleProvider = new GoogleAuthProvider();
@@ -34,6 +80,21 @@ export interface FirestoreErrorInfo {
       email?: string | null;
     }[];
   };
+}
+
+export function isFirestoreOfflineError(error: unknown): boolean {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error
+      ? String((error as { code?: unknown }).code ?? '').toLowerCase()
+      : '';
+  const message = (error instanceof Error ? error.message : String(error ?? '')).toLowerCase();
+  return (
+    code === 'unavailable' ||
+    code === 'firestore/unavailable' ||
+    message.includes('client is offline') ||
+    message.includes('could not reach cloud firestore backend') ||
+    message.includes('backend didn\'t respond')
+  );
 }
 
 export function handleFirestoreError(

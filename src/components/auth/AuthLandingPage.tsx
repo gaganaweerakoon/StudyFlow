@@ -42,7 +42,7 @@ export const AuthLoadingScreen: React.FC = () => {
   );
 };
 
-export const AuthLandingPage: React.FC = () => {
+export const AuthLandingPage: React.FC<{ onEnterDemo?: () => void }> = ({ onEnterDemo }) => {
   const { theme, setTheme, updatePreferences, pushToast } = useApp();
   const { signingIn, authError, clearAuthError, signInWithGoogle } = useAuth();
   const prefersReduced = useReducedMotion();
@@ -161,27 +161,44 @@ export const AuthLandingPage: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void handleContinueWithGoogle()}
-              className="w-full sm:w-auto min-w-[280px] h-[52px] px-6 rounded-xl inline-flex items-center justify-center gap-3 text-[15px] font-semibold transition-all duration-150 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-65 disabled:hover:translate-y-0 cursor-pointer whitespace-nowrap"
-              style={{
-                backgroundColor: 'var(--text-primary)',
-                color: 'var(--bg-surface)',
-                boxShadow: 'var(--shadow-floating)',
-              }}
-            >
-              {busy ? (
-                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-              ) : (
-                <span className="w-6 h-6 rounded-full bg-white flex items-center justify-center shrink-0">
-                  <GoogleMark className="w-4 h-4" />
-                </span>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handleContinueWithGoogle()}
+                className="w-full sm:w-auto min-w-[240px] h-[52px] px-6 rounded-xl inline-flex items-center justify-center gap-3 text-[15px] font-semibold transition-all duration-150 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-65 disabled:hover:translate-y-0 cursor-pointer whitespace-nowrap"
+                style={{
+                  backgroundColor: 'var(--text-primary)',
+                  color: 'var(--bg-surface)',
+                  boxShadow: 'var(--shadow-floating)',
+                }}
+              >
+                {busy ? (
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                ) : (
+                  <span className="w-6 h-6 rounded-full bg-white flex items-center justify-center shrink-0">
+                    <GoogleMark className="w-4 h-4" />
+                  </span>
+                )}
+                <span>{busy ? 'Signing in with Google…' : 'Continue with Google'}</span>
+                {!busy && <ArrowRight className="w-4 h-4 shrink-0 opacity-75" />}
+              </button>
+
+              {!desktopMode && onEnterDemo && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={onEnterDemo}
+                  className="w-full sm:w-auto h-[52px] px-5 rounded-xl inline-flex items-center justify-center gap-2 text-[14px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors cursor-pointer whitespace-nowrap"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  Explore Demo
+                </button>
               )}
-              <span>{busy ? 'Signing in with Google…' : 'Continue with Google'}</span>
-              {!busy && <ArrowRight className="w-4 h-4 shrink-0 opacity-75" />}
-            </button>
+            </div>
 
             {errorMessage && (
               <p

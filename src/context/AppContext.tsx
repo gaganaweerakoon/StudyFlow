@@ -1,5 +1,6 @@
 import { collectRewards, rewardSummary, type RewardLedger } from '../utils/rewards';
 import { removeTaskLinks, syncGoalsForTaskStatusChange } from '../utils/goalProgress';
+import type { GoalViewPreferences } from '../utils/goalFilters';
 import { wipeWorkspace, WIPE_OPTIONS, type WipeSection } from '../desktop/wipeWorkspace';
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type {
@@ -123,6 +124,7 @@ export interface UserPreferences {
   highContrastText: boolean;
   showFocusStreak: boolean;
   localBackupAuto: boolean;
+  goalsPrefs?: GoalViewPreferences;
 }
 
 interface AppContextValue {
@@ -134,6 +136,7 @@ interface AppContextValue {
   legacyCalendar: boolean;
   cardReviews: Record<string, number>;
   exportWorkspace: () => void;
+  loadDemoData: () => void;
   // Navigation & Shell
   route: NavRoute;
   setRoute: (r: NavRoute) => void;
@@ -341,7 +344,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   tasksRef.current = tasks;
   const [savedSessions, setSessions] = useState<StudySession[]>(initial?.sessions ?? (desktop ? [] : INITIAL_SESSIONS));
   const [goals, setGoals] = useState<GoalItem[]>(initial?.goals ?? (desktop ? [] : INITIAL_GOALS));
-  const [folders] = useState<NoteFolder[]>(initial?.folders ?? (desktop ? [{ id: 'notes', name: 'Notes' }] : INITIAL_FOLDERS));
+  const [folders, setFolders] = useState<NoteFolder[]>(initial?.folders ?? (desktop ? [{ id: 'notes', name: 'Notes' }] : INITIAL_FOLDERS));
   const [notes, setNotes] = useState<NoteItem[]>(initial?.notes ?? (desktop ? [] : INITIAL_NOTES));
   const [decks, setDecks] = useState<FlashcardDeck[]>(initial?.decks ?? (desktop ? [{ id: 'review', title: 'General Review', subjectId: '', description: '', lastReviewed: '', retentionRate: 0 }] : INITIAL_DECKS));
   const [storedFlashcards, setFlashcards] = useState<FlashcardItem[]>(initial?.flashcards ?? (desktop ? [] : INITIAL_FLASHCARDS));
@@ -1366,11 +1369,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   // Goal mutations
   const addGoal = useCallback(
     (g: Omit<GoalItem, 'id'>) => {
+      const nowIso = new Date().toISOString();
       const nextGoal: GoalItem = {
         ...g,
         id: `g-${crypto.randomUUID()}`,
+        createdAt: g.createdAt ?? nowIso,
         ...(g.target > 0 && g.current >= g.target
-          ? { completedAt: g.completedAt ?? new Date().toISOString() }
+          ? { completedAt: g.completedAt ?? nowIso }
           : {}),
       };
       setGoals((prev) => [nextGoal, ...prev]);
@@ -1651,6 +1656,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     pushToast('Exported StudyFlow workspace archive (.json)');
   };
 
+  const loadDemoData = () => {
+    setSubjects(INITIAL_SUBJECTS);
+    setTasks(INITIAL_TASKS);
+    setSessions(INITIAL_SESSIONS);
+    setRemovedOccurrences([]);
+    setArchive(undefined);
+    setGoals(INITIAL_GOALS);
+    setFolders(INITIAL_FOLDERS);
+    setNotes(INITIAL_NOTES);
+    setSelectedNoteId(INITIAL_NOTES[0]?.id ?? '');
+    setDecks(INITIAL_DECKS);
+    setFlashcards(INITIAL_FLASHCARDS);
+    setExams(INITIAL_EXAMS);
+    setQuizzes(INITIAL_QUIZZES);
+    setFocusHistory(INITIAL_FOCUS_HISTORY);
+    setChallenges(INITIAL_CHALLENGES);
+    setNotifications(INITIAL_NOTIFICATIONS);
+    setXpPoints(4280);
+    pushToast('Loaded sample study workspace data');
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1662,6 +1688,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         legacyCalendar: desktop,
         cardReviews,
         exportWorkspace,
+        loadDemoData,
         route,
         setRoute,
         selectedSubjectId,

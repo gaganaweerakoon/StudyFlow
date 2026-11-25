@@ -12,7 +12,14 @@ import {
   setDoc,
   updateDoc,
 } from 'firebase/firestore';
-import { auth, db, googleProvider, handleFirestoreError, OperationType } from './config';
+import {
+  auth,
+  db,
+  googleProvider,
+  handleFirestoreError,
+  isFirestoreOfflineError,
+  OperationType,
+} from './config';
 import {
   formatGoogleAuthError,
   sanitizeUserProfile,
@@ -99,6 +106,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             snap = await getDoc(ref);
           } catch (err) {
+            if (isFirestoreOfflineError(err)) {
+              // Keep the Google Auth session active in local mode while Firestore reconnects.
+              return null;
+            }
             handleFirestoreError(err, OperationType.GET, path);
           }
 
@@ -131,7 +142,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   updatedAt: serverTimestamp(),
                 });
               } catch (err) {
-                handleFirestoreError(err, OperationType.UPDATE, path);
+                if (!isFirestoreOfflineError(err)) {
+                  handleFirestoreError(err, OperationType.UPDATE, path);
+                }
               }
             }
             setCloudProfile(sanitized);
@@ -164,6 +177,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               updatedAt: serverTimestamp(),
             });
           } catch (err) {
+            if (isFirestoreOfflineError(err)) {
+              return null;
+            }
             handleFirestoreError(err, OperationType.CREATE, path);
           }
 
@@ -195,6 +211,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
     return () => unsubscribe();
   }, [ensureUserProfileDoc]);
+
+  // Automatically retry profile hydration when network connectivity returns
+  useEffect(() => {
+    if (!user || cloudProfile) return;
+    const handleOnline = () => {
+      void ensureUserProfileDoc(user).catch((err) => {
+        setAuthError(formatGoogleAuthError(err));
+      });
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [user, cloudProfile, ensureUserProfileDoc]);
 
   const signInWithGoogle = useCallback(
     async (seed?: Partial<CloudUserProfileInput>) => {
@@ -310,6 +338,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         setCloudProfile(merged);
       } catch (err) {
+        if (isFirestoreOfflineError(err)) {
+          throw new Error('unavailable: Cloud profile sync is temporarily offline.');
+        }
         handleFirestoreError(err, OperationType.WRITE, path);
       } finally {
         setSyncingProfile(false);

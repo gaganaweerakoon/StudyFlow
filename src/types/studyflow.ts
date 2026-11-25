@@ -112,6 +112,7 @@ export interface GoalMilestone {
 }
 
 export interface GoalItem {
+  createdAt?: string;
   completedAt?: string;
   id: string;
   title: string;

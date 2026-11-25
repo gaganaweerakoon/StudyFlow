@@ -537,6 +537,7 @@ export const INITIAL_SESSIONS: StudySession[] = [
 export const INITIAL_GOALS: GoalItem[] = [
   {
     id: 'g-1',
+    createdAt: `${offsetIso(0, ANCHOR_TODAY)}T08:00:00`,
     title: 'Daily Deep Study Target',
     category: 'daily',
     current: 3.4,
@@ -551,6 +552,7 @@ export const INITIAL_GOALS: GoalItem[] = [
   },
   {
     id: 'g-2',
+    createdAt: `${offsetIso(-2, ANCHOR_TODAY)}T09:30:00`,
     title: 'Weekly Focused Study Hours',
     category: 'weekly',
     current: 28.6,
@@ -565,6 +567,7 @@ export const INITIAL_GOALS: GoalItem[] = [
   },
   {
     id: 'g-3',
+    createdAt: `${offsetIso(-6, ANCHOR_TODAY)}T14:15:00`,
     title: 'Master CS 340 NP-Completeness Syllabus',
     category: 'syllabus',
     subjectId: 'cs340',
@@ -573,13 +576,14 @@ export const INITIAL_GOALS: GoalItem[] = [
     unit: 'topics',
     deadline: formatFullMonthDayYear(10, ANCHOR_TODAY),
     milestones: [
-      { id: 'm7', label: 'Network Flow & Cut theorems', done: true, date: formatShortMonthDay(-4, ANCHOR_TODAY) },
+      { id: 'm7', label: 'Review Max-Flow Min-Cut proof & residual graphs', done: true, date: formatShortMonthDay(0, ANCHOR_TODAY), taskId: 'tsk-6' },
       { id: 'm8', label: 'Karp 21 canonical reductions', done: false, date: formatShortMonthDay(4, ANCHOR_TODAY) },
       { id: 'm9', label: '2-Approximation proofs', done: false, date: formatShortMonthDay(9, ANCHOR_TODAY) },
     ],
   },
   {
     id: 'g-4',
+    createdAt: `${offsetIso(-4, ANCHOR_TODAY)}T11:20:00`,
     title: 'Spaced Repetition Revision Target',
     category: 'revision',
     subjectId: 'chem210',
@@ -594,6 +598,7 @@ export const INITIAL_GOALS: GoalItem[] = [
   },
   {
     id: 'g-5',
+    createdAt: `${offsetIso(-3, ANCHOR_TODAY)}T16:45:00`,
     title: 'Complete Weekly Problem Sets On Time',
     category: 'tasks',
     current: 11,
@@ -602,7 +607,23 @@ export const INITIAL_GOALS: GoalItem[] = [
     deadline: formatFullMonthDayYear(3, ANCHOR_TODAY),
     milestones: [
       { id: 'm12', label: 'MATH 241 PSet 9 submitted', done: true, date: formatShortMonthDay(-2, ANCHOR_TODAY) },
-      { id: 'm13', label: 'CS 340 PSet 8 submitted', done: false, date: formatShortMonthDay(0, ANCHOR_TODAY) },
+      { id: 'm13', label: 'Complete Problem Set 8: NP-Completeness Reductions', done: false, date: 'Today, 11:59 PM', taskId: 'tsk-1' },
+    ],
+  },
+  {
+    id: 'g-6',
+    createdAt: `${offsetIso(-8, ANCHOR_TODAY)}T10:00:00`,
+    title: 'Week 11 Core Readings & Lab Checkpoints',
+    category: 'weekly',
+    subjectId: 'neur302',
+    current: 4,
+    target: 4,
+    unit: 'checkpoints',
+    deadline: formatFullMonthDayYear(-1, ANCHOR_TODAY),
+    completedAt: offsetIso(-1, ANCHOR_TODAY),
+    milestones: [
+      { id: 'm14', label: 'Retinotopy & V1 column notes', done: true, date: formatShortMonthDay(-3, ANCHOR_TODAY) },
+      { id: 'm15', label: 'Aromaticity flashcards cleared', done: true, date: formatShortMonthDay(-1, ANCHOR_TODAY), taskId: 'tsk-7' },
     ],
   },
 ];
@@ -800,6 +821,8 @@ export const INITIAL_FLASHCARDS: FlashcardItem[] = [
     intervalDays: 4,
     easeFactor: 2.5,
     dueToday: true,
+    nextReviewDate: offsetIso(0, ANCHOR_TODAY),
+    lastReviewedAt: offsetIso(-4, ANCHOR_TODAY),
     mastery: 'learning',
   },
   {
@@ -811,6 +834,8 @@ export const INITIAL_FLASHCARDS: FlashcardItem[] = [
     intervalDays: 7,
     easeFactor: 2.6,
     dueToday: true,
+    nextReviewDate: offsetIso(0, ANCHOR_TODAY),
+    lastReviewedAt: offsetIso(-7, ANCHOR_TODAY),
     mastery: 'learning',
   },
   {
@@ -821,7 +846,9 @@ export const INITIAL_FLASHCARDS: FlashcardItem[] = [
     hint: 'Balanced recursion tree',
     intervalDays: 14,
     easeFactor: 2.7,
-    dueToday: true,
+    dueToday: false,
+    nextReviewDate: offsetIso(9, ANCHOR_TODAY),
+    lastReviewedAt: offsetIso(-5, ANCHOR_TODAY),
     mastery: 'mature',
   },
   {
@@ -830,9 +857,12 @@ export const INITIAL_FLASHCARDS: FlashcardItem[] = [
     front: 'Which base and temperature favor the kinetic enolate of 2-methylcyclohexanone?',
     back: 'LDA (lithium diisopropylamide) in THF at −78 °C. Bulky steric hindrance selectively deprotonates the less substituted α-carbon irreversibly.',
     hint: 'Bulky base, cryogenic temp',
-    intervalDays: 3,
-    easeFactor: 2.4,
+    intervalDays: 2,
+    easeFactor: 2.1,
+    lapses: 2,
     dueToday: true,
+    nextReviewDate: offsetIso(-2, ANCHOR_TODAY),
+    lastReviewedAt: offsetIso(-4, ANCHOR_TODAY),
     mastery: 'learning',
   },
   {
@@ -841,9 +871,12 @@ export const INITIAL_FLASHCARDS: FlashcardItem[] = [
     front: 'Name the two consecutive reactions that compose a Robinson Annulation.',
     back: '1) Michael addition (1,4-conjugate addition of an enolate to an α,β-unsaturated carbonyl).\n2) Intramolecular aldol condensation forming a cyclohexenone ring.',
     hint: '1,4-addition followed by ring closure',
-    intervalDays: 2,
-    easeFactor: 2.3,
+    intervalDays: 1,
+    easeFactor: 2.0,
+    lapses: 2,
     dueToday: true,
+    nextReviewDate: offsetIso(-1, ANCHOR_TODAY),
+    lastReviewedAt: offsetIso(-3, ANCHOR_TODAY),
     mastery: 'new',
   },
   {
@@ -855,6 +888,8 @@ export const INITIAL_FLASHCARDS: FlashcardItem[] = [
     intervalDays: 6,
     easeFactor: 2.5,
     dueToday: true,
+    nextReviewDate: offsetIso(0, ANCHOR_TODAY),
+    lastReviewedAt: offsetIso(-6, ANCHOR_TODAY),
     mastery: 'learning',
   },
   {
@@ -865,7 +900,9 @@ export const INITIAL_FLASHCARDS: FlashcardItem[] = [
     hint: 'Jacobian determinant of spherical map',
     intervalDays: 10,
     easeFactor: 2.6,
-    dueToday: true,
+    dueToday: false,
+    nextReviewDate: offsetIso(5, ANCHOR_TODAY),
+    lastReviewedAt: offsetIso(-5, ANCHOR_TODAY),
     mastery: 'mature',
   },
 ];
@@ -1035,11 +1072,13 @@ export const INITIAL_QUIZZES: PracticeQuiz[] = [
 ];
 
 export const INITIAL_FOCUS_HISTORY: FocusHistoryItem[] = [
-  { id: 'fh-1', subjectId: 'cs340', taskTitle: 'NP-Completeness Reductions', mode: 'Pomodoro', durationMinutes: 50, completedAt: 'Today, 10:15 AM', qualityRating: 5 },
-  { id: 'fh-2', subjectId: 'math241', taskTitle: "Stokes' Theorem Integrals", mode: 'Pomodoro', durationMinutes: 45, completedAt: 'Yesterday, 7:05 PM', qualityRating: 4 },
-  { id: 'fh-3', subjectId: 'chem210', taskTitle: 'Carbonyl Enolate Mechanisms', mode: 'Custom', durationMinutes: 40, completedAt: 'Yesterday, 3:55 PM', qualityRating: 4 },
-  { id: 'fh-4', subjectId: 'neur302', taskTitle: 'Bliss & Lømo LTP Figures', mode: 'Pomodoro', durationMinutes: 25, completedAt: `${formatShortMonthDay(-2, ANCHOR_TODAY)}, 4:30 PM`, qualityRating: 5 },
-  { id: 'fh-5', subjectId: 'econ205', taskTitle: '2SLS Weak Instruments', mode: 'Custom', durationMinutes: 60, completedAt: `${formatShortMonthDay(-3, ANCHOR_TODAY)}, 11:20 AM`, qualityRating: 3 },
+  { id: 'fh-1', subjectId: 'cs340', taskTitle: 'NP-Completeness Reductions', mode: 'Pomodoro', durationMinutes: 90, completedAt: offsetIso(0, ANCHOR_TODAY), endedAtMs: offsetLocalDate(0, ANCHOR_TODAY).getTime(), qualityRating: 5 },
+  { id: 'fh-2', subjectId: 'math241', taskTitle: "Stokes' Theorem Integrals", mode: 'Pomodoro', durationMinutes: 75, completedAt: offsetIso(0, ANCHOR_TODAY), endedAtMs: offsetLocalDate(0, ANCHOR_TODAY).getTime(), qualityRating: 4 },
+  { id: 'fh-3', subjectId: 'chem210', taskTitle: 'Carbonyl Enolate Mechanisms', mode: 'Custom', durationMinutes: 60, completedAt: offsetIso(-1, ANCHOR_TODAY), endedAtMs: offsetLocalDate(-1, ANCHOR_TODAY).getTime(), qualityRating: 4 },
+  { id: 'fh-4', subjectId: 'neur302', taskTitle: 'Bliss & Lømo LTP Figures', mode: 'Pomodoro', durationMinutes: 50, completedAt: offsetIso(-2, ANCHOR_TODAY), endedAtMs: offsetLocalDate(-2, ANCHOR_TODAY).getTime(), qualityRating: 5 },
+  { id: 'fh-5', subjectId: 'econ205', taskTitle: '2SLS Weak Instruments', mode: 'Custom', durationMinutes: 60, completedAt: offsetIso(-3, ANCHOR_TODAY), endedAtMs: offsetLocalDate(-3, ANCHOR_TODAY).getTime(), qualityRating: 4 },
+  { id: 'fh-6', subjectId: 'cs340', taskTitle: 'Max-Flow Min-Cut Proof', mode: 'Pomodoro', durationMinutes: 85, completedAt: offsetIso(-4, ANCHOR_TODAY), endedAtMs: offsetLocalDate(-4, ANCHOR_TODAY).getTime(), qualityRating: 5 },
+  { id: 'fh-7', subjectId: 'math241', taskTitle: 'Spherical Triple Integrals', mode: 'Custom', durationMinutes: 70, completedAt: offsetIso(-5, ANCHOR_TODAY), endedAtMs: offsetLocalDate(-5, ANCHOR_TODAY).getTime(), qualityRating: 4 },
 ];
 
 export const DASHBOARD_CHART_DATA = {
