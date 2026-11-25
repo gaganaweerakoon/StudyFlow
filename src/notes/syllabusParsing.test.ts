@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptySyllabus, mergeSyllabus, parseNumberedSyllabusMarkdown, splitSyllabus } from './syllabusImport';
+import { emptySyllabus, mergeSyllabus, parseNumberedSyllabusMarkdown, splitSyllabus } from './syllabusParsing';
 
 test('local Markdown preserves bilingual competency titles and ignores source notes', () => {
   const source = [

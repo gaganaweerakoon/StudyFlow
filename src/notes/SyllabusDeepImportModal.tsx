@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { emptySyllabus, mergeSyllabus, parseNumberedSyllabusMarkdown, splitSyllabus } from './syllabusImport';
+import { emptySyllabus, mergeSyllabus, parseNumberedSyllabusMarkdown, splitSyllabus } from './syllabusParsing';
 import {
   BookOpen,
   Calendar,

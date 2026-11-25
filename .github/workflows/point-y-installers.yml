@@ -26,7 +26,7 @@ jobs:
       - name: Check TypeScript
         run: bun run lint
       - name: Run existing tests
-        run: node --import tsx --test src/utils/studyLogic.test.ts src/utils/workspaceMetrics.test.ts src/companion/offlineFocus.test.ts src/notes/syllabusImport.test.ts server/studyAssistant.test.ts
+        run: node --import tsx --test src/utils/studyLogic.test.ts src/utils/workspaceMetrics.test.ts src/companion/offlineFocus.test.ts src/notes/syllabusParsing.test.ts server/studyAssistant.test.ts
       - name: Test Rust storage and Pip
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml -p studyflow-storage -p studyflow-assistant -p studyflow-local-companion
       - name: Verify the default Gemini model with the native desktop transport
