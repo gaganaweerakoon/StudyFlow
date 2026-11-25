@@ -26,6 +26,7 @@ import {
   applyMilestoneRemove,
   applyMilestoneToggle,
 } from '../../utils/goalProgress';
+import { sortMilestones, type MilestoneOrder } from '../../utils/milestoneSort';
 import type { GoalItem, GoalMilestone, Priority, TaskItem } from '../../types/studyflow';
 
 type ComposerTab = 'milestone' | 'existing_task' | 'new_task';
@@ -53,6 +54,7 @@ export const GoalsView: React.FC = () => {
     pushToast,
   } = useApp();
 
+  const [milestoneOrders, setMilestoneOrders] = useState<Record<string, MilestoneOrder>>({});
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [composerGoalId, setComposerGoalId] = useState<string | null>(null);
   const [composerTab, setComposerTab] = useState<ComposerTab>('milestone');
@@ -350,7 +352,9 @@ export const GoalsView: React.FC = () => {
             const pct = Math.min(100, Math.round((goal.current / Math.max(1, goal.target)) * 100));
             const sub = goal.subjectId ? subjects.find((s) => s.id === goal.subjectId) : null;
 
-            const resolvedMilestones = goal.milestones.map((ms) => {
+            const milestoneOrder = milestoneOrders[goal.id] ?? 'due-asc';
+            const sortedMilestones = sortMilestones(goal.milestones, taskById, milestoneOrder, goal.deadline);
+            const resolvedMilestones = sortedMilestones.map((ms) => {
               const linkedTask = ms.taskId ? taskById.get(ms.taskId) : undefined;
               const linkedSub = linkedTask
                 ? subjects.find((s) => s.id === linkedTask.subjectId)
@@ -450,6 +454,18 @@ export const GoalsView: React.FC = () => {
                       <Plus className="w-3 h-3" /> Add milestone
                     </button>
                   </div>
+                  {resolvedMilestones.length > 0 && (
+                    <div className="flex items-center justify-end mb-1.5 gap-2 shrink-0">
+                      <label className="text-[11px] text-[var(--text-muted)]" htmlFor={`milestone-sort-${goal.id}`}>Sort</label>
+                      <select id={`milestone-sort-${goal.id}`} aria-label={`Sort milestones for ${goal.title}`} value={milestoneOrder}
+                        onChange={e => setMilestoneOrders(prev => ({ ...prev, [goal.id]: e.target.value as MilestoneOrder }))}
+                        className="rounded px-1.5 py-0.5 text-[11px] max-w-full" style={inputStyle}>
+                        <option value="due-asc">Due date ↑</option><option value="due-desc">Due date ↓</option>
+                        <option value="title">Title A–Z</option><option value="incomplete">Incomplete first</option>
+                        <option value="completed">Completed first</option><option value="manual">Manual order</option>
+                      </select>
+                    </div>
+                  )}
 
                   <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none pr-0.5">
                     {resolvedMilestones.length === 0 ? (
@@ -458,7 +474,7 @@ export const GoalsView: React.FC = () => {
                       </p>
                     ) : (
                       <div className="space-y-1">
-                        {resolvedMilestones.map(({ ms, linkedTask, linkedSub, done, label, date }) => (
+                        {resolvedMilestones.map(({ ms, linkedTask, linkedSub, done, label, date }, index) => (
                           <div
                             key={ms.id}
                             className="group flex items-center justify-between gap-2 py-1 px-1.5 -mx-1.5 rounded-lg hover:bg-[var(--bg-surface-hover)] transition-colors text-[12px]"
@@ -495,6 +511,18 @@ export const GoalsView: React.FC = () => {
                             </button>
 
                             <div className="flex items-center gap-1.5 shrink-0">
+                              {milestoneOrder === 'manual' && ([-1, 1] as const).map(delta => (
+                                <button key={delta} type="button" disabled={index + delta < 0 || index + delta >= sortedMilestones.length}
+                                  aria-label={`Move ${label} ${delta < 0 ? 'up' : 'down'}`}
+                                  className="px-1 rounded disabled:opacity-30 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                                  onClick={() => {
+                                    const next = [...goal.milestones];
+                                    const from = next.findIndex(m => m.id === ms.id);
+                                    if (from < 0 || from + delta < 0 || from + delta >= next.length) return;
+                                    [next[from], next[from + delta]] = [next[from + delta], next[from]];
+                                    updateGoal(goal.id, { milestones: next });
+                                  }}>{delta < 0 ? '↑' : '↓'}</button>
+                              ))}
                               <span className="font-mono-num text-[11px] text-[var(--text-muted)] tabular-nums">
                                 {date}
                               </span>
