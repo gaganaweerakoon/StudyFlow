@@ -111,12 +111,12 @@ export const FocusTimerView: React.FC = () => {
       : focusTimer.secondsLeft;
 
   const displayTime =
-    focusTimer.phase === 'focus' && focusTimer.mode === 'Stopwatch'
+    !showingCurrentSessionOneClick && focusTimer.phase === 'focus' && focusTimer.mode === 'Stopwatch'
       ? formatTimerSeconds(focusTimer.elapsedSeconds)
       : formatTimerSeconds(effectiveSecondsLeft);
 
   const progressRatio =
-    focusTimer.phase === 'focus' && focusTimer.mode === 'Stopwatch'
+    !showingCurrentSessionOneClick && focusTimer.phase === 'focus' && focusTimer.mode === 'Stopwatch'
       ? Math.min(1, focusTimer.elapsedSeconds / 36000)
       : Math.min(
           1,
@@ -716,6 +716,7 @@ export const FocusTimerView: React.FC = () => {
                   </label>
                   <select
                     id="focus-subject"
+                    disabled={!isIdle}
                     value={focusSubject}
                     onChange={(e) => setFocusContext(e.target.value, focusTitle)}
                     className="w-full px-2.5 py-2 rounded-lg text-[13px]"
@@ -725,7 +726,8 @@ export const FocusTimerView: React.FC = () => {
                       color: 'var(--text-primary)',
                     }}
                   >
-                    {subjects.map((s) => (
+                    <option value="">General focus</option>
+                    {subjects.filter(s => !s.archived).map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.code} · {s.name}
                       </option>
@@ -735,10 +737,13 @@ export const FocusTimerView: React.FC = () => {
 
                 <div>
                   <label htmlFor="focus-task" className="block text-[11.5px] text-[var(--text-muted)] mb-1">
-                    Linked Task
+                    Activity / linked task
                   </label>
-                  <select
+                  <input
                     id="focus-task"
+                    list="focus-task-options"
+                    disabled={!isIdle}
+                    placeholder="Type an activity or choose a task"
                     value={focusTitle}
                     onChange={(e) => setFocusContext(focusSubject, e.target.value)}
                     className="w-full px-2.5 py-2 rounded-lg text-[13px]"
@@ -747,13 +752,10 @@ export const FocusTimerView: React.FC = () => {
                       border: '1px solid var(--border-subtle)',
                       color: 'var(--text-primary)',
                     }}
-                  >
-                    {tasks.map((t) => (
-                      <option key={t.id} value={t.title}>
-                        {t.title}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  <datalist id="focus-task-options">
+                    {tasks.filter(t => !focusSubject || t.subjectId === focusSubject).map(t => <option key={t.id} value={t.title} />)}
+                  </datalist>
                 </div>
               </div>
             )}
