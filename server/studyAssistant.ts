@@ -1,3 +1,4 @@
+import { allowLocalServerKey, isLoopbackApiClient } from './localApiPolicy.ts';
 import 'dotenv/config';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
@@ -244,7 +245,7 @@ function handleStatus(req: IncomingMessage, res: ServerResponse) {
   if (!isAllowedOrigin(req)) return jsonResponse(res, 403, { message: 'Cross-origin access denied.' });
   if (req.method !== 'GET') return jsonResponse(res, 405, { message: 'Method not allowed.' });
   return jsonResponse(res, 200, {
-    geminiConfigured: hasEnvGeminiKey(),
+    geminiConfigured: (isLoopbackApiClient(req) && hasEnvGeminiKey()),
     defaultProvider: 'gemini',
     defaultModel: PROVIDERS.gemini.model,
   });
@@ -272,7 +273,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse) {
 
   const bearerKey = req.headers.authorization?.match(/^Bearer ([\x21-\x7E]{1,512})$/)?.[1];
   const resolvedKey =
-    request.provider === 'gemini' ? resolveGeminiKey(bearerKey) : bearerKey ?? '';
+    request.provider === 'gemini' ? allowLocalServerKey(bearerKey, req, () => resolveGeminiKey()) : bearerKey ?? '';
   if (!resolvedKey) {
     return jsonResponse(res, 401, {
       message:
@@ -336,7 +337,7 @@ async function handleNotesRestructure(req: IncomingMessage, res: ServerResponse)
   }
 
   const bearerKey = req.headers.authorization?.match(/^Bearer ([\x21-\x7E]{1,512})$/)?.[1];
-  const resolvedKey = resolveGeminiKey(bearerKey);
+  const resolvedKey = allowLocalServerKey(bearerKey, req, () => resolveGeminiKey());
   if (!resolvedKey) {
     return jsonResponse(res, 401, {
       message: 'GEMINI_API_KEY is not configured in the server environment. Set it in Settings > Secrets.',
@@ -400,7 +401,7 @@ async function handleOverview(req: IncomingMessage, res: ServerResponse) {
   }
 
   const bearerKey = req.headers.authorization?.match(/^Bearer ([\x21-\x7E]{1,512})$/)?.[1];
-  const resolvedKey = resolveGeminiKey(bearerKey);
+  const resolvedKey = allowLocalServerKey(bearerKey, req, () => resolveGeminiKey());
   if (!resolvedKey) {
     return jsonResponse(res, 401, {
       message: 'GEMINI_API_KEY is not configured in the server environment. Set it in Settings > Secrets.',
