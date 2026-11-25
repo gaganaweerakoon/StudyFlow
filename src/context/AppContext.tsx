@@ -642,7 +642,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
           : mode === 'Custom'
             ? clampFocusMinutes(customMinutes ?? 35)
             : 0;
-    const manualOverride = mode === 'Stopwatch' ? true : customMinutes !== undefined || mode === 'Pomodoro' || mode === 'Countdown';
+    const manualOverride = true;
     setFocusTimer((prev) => ({
       ...prev,
       mode,
@@ -737,6 +737,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       if (prev.phase === 'break') {
         return { ...prev, running: !prev.running };
       }
+      if (prev.manualDurationOverride && !prev.running && prev.elapsedSeconds === 0 && !prev.pausedFocus) {
+        return { ...prev, running: true, startedAtMs: Date.now(), calendarSessionId: null, mobileRunId: undefined };
+      }
       const isFreshIdle = !prev.running && prev.phase === 'focus' && prev.elapsedSeconds === 0 && !prev.pausedFocus &&
         (prev.mode === 'Stopwatch' || prev.secondsLeft === prev.totalSeconds) && prev.calendarSessionId !== null;
       if (!isFreshIdle) {
@@ -765,9 +768,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         running: true,
         startedAtMs: Date.now(),
         mobileRunId: undefined,
-        calendarSessionId: active?.session.id,
-        subjectId: active?.session.subjectId ?? prev.subjectId,
-        taskTitle: active?.session.title ?? prev.taskTitle,
+        calendarSessionId: prev.manualDurationOverride ? null : active?.session.id,
+        subjectId: prev.manualDurationOverride ? prev.subjectId : active?.session.subjectId ?? prev.subjectId,
+        taskTitle: prev.manualDurationOverride ? prev.taskTitle : active?.session.title ?? prev.taskTitle,
       };
     });
   }, [sessions]);
@@ -906,7 +909,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       ...prev,
       phase: 'focus',
       pausedFocus: undefined,
-      manualDurationOverride: false,
+      manualDurationOverride: prev.manualDurationOverride,
       running: false,
       startedAtMs: undefined, mobileRunId: undefined,
       secondsLeft: prev.mode === 'Stopwatch' ? 0 : prev.totalSeconds,
@@ -1683,7 +1686,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         moveDashboardWidget,
         resetDashboardWidgets,
         subjects,
-        appendChapters: (id, chapters) => setSubjects(prev=>prev.map(s=>s.id===id ? {...s, chapters:[...s.chapters,...chapters]} : s)),
+        appendChapters: (id, chapters) => setSubjects(prev => prev.map(s => {
+          if (s.id !== id) return s;
+          const key = (title: string) => title.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
+          const merged = [...s.chapters];
+          for (const incoming of chapters) {
+            const i = merged.findIndex(ch => key(ch.title) === key(incoming.title));
+            if (i < 0) { merged.push(incoming); continue; }
+            const existing = merged[i];
+            const titles = new Set(existing.topics.map(t => key(t.title)));
+            const topics = [...existing.topics];
+            for (const t of incoming.topics) {
+              if (!titles.has(key(t.title))) { topics.push(t); titles.add(key(t.title)); }
+            }
+            merged[i] = { ...existing, topics };
+          }
+          return { ...s, chapters: merged };
+        })),
         addSubject,
         updateSubject,
         deleteSubject,
