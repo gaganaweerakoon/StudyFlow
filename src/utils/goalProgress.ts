@@ -1,7 +1,7 @@
 import type { GoalItem, GoalMilestone } from '../types/studyflow';
 
 type GoalScale = Pick<GoalItem, 'category' | 'target' | 'unit' | 'milestones'>;
-const DISCRETE_ONE_UNITS = new Set('task tasks topic topics chapter chapters milestone milestones session sessions set sets pset psets exam exams paper papers module modules lecture lectures assignment assignments goal goals'.split(' '));
+const DISCRETE_ONE_UNITS = new Set('task tasks topic topics chapter chapters milestone milestones session sessions set sets pset psets exam exams paper papers module modules lecture lectures lesson lessons assignment assignments goal goals'.split(' '));
 const DECIMAL_UNITS = new Set(['hr', 'hrs', 'hour', 'hours']);
 
 export function roundProgress(value: number): number {
@@ -79,4 +79,12 @@ export function applyMilestoneAdd(goal: GoalItem, milestone: GoalMilestone, nowI
 export function applyMilestoneRemove(goal: GoalItem, milestoneId: string, nowIso = new Date().toISOString()): GoalItem {
   if (!goal.milestones.some(m => m.id === milestoneId)) return goal;
   return updateMilestones(goal, goal.milestones.filter(m => m.id !== milestoneId), nowIso);
+}
+
+export function removeTaskLinks(goals: GoalItem[], taskIds: string[]): GoalItem[] {
+  const ids = new Set(taskIds);
+  return goals.map(goal => {
+    const remaining = goal.milestones.filter(m => !m.taskId || !ids.has(m.taskId));
+    return remaining.length === goal.milestones.length ? goal : updateMilestones(goal, remaining, new Date().toISOString());
+  });
 }

@@ -403,7 +403,7 @@
   },
   {
     "name": "create_goal",
-    "description": "Create a study goal, with optional milestones. Use milestoneSteps for one request with separate dates and titles.",
+    "description": "Create a study goal, with optional milestones. Use milestoneSteps for one request with separate dates and titles. To link existing tasks, pass taskIds (actual IDs or unambiguous exact titles); never create plain milestones for those tasks.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -459,10 +459,82 @@
               "title"
             ]
           }
+        },
+        "taskIds": {
+          "type": "array",
+          "description": "Existing task IDs or exact titles to link. Use these instead of plain milestoneSteps for existing tasks.",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "required": [
         "title"
+      ]
+    }
+  },
+  {
+    "name": "link_task_to_goal",
+    "description": "Link one existing task to a goal, without creating a task.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "goalId": {
+          "type": "string",
+          "description": "Existing goal ID or unambiguous exact title."
+        },
+        "taskId": {
+          "type": "string",
+          "description": "Existing task ID or unambiguous exact title."
+        }
+      },
+      "required": [
+        "goalId",
+        "taskId"
+      ]
+    }
+  },
+  {
+    "name": "bulk_link_tasks_to_goal",
+    "description": "Link multiple existing tasks to one goal without duplicating them.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "goalId": {
+          "type": "string",
+          "description": "Existing goal ID or unambiguous exact title."
+        },
+        "taskIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "goalId",
+        "taskIds"
+      ]
+    }
+  },
+  {
+    "name": "unlink_task_from_goal",
+    "description": "Remove an existing task link from a goal without deleting the task. Requires approval.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "goalId": {
+          "type": "string",
+          "description": "Existing goal ID or unambiguous exact title."
+        },
+        "taskId": {
+          "type": "string",
+          "description": "Existing task ID or unambiguous exact title."
+        }
+      },
+      "required": [
+        "goalId",
+        "taskId"
       ]
     }
   },

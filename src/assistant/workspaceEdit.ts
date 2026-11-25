@@ -1,6 +1,7 @@
 import { readGeneratedCards, readGeneratedQuestions } from '../notes/generatedStudyItems';
 import type { useApp } from '../context/AppContext';
-import type { ExamItem, GoalItem, NavRoute, StudySession, TaskItem } from '../types/studyflow';
+import type { ExamItem, GoalItem, GoalMilestone, NavRoute, StudySession, TaskItem } from '../types/studyflow';
+import { applyMilestoneAdd, applyMilestoneRemove, computeInitialGoalProgress } from '../utils/goalProgress';
 import { sanitizeSvgDiagram } from './svgDiagram';
 import { analyzeSrsRetention, planMicroReviewSessions } from '../utils/srsIntelligence';
 
@@ -171,6 +172,32 @@ function resolveSession(
     return candidates[0];
   }
   return undefined;
+}
+
+function resolveLinkedTasks(values: unknown, app: Workspace, subjectId?: string): TaskItem[] | undefined {
+  if (!Array.isArray(values) || values.length === 0) return undefined;
+  const matches: TaskItem[] = [];
+  for (const raw of values) {
+    if (typeof raw !== 'string' || !raw.trim()) return undefined;
+    const needle = raw.trim();
+    const scoped = app.tasks.filter(t => !subjectId || t.subjectId === subjectId);
+    const exact = scoped.filter(t => t.id === needle);
+    const found = exact.length ? exact : scoped.filter(t => t.title.trim().toLowerCase() === needle.toLowerCase());
+    if (found.length !== 1) return undefined;
+    if (!matches.some(t => t.id === found[0].id)) matches.push(found[0]);
+  }
+  return matches;
+}
+function taskMilestone(task: TaskItem, id = `ms-${crypto.randomUUID()}`): GoalMilestone {
+  return { id, taskId: task.id, label: task.title, date: task.dueDate, done: task.status === 'done' };
+}
+function addTaskLinks(goal: GoalItem, tasks: TaskItem[]): GoalItem {
+  let next = goal;
+  for (const task of tasks) {
+    if (next.milestones.some(m => m.taskId === task.id)) continue;
+    next = applyMilestoneAdd(next, taskMilestone(task));
+  }
+  return next;
 }
 
 export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit | undefined {
@@ -1047,20 +1074,37 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       const steps: unknown[] = Array.isArray(edit.milestoneSteps)
         ? edit.milestoneSteps
         : Array.isArray(edit.milestones) ? edit.milestones : [];
-      const milestones = steps.slice(0, 30).flatMap((step) => {
+      const linkedTasks = edit.taskIds === undefined ? [] : resolveLinkedTasks(edit.taskIds, app, subjectId);
+      if (!linkedTasks || (edit.subjectId && !subjectId)) return;
+      const milestones: GoalMilestone[] = steps.slice(0, 30).flatMap((step) => {
         const fields = step && typeof step === 'object' ? step as Record<string, unknown> : {};
         const rawLabel = typeof step === 'string' ? step : fields.title;
         const label = typeof rawLabel === 'string' ? rawLabel.trim().slice(0, 180) : '';
         const date = typeof fields.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fields.date) ? fields.date : deadline;
         return label ? [{ id: `ms-${crypto.randomUUID()}`, label, date, done: false }] : [];
       });
-      const requiresReview = milestones.length >= 2;
+      milestones.push(...linkedTasks.map(task => taskMilestone(task)));
+      const requiresReview = milestones.length >= 2 || linkedTasks.length > 0;
       const applyGoal = (current: Workspace, selectedSet?: Set<string>) => {
-        if (current.goals.some((g) => g.title.toLowerCase() === title.toLowerCase())) return true;
-        const chosenMilestones = selectedSet
-          ? milestones.filter((m) => selectedSet.has(m.id))
-          : milestones;
-        current.addGoal({ title, category, current: 0, target, unit, deadline, subjectId, milestones: chosenMilestones });
+        const chosen = selectedSet ? milestones.filter(m => selectedSet.has(m.id)) : milestones;
+        const liveTasks = chosen.filter(m => m.taskId).map(m => current.tasks.find(t => t.id === m.taskId));
+        if (liveTasks.some(t => !t || (subjectId && t.subjectId !== subjectId))) return false;
+        const chosenMilestones = chosen.map(m => {
+          const task = m.taskId ? current.tasks.find(t => t.id === m.taskId) : undefined;
+          return task ? taskMilestone(task, m.id) : m;
+        });
+        const matching = current.goals.filter(g => g.title.toLowerCase() === title.toLowerCase() && g.subjectId === subjectId);
+        if (matching.length > 1) return false;
+        if (matching.length === 1) {
+          const goal = matching[0];
+          let next = addTaskLinks(goal, liveTasks.filter((t): t is TaskItem => Boolean(t)));
+          for (const m of chosenMilestones.filter(m => !m.taskId)) {
+            if (!next.milestones.some(existing => existing.label === m.label && existing.date === m.date)) next = applyMilestoneAdd(next, m);
+          }
+          if (next !== goal) current.updateGoal(goal.id, { milestones: next.milestones, current: next.current });
+          return true;
+        }
+        current.addGoal({ title, category, current: computeInitialGoalProgress(target, unit, category, chosenMilestones), target, unit, deadline, subjectId, milestones: chosenMilestones });
         return true;
       };
       return {
@@ -1072,12 +1116,12 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
               reviewItems: milestones.map((m) => ({
                 id: m.id,
                 label: m.label,
-                meta: m.date ? `Target ${m.date}` : undefined,
+                meta: `${m.taskId ? 'Linked existing task · ' : ''}${m.date ? `Target ${m.date}` : ''}` || undefined,
               })),
             }
           : {}),
         title: `Add goal “${title}” (${target} ${unit})${milestones.length ? ` · ${milestones.length} milestones` : ''}`,
-        success: `Created goal “${title}” in Goals.`,
+        success: `Saved goal “${title}” in Goals.`,
         route: 'goals',
         routeLabel: 'Open Goals',
         apply: (current) => applyGoal(current),
@@ -1086,6 +1130,40 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
               applySelected: (current: Workspace, selectedIds: string[]) => applyGoal(current, new Set(selectedIds)),
             }
           : {}),
+      };
+    }
+
+    if (action === 'link_task_to_goal' || action === 'bulk_link_tasks_to_goal' || action === 'unlink_task_from_goal') {
+      const goalKey = typeof edit.goalId === 'string' ? edit.goalId.trim() : '';
+      const matches = app.goals.filter(g => g.id === goalKey || g.title.trim().toLowerCase() === goalKey.toLowerCase());
+      if (matches.length !== 1) return;
+      const goal = matches[0];
+      const unlink = action === 'unlink_task_from_goal';
+      const requested = resolveLinkedTasks(action === 'bulk_link_tasks_to_goal' ? edit.taskIds : [edit.taskId], app, unlink ? undefined : goal.subjectId);
+      if (!requested) return;
+      if (unlink && !goal.milestones.some(m => m.taskId === requested[0].id)) return;
+      const apply = (current: Workspace, selected?: Set<string>) => {
+        const live = current.goals.find(g => g.id === goal.id);
+        if (!live) return false;
+        const ids = requested.filter(t => !selected || selected.has(t.id)).map(t => t.id);
+        const tasks = ids.map(id => current.tasks.find(t => t.id === id));
+        if (!unlink && tasks.some(t => !t || (live.subjectId && t.subjectId !== live.subjectId))) return false;
+        let next = live;
+        if (unlink) {
+          for (const m of live.milestones.filter(m => m.taskId && ids.includes(m.taskId))) next = applyMilestoneRemove(next, m.id);
+        } else {
+          next = addTaskLinks(live, tasks.filter((t): t is TaskItem => Boolean(t)));
+        }
+        if (next !== live) current.updateGoal(live.id, { milestones: next.milestones, current: next.current });
+        return true;
+      };
+      return {
+        action, title: `${unlink ? 'Unlink' : 'Link'} ${requested.length} existing task(s) ${unlink ? 'from' : 'to'} “${goal.title}”`,
+        success: `Updated task links for “${goal.title}”.`,
+        confirmation: true, reviewKind: unlink ? 'destructive' : 'approval', destructive: unlink,
+        reviewItems: requested.map(t => ({ id: t.id, label: t.title, meta: `${unlink ? 'Unlink only (keep task)' : 'Link existing task'} · ${t.dueDate}` })),
+        route: 'goals', routeLabel: 'Open Goals', apply: current => apply(current),
+        applySelected: (current, ids) => apply(current, new Set(ids)),
       };
     }
 

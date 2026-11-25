@@ -121,6 +121,7 @@ export function workspaceContext(
     asksAnalysisOrAdvice ||
     asksDestructive ||
     page === 'tasks' ||
+    /\b(goals?|milestones?)\b/i.test(lower) ||
     /\b(tasks?|to-?do|assignments?|deadlines?|homework|complete|finish|overdue|remind|priority|extract)\b/i.test(lower);
 
   const asksExams =
@@ -269,7 +270,7 @@ export function workspaceContext(
       }
       return (a.dueDate || '9999-12-31').localeCompare(b.dueDate || '9999-12-31');
     });
-    const picked = best(openFirst, (row) => `${row.title} ${row.description}`, true, asksDestructive ? 14 : 10);
+    const picked = best(openFirst, (row) => `${row.title} ${row.description}`, true, asksDestructive ? 14 : asksGoals ? 40 : 10);
     add(
       'Tasks',
       picked.map(({ id, title, status, priority, dueDate, subjectId, estimatedMinutes }) => ({
@@ -302,14 +303,15 @@ export function workspaceContext(
   if (asksGoals) {
     add(
       'Goals',
-      best(app.goals, (row) => row.title, true, 6).map(({ id, title, current, target, unit, deadline, milestones }) => ({
+      best(app.goals, (row) => row.title, true, 6).map(({ id, title, current, target, unit, deadline, subjectId, milestones }) => ({
         id,
         title: clip(title),
         current,
         target,
         unit,
         deadline,
-        milestones: milestones?.slice(0, 30).map(({ id, label, date, done }) => ({ id, label: clip(label), date, done })),
+        subjectId,
+        milestones: milestones?.map(({ id, label, date, done, taskId }) => ({ id, label: clip(label), date, done, taskId })),
       })),
     );
   }

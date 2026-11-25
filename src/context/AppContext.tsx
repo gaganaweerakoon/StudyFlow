@@ -1,5 +1,5 @@
 import { collectRewards, rewardSummary, type RewardLedger } from '../utils/rewards';
-import { syncGoalsForTaskStatusChange } from '../utils/goalProgress';
+import { removeTaskLinks, syncGoalsForTaskStatusChange } from '../utils/goalProgress';
 import { wipeWorkspace, WIPE_OPTIONS, type WipeSection } from '../desktop/wipeWorkspace';
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type {
@@ -1277,6 +1277,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const deleteTasks = useCallback(
     (ids: string[]) => {
       setTasks((prev) => prev.filter((t) => !ids.includes(t.id)));
+      setGoals(prev => removeTaskLinks(prev, ids));
       pushToast(`Deleted ${ids.length} task${ids.length === 1 ? '' : 's'}`);
     },
     [pushToast]
@@ -1367,7 +1368,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     (g: Omit<GoalItem, 'id'>) => {
       const nextGoal: GoalItem = {
         ...g,
-        id: `g-${Date.now()}`,
+        id: `g-${crypto.randomUUID()}`,
         ...(g.target > 0 && g.current >= g.target
           ? { completedAt: g.completedAt ?? new Date().toISOString() }
           : {}),

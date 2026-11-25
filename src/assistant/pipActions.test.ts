@@ -888,3 +888,35 @@ test('disabled lab routes are rejected and note diagrams remain available', () =
   assert.match(ws.notes[0].content, /```svg/);
   assert.doesNotMatch(ws.notes[0].content, /<script/i);
 });
+
+test('create_goal links actual tasks, rejects unknown IDs, and preserves completed state', () => {
+  const ws = createMockWorkspace();
+  ws.tasks[0].status = 'done';
+  const args = { action: 'create_goal', title: 'Linked lessons', subjectId: 'chem210', category: 'subject', target: 1, unit: 'lessons', taskIds: ['tsk-1'] };
+  const edit = parseWorkspaceEdit(JSON.stringify(args), ws);
+  assert.ok(edit);
+  assert.equal(edit.confirmation, true);
+  assert.equal(edit.apply(ws), true);
+  const goal = ws.goals.find(g => g.title === args.title);
+  assert.ok(goal);
+  assert.equal(goal.milestones[0].taskId, 'tsk-1');
+  assert.equal(goal.current, 1);
+  assert.equal(goal.milestones[0].done, true);
+  assert.equal(parseWorkspaceEdit(JSON.stringify({ ...args, taskIds: ['missing-id'] }), ws), undefined);
+  assert.equal(ws.tasks.length, 1);
+});
+test('link existing tasks is idempotent and unlink preserves task', () => {
+  const ws = createMockWorkspace();
+  const args = { action: 'bulk_link_tasks_to_goal', goalId: 'g-1', taskIds: ['tsk-1', 'tsk-1'] };
+  const edit = parseWorkspaceEdit(JSON.stringify(args), ws);
+  assert.ok(edit);
+  assert.equal(edit.apply(ws), true);
+  assert.equal(edit.apply(ws), true);
+  assert.equal(ws.goals[0].milestones.length, 1);
+  assert.equal(ws.goals[0].milestones[0].taskId, 'tsk-1');
+  const unlink = parseWorkspaceEdit(JSON.stringify({ action: 'unlink_task_from_goal', goalId: 'g-1', taskId: 'tsk-1' }), ws);
+  assert.ok(unlink);
+  assert.equal(unlink.apply(ws), true);
+  assert.equal(ws.goals[0].milestones.length, 0);
+  assert.equal(ws.tasks.length, 1);
+});
