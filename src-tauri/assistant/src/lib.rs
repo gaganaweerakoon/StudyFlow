@@ -74,16 +74,14 @@ fn validate(request: &ChatRequest, key: &str) -> Result<(), String> {
     if !matches!(request.provider, Provider::Gemini)
         || request.generate_image
         || !models.contains(&request.model.as_str())
-        || !matches!(request.max_output, 300 | 650 | 1200 | 16384)
+        || request.max_output > 65536
         || request.prompt.trim().is_empty()
-        || request.prompt.encode_utf16().count() > 3000
-        || request.client_context.as_ref().is_some_and(|value| value.encode_utf16().count() > 300)
+
         || request.study_generation.as_deref().is_some_and(|kind| !matches!(kind, "flashcards" | "practice" | "syllabus" | "syllabus_bundle" | "grading" | "overview"))
-        || request.context.encode_utf16().count() > 120_000
-        || request.history.len() > 20
+
         || request.history.iter().any(|turn| {
             !matches!(turn.role.as_str(), "user" | "assistant")
-                || turn.text.encode_utf16().count() > 6000
+
         })
     {
         return Err("Check the model, message length, and reply limit.".into());
@@ -129,7 +127,7 @@ fn validate(request: &ChatRequest, key: &str) -> Result<(), String> {
             pdf_size += bytes.len();
         }
     }
-    if text_size > 100_000 || pdf_size > 6_000_000 {
+    if text_size > 12_000_000 || pdf_size > 6_000_000 {
         return Err("The attached documents exceed the combined size limit.".into());
     }
     Ok(())
@@ -177,7 +175,8 @@ fn make_request(client: &Client, request: &ChatRequest, key: &str) -> RequestBui
         json!({"role":if turn.role == "assistant" {"model"} else {"user"},"parts":[{"text":turn.text}]})
     }).collect();
     contents.push(json!({"role":"user","parts":parts}));
-    let mut config = json!({"maxOutputTokens":limit});
+    let mut config = json!({});
+    if limit > 0 { config["maxOutputTokens"] = json!(limit); }
     if let Some(schema) = schema {
         config["responseMimeType"] = json!("application/json");
         config["responseJsonSchema"] = schema;
