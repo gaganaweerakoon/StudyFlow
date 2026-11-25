@@ -86,7 +86,6 @@ test('the localhost assistant streams images, context, and normalized usage thro
   } finally {
     if (savedEnvKey !== undefined) process.env.GEMINI_API_KEY = savedEnvKey;
   }
-  assert.equal((await call('gemini', { context: 'x'.repeat(120001) })).status, 400);
   assert.equal((await call('gemini', { image: { ...base.image, mime: 'image/jpeg' } })).status, 400);
   assert.equal((await call('gemini', { model: 'unsupported-model-id' })).status, 400);
   assert.equal((await call('openai', { model: PROVIDERS.gemini.model })).status, 400);
@@ -114,5 +113,15 @@ test('the localhost assistant streams images, context, and normalized usage thro
   ]);
   assert.ok(calls.at(-1)?.body.tools[0].functionDeclarations.some((tool: { name: string }) => tool.name === 'create_event'));
   assert.equal((await call('gemini', { studyGeneration: 'bogus' })).status, 400);
+  const longContext = 'ගණිතය '.repeat(22000) + 'END OF SYLLABUS';
+  const longResponse = await call('gemini', { prompt: 'p'.repeat(3100), context: longContext, maxOutput: 0, image: undefined, history: [], studyGeneration: 'syllabus_bundle' });
+  assert.equal(longResponse.status, 200);
+  await longResponse.text();
+  const longRequest = calls.at(-1)!.body;
+  assert.equal(longRequest.generationConfig.maxOutputTokens, undefined);
+  assert.equal(longRequest.generationConfig.responseMimeType, 'application/json');
+  assert.deepEqual(longRequest.generationConfig.responseJsonSchema.required, ['exams', 'tasks', 'chapters', 'goals']);
+  assert.ok(longRequest.contents[0].parts[0].text.endsWith('END OF SYLLABUS'));
+  assert.equal((await call('gemini', { maxOutput: -1 })).status, 400);
 
 });
