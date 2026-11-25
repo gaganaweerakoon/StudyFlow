@@ -14,7 +14,7 @@ Schedule and edit study blocks in day, week, month, or agenda view. Keep persona
 
 ## Focus on the current session
 
-Start from the active calendar block with **Quick-Start Focus**, or choose Pomodoro, countdown, stopwatch, or a custom timer. Keep time visible with a floating mini-timer. Study sessions and reviews earn progress toward achievements and unlock focus backgrounds and music.
+Start from the active calendar block with **Quick-Start Focus**, or choose Pomodoro, countdown, stopwatch, or a custom timer. Keep time visible with a floating mini-timer. Study sessions and reviews earn progress toward achievements. Choose a break duration when taking a break.
 
 ![StudyFlow focus timer with Pomodoro controls and background and music settings](docs/screenshots/focus.jpg)
 
@@ -34,7 +34,7 @@ Generate flashcards from a selected note section, review the draft, and add the 
 
 Open **AI Assistant** or the floating Pip button. Pip can use selected workspace context, read screenshots, draft syllabus outlines from PDF or Word files, and propose calendar or task edits for you to review. Open **Chat history** to resume a previous conversation.
 
-Choose OpenAI, Gemini, or Claude and enter your own API key under **Settings → AI Usage**. Keys stay in memory for the current app session. Your chosen provider receives the messages, enabled workspace context, and images you send. Expand **View usage** for provider-reported token counts.
+Choose one of the four configured Gemini chat models and enter your own API key under **Settings → AI Usage**. Desktop keys use the native credential store when available; browser keys stay in memory for the current tab. Gemini receives the messages, enabled workspace context, and attachments you send. Expand **View usage** for provider-reported token counts.
 
 ![Pip answering a study-planning question using the example calendar](docs/screenshots/pip.jpg)
 
@@ -47,7 +47,7 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-Open [localhost:3000](http://localhost:3000). The local dev server also provides the browser preview's Pip backend.
+Open [localhost:3000](http://localhost:3000). The local dev server also provides the browser preview's Pip backend. It binds to loopback by default. Server-owned keys are restricted to direct loopback requests; remote clients must provide their own API key.
 
 For desktop development on Windows, install the stable Rust MSVC toolchain, Microsoft C++ Build Tools, and Edge WebView2, then run `bun run tauri dev`. The Windows installer workflow runs on manual dispatch.
 
@@ -57,12 +57,16 @@ On first launch, create a local study profile or use Google sign-in. Google sign
 
 In **Settings → Data & Backup**, use **Import** to migrate a schema 17 SQLite backup, **Export Workspace JSON** to save a copy of your workspace, or **Reset workspace data** to choose which sections to clear.
 
+## Study Lab and safety
+
+Use Study Lab for symbolic and numerical math, JavaScript and Python workers, SQLite, C++ dry-run explanations, and the SVG Whiteboard. Python downloads a pinned WebAssembly runtime on first use. Workers limit execution time but are not a privilege sandbox; only execute code you trust. Pip requires review for bulk additions and explicit opt-in for sensitive changes, including note replacement.
+
 ## Checks
 
 ```sh
 bun run lint
 bun run build
-node --import tsx --test src/utils/*.test.ts server/studyAssistant.test.ts
+node --import tsx --test src/utils/*.test.ts src/assistant/*.test.ts src/companion/*.test.ts src/firebase/*.test.ts src/mobile/*.test.ts src/lab/*.test.ts server/*.test.ts server/companion/*.test.mjs
 ```
 
 Run `bun run preview` to open the production web build locally.
