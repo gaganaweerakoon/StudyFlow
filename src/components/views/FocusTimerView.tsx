@@ -26,7 +26,7 @@ import {
   splitMinutesToHoursMinutes,
 } from '../../utils/focusTimerLogic';
 
-const MODES = ['Pomodoro', 'Custom'] as const;
+const MODES = ['Scheduled', 'Pomodoro', 'Custom'] as const;
 const CUSTOM_PRESETS = [
   { label: '25m', hours: 0, minutes: 25 },
   { label: '45m', hours: 0, minutes: 45 },
@@ -41,6 +41,7 @@ export const FocusTimerView: React.FC = () => {
     setFocusMode,
     setFocusDuration,
     startCurrentSessionFocus,
+    useCurrentSessionRemainder,
     toggleFocusRunning,
     takeFocusBreak,
     endFocusBreak,
@@ -84,11 +85,11 @@ export const FocusTimerView: React.FC = () => {
 
   // When a scheduled session is currently active and the timer is idle, default directly to it
   // with one-click Start and zero time/mode adjustment clutter.
-  const showingCurrentSessionOneClick = isIdle && Boolean(activeSessionInfo);
+  const showingCurrentSessionOneClick = isIdle && Boolean(activeSessionInfo) && !focusTimer.manualDurationOverride;
 
   // Normalize any legacy Countdown/Stopwatch mode into Pomodoro/Custom when no session is active
-  const visibleIdleMode: 'Pomodoro' | 'Custom' =
-    focusTimer.mode === 'Custom' || focusTimer.mode === 'Countdown' ? 'Custom' : 'Pomodoro';
+  const visibleIdleMode: 'Scheduled' | 'Pomodoro' | 'Custom' =
+    showingCurrentSessionOneClick ? 'Scheduled' : focusTimer.mode === 'Custom' || focusTimer.mode === 'Countdown' ? 'Custom' : 'Pomodoro';
 
   const focusSubject =
     showingCurrentSessionOneClick && activeSessionInfo
@@ -135,6 +136,19 @@ export const FocusTimerView: React.FC = () => {
     () => focusHistory.reduce((acc, item) => acc + (Number(item.durationMinutes) || 0), 0),
     [focusHistory],
   );
+
+  const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const todayKey = dayKey(now);
+  const todayHistory = focusHistory.filter(item => item.completedAt === todayKey || (item.endedAtMs && dayKey(new Date(item.endedAtMs)) === todayKey));
+  const todayMinutes = todayHistory.reduce((sum, item) => sum + (Number(item.durationMinutes) || 0), 0);
+  const goalMinutes = Math.max(1, preferences.dailyGoalHours * 60);
+  const todaySessions = sessions.filter(s => s.date === todayKey && s.countsTowardStudy !== false && s.blockType !== 'sleep' && s.blockType !== 'free').sort((a,b) => a.startHour - b.startHour);
+  const week = Array.from({length:7}, (_, i) => {
+    const date = new Date(now); date.setDate(date.getDate() - 6 + i);
+    const key = dayKey(date);
+    return { key, label: date.toLocaleDateString(undefined, { weekday: 'short' }), minutes: focusHistory.filter(h => h.completedAt === key || (h.endedAtMs && dayKey(new Date(h.endedAtMs)) === key)).reduce((sum,h) => sum + (Number(h.durationMinutes) || 0),0) };
+  });
+  const weekMax = Math.max(1, ...week.map(d => d.minutes));
 
   const applyHoursMinutes = (nextH: number, nextM: number) => {
     const clamped = clampFocusHoursMinutes(nextH, nextM);
@@ -324,7 +338,7 @@ export const FocusTimerView: React.FC = () => {
   );
 
   const timerContent = (
-    <div className="flex flex-col items-center justify-center py-9 px-5">
+    <div className="flex flex-col items-center justify-center min-h-[430px] py-9 px-5">
       {/* Scheduled session clean unboxed metadata kicker */}
       {showingCurrentSessionOneClick && activeSessionInfo && (
         <div className="mb-6 flex flex-wrap items-center justify-center gap-2 text-[12.5px] text-[var(--text-secondary)]">
@@ -338,7 +352,7 @@ export const FocusTimerView: React.FC = () => {
       )}
 
       {/* Idle Mode Switcher (Pomodoro / Custom) when no scheduled session is active */}
-      {isIdle && !activeSessionInfo && (
+      {isIdle && (
         <div className="flex flex-col items-center gap-3.5 mb-7 w-full max-w-sm">
           <div
             className="inline-flex items-center p-1 rounded-xl text-[12.5px]"
@@ -346,7 +360,7 @@ export const FocusTimerView: React.FC = () => {
             role="tablist"
             aria-label="Focus timer modes"
           >
-            {MODES.map((m) => {
+            {MODES.filter(m => m !== 'Scheduled' || activeSessionInfo).map((m) => {
               const selected = visibleIdleMode === m;
               return (
                 <button
@@ -355,7 +369,9 @@ export const FocusTimerView: React.FC = () => {
                   role="tab"
                   aria-selected={selected}
                   onClick={() => {
-                    if (m === 'Custom') {
+                    if (m === 'Scheduled') {
+                      useCurrentSessionRemainder();
+                    } else if (m === 'Custom') {
                       const split = splitMinutesToHoursMinutes(customHours * 60 + customMinutes || 45);
                       setCustomHours(split.hours);
                       setCustomMinutes(split.minutes);
@@ -476,7 +492,7 @@ export const FocusTimerView: React.FC = () => {
       )}
 
       {/* Central Circular Progress Timer */}
-      <div className="relative w-68 h-68 sm:w-72 sm:h-72 flex items-center justify-center">
+      <div className="relative w-64 h-64 sm:w-80 sm:h-80 flex items-center justify-center">
         <svg className="w-full h-full -rotate-90" viewBox="0 0 272 272" aria-hidden="true">
           <circle
             cx="136"
@@ -655,14 +671,27 @@ export const FocusTimerView: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {[
+          {label: "Today's focus", value: formatHoursMinutesCompact(todayMinutes * 60), detail: "Completed focus time"},
+          {label: 'Daily target', value: `${Math.round(todayMinutes / goalMinutes * 100)}%`, detail: `${preferences.dailyGoalHours}h daily goal`},
+          {label: 'Sessions today', value: String(todayHistory.length), detail: `${todaySessions.length} calendar study blocks`},
+        ].map(stat => (
+          <div key={stat.label} className="rounded-2xl p-4" style={surfaceStyle}>
+            <div className="text-[12px] text-[var(--text-muted)]">{stat.label}</div>
+            <div className="text-2xl font-semibold font-mono-num text-[var(--text-primary)] mt-1">{stat.value}</div>
+            <div className="text-[11px] text-[var(--text-secondary)] mt-1">{stat.detail}</div>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-stretch">
         {/* Main Centered Timer Surface */}
-        <div className="lg:col-span-8 rounded-2xl" style={surfaceStyle}>
+        <div className="xl:col-span-7 rounded-2xl" style={surfaceStyle}>
           {timerContent}
         </div>
 
         {/* Right Sidebar: Session Context & Recent History */}
-        <div className="lg:col-span-4 space-y-4">
+        <div className="xl:col-span-5 space-y-4">
           <div className="rounded-2xl p-4 space-y-3.5" style={surfaceStyle}>
             <h2 className="font-display text-[14px] font-semibold text-[var(--text-primary)]">
               Session Context
@@ -730,6 +759,20 @@ export const FocusTimerView: React.FC = () => {
             )}
           </div>
 
+          <div className="rounded-2xl p-4 space-y-3" style={surfaceStyle}>
+            <h2 className="font-display text-[14px] font-semibold text-[var(--text-primary)]">Today's schedule</h2>
+            {!todaySessions.length && <p className="text-sm text-[var(--text-muted)]">No study blocks planned today.</p>}
+            {todaySessions.map(s => (
+              <div key={s.id} className="flex items-start gap-3 py-2 border-b last:border-0 border-[var(--border-subtle)]">
+                <span className="w-1 self-stretch rounded" style={{background: subjects.find(sub => sub.id === s.subjectId)?.color || 'var(--accent)'}} />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-[13px] text-[var(--text-primary)]">{s.title}</div>
+                  <div className="text-[11px] text-[var(--text-muted)]">{formatHourLabel(s.startHour)} – {formatHourLabel(s.startHour + s.durationHours)}</div>
+                </div>
+                {activeSessionInfo?.session.id === s.id && <span className="text-[11px] text-[var(--accent)]">Now</span>}
+              </div>
+            ))}
+          </div>
           {/* Recent Focus Sessions */}
           <div className="rounded-2xl p-4 space-y-3" style={surfaceStyle}>
             <div className="flex items-center justify-between gap-2">
@@ -777,6 +820,18 @@ export const FocusTimerView: React.FC = () => {
         </div>
       </div>
 
+      <div className="rounded-2xl p-5" style={surfaceStyle}>
+        <h2 className="font-display text-[14px] font-semibold text-[var(--text-primary)]">Focus activity · Last 7 days</h2>
+        <div className="grid grid-cols-7 gap-3 mt-4">
+          {week.map(d => <div key={d.key} className="flex flex-col items-center gap-2">
+            <span className="text-[11px] text-[var(--text-secondary)] font-mono-num">{d.minutes}m</span>
+            <div className="w-full h-20 flex items-end justify-center rounded-md bg-[var(--bg-surface-subtle)]">
+              <div className="w-2/3 max-w-12 rounded-t-md bg-[var(--accent)]" style={{height: `${d.minutes / weekMax * 100}%`}} />
+            </div>
+            <span className="text-[11px] text-[var(--text-muted)]">{d.label}</span>
+          </div>)}
+        </div>
+      </div>
       {breakDurationPopup}
     </div>
   );
