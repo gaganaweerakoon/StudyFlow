@@ -17,7 +17,24 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.5'
-      - run: bun install --frozen-lockfile
-      - run: bun run lint
-      - run: node --import tsx --test src/utils/*.test.ts src/assistant/*.test.ts src/companion/*.test.ts src/firebase/*.test.ts src/mobile/*.test.ts src/lab/*.test.ts server/*.test.ts server/companion/*.test.mjs
-      - run: bun run build
+      - name: Install locked dependencies
+        id: install
+        run: bun install --frozen-lockfile
+      - name: Pip HTTP streaming
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node --import tsx --test server/studyAssistant.test.ts
+      - name: Pip attachments and analytics
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node --import tsx --test src/assistant/pipUpgrade.test.ts
+      - name: Study Lab mathematics
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node --import tsx --test src/lab/playgroundRunners.test.ts
+      - name: All regression tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node --import tsx --test src/utils/*.test.ts src/assistant/*.test.ts src/companion/*.test.ts src/firebase/*.test.ts src/mobile/*.test.ts src/lab/*.test.ts server/*.test.ts server/companion/*.test.mjs
+      - name: TypeScript check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: bun run lint
+      - name: Production web build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: bun run build
