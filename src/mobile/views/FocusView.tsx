@@ -480,13 +480,13 @@ export const FocusView: React.FC = () => {
       )}
 
       {/* When NO scheduled session is currently active and timer is idle: show ONLY Pomodoro or Custom (hours & minutes) */}
-      {isIdle && !activeHeroRemainder && (
+      {isIdle && (
         <section className="rounded-xl p-4 space-y-3 border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
           <div className="flex items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold text-[var(--text-primary)]">Start a focus session</h2>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                No scheduled session right now · choose Pomodoro or Custom (up to 10h).
+                Choose Pomodoro or Custom (up to 10h), even during a scheduled block.
               </p>
             </div>
           </div>
