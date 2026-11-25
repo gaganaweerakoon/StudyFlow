@@ -79,7 +79,7 @@ function isRequest(value: unknown): value is ChatRequest {
   ) {
     return false;
   }
-  if (value.clientContext !== undefined && (typeof value.clientContext !== 'string' || value.clientContext.length > 300)) {
+  if (value.clientContext !== undefined && (typeof value.clientContext !== 'string')) {
     return false;
   }
   if (value.generateImage !== undefined && value.generateImage !== false) return false;
