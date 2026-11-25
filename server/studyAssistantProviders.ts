@@ -175,7 +175,7 @@ async function* streamGeminiWithSdk(
 
   const config: Record<string, unknown> = {
     systemInstruction: system,
-    maxOutputTokens: maxOutput,
+    ...(maxOutput > 0 ? { maxOutputTokens: maxOutput } : {}),
     abortSignal: signal,
   };
   if (schema) {
