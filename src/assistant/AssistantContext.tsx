@@ -70,6 +70,7 @@ export interface ChatMessage extends ChatTurn {
   id: string;
   savePending?: boolean;
   suggestedTask?: CheckIn['task'];
+  suggestedSession?: CheckIn['session'];
   writeLocked?: boolean;
   attachment?: string;
   attachments?: ChatMessageAttachmentBadge[];
@@ -88,6 +89,7 @@ export interface Conversation {
 
 export interface FailedAttempt {
   readOnly?: boolean;
+  regenerating?: { message: ChatMessage; user: ChatMessage };
   id: string;
   conversationId: string;
   prompt: string;
@@ -160,6 +162,17 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   const [cooldownTick, setCooldownTick] = useState(() => Date.now());
   const [settings, setSettings] = useState(readSettings);
   const [usage, setUsage] = useState(() => mergeUsage(desktopUsage?.records ?? readUsage()));
+  const [geminiHealth, setGeminiHealth] = useState<'responded' | 'failed'>();
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
   const [configured, setConfigured] = useState<Provider[]>([]);
   const [serverStatus, setServerStatus] = useState<'checking' | 'connected' | 'unconfigured'>(() =>
     isTauri() ? 'unconfigured' : 'checking',
@@ -220,7 +233,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       flushSync(() => state.addPipNotification({id,title:'Pip',detail:candidate.text,time:clock.time,read:Boolean(phone),route:'assistant'}));
       setConversations(items => items.map(chat => chat.id !== activeId ? chat : {
         ...chat, title:chat.messages.length ? chat.title : 'Study check-in',
-        messages:[...chat.messages,{id,role:'assistant',state:'complete',text:candidate.text,suggestedTask:candidate.task}],
+        messages:[...chat.messages,{id,role:'assistant',state:'complete',text:candidate.text,suggestedTask:candidate.task,suggestedSession:candidate.session}],
       }));
       if (phone) {
         const queued = () => publishPhoneCheckIn(candidate, clock, state);
@@ -562,6 +575,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       overrideAttachments?: PipAttachment[];
       baseMessages?: ChatMessage[];
       readOnly?: boolean;
+      regenerating?: { message: ChatMessage; user: ChatMessage };
     },
   ) {
     const typed = (overridePrompt ?? draft).trim();
@@ -585,6 +599,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         {
           id: createId(),
           readOnly: options?.readOnly,
+          regenerating: options?.regenerating,
           conversationId: targetChatId,
           prompt,
           attachments: currentAttachments,
@@ -668,9 +683,10 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const records = mergeUsage(usage, desktopUsage ? [] : readUsage());
     const control = new AbortController();
     activeRequest.current = control;
-    const userTurnId = createId();
+    const regenerate = options?.regenerating;
+    const userTurnId = regenerate?.user.id ?? createId();
     if (currentAttachments.length) turnFiles.current.set(userTurnId, currentAttachments);
-    const assistantId = createId();
+    const assistantId = regenerate?.message.id ?? createId();
     const messageAttachments: ChatMessageAttachmentBadge[] | undefined = currentAttachments.length
       ? currentAttachments.map((item) => ({
           name: item.name,
@@ -715,7 +731,9 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         baseMsgs.length > 0 || chat.titleSource === 'manual' || chat.titleSource === 'ai'
           ? chat.title
           : (currentAttachments[0] ? `${currentAttachments[0].name} · ${prompt}` : prompt).slice(0, 48),
-      messages: [...baseMsgs, turn, { id: assistantId, role: 'assistant', text: '', state: 'streaming' }],
+      messages: regenerate
+        ? chat.messages.map(message => message.id === assistantId ? { ...message, text: '', state: 'streaming' } : message)
+        : [...baseMsgs, turn, { id: assistantId, role: 'assistant', text: '', state: 'streaming' }],
     }));
 
     let responseText = '';
@@ -857,10 +875,14 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
             : 'Could not reach the assistant. Check your connection and try again.';
       }
     } finally {
+      if (status === 'complete' || status === 'error') setGeminiHealth(status === 'complete' ? 'responded' : 'failed');
       if (status === 'error') {
         // Remove BOTH the failed user prompt and failed assistant bubble from the chat thread
         // and surface them in the dismissible recovery tray above the composer.
         updateChat((chat) => {
+          if (regenerate) {
+            return { ...chat, messages: chat.messages.map(message => message.id === assistantId ? regenerate.message : message) };
+          }
           const remaining = chat.messages.filter(
             (msg) => msg.id !== userTurnId && msg.id !== assistantId,
           );
@@ -881,8 +903,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           edit: proposedEdits?.[0],
           pendingEdits: proposedEdits,
           savePending: unsavedResults.current.has(assistantId),
-          appliedActions,
-          actionLinks,
+          appliedActions: appliedActions ?? regenerate?.message.appliedActions,
+          actionLinks: actionLinks ?? regenerate?.message.actionLinks,
         }));
         if (status === 'complete' && shouldAutoTitle && !isTauri()) {
           void generateAiChatTitle(targetChatId, prompt, finalAssistantText || responseText, provider, model, key);
@@ -918,11 +940,11 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   }
 
   function retryFailedAttempt(id: string) {
-    if (busy || activeRequest.current) return;
+    if (busy || activeRequest.current || cooldownUntil > Date.now()) return;
     const target = failedAttempts.find((item) => item.id === id);
     if (!target) return;
     setFailedAttempts((items) => items.filter((item) => item.id !== id));
-    void send(false, target.prompt, { overrideAttachments: target.attachments, readOnly: target.readOnly });
+    void send(false, target.prompt, { overrideAttachments: target.attachments, readOnly: target.readOnly, regenerating: target.regenerating });
   }
 
   function editFailedAttempt(id: string) {
@@ -942,10 +964,20 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     if (idx < 0) return;
     const baseMessages = currentChat.messages.slice(0, idx);
     const original = currentChat.messages[idx];
-    const files = turnFiles.current.get(original.id) ?? [];
+    const files = filesFor(original);
     if (original.attachment && !files.length) { setDraft(clean); setNotice('Attach the original file again to edit this request.'); return; }
     const completed = Boolean(original.writeLocked || currentChat.messages[idx + 1]?.savePending || currentChat.messages[idx + 1]?.appliedActions?.length);
     void send(false, clean, { baseMessages, overrideAttachments: files, readOnly: completed });
+  }
+
+  function filesFor(turn: ChatMessage) {
+    const original = turnFiles.current.get(turn.id);
+    if (original) return original;
+    const expected = turn.attachments?.map(item => item.name) ?? (turn.attachment ? [turn.attachment] : []);
+    if (expected.length && expected.length === attachments.length && expected.every((name, i) => name === attachments[i].name)) {
+      return attachments;
+    }
+    return [];
   }
 
   function regenerateMessage(messageId: string) {
@@ -953,7 +985,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const currentChat = conversationsRef.current.find((c) => c.id === active.id);
     if (!currentChat) return;
     const idx = currentChat.messages.findIndex((m) => m.id === messageId && m.role === 'assistant');
-    if (idx <= 0) return;
+    if (idx <= 0 || currentChat.messages[idx].savePending || currentChat.messages[idx].id.startsWith('pip/')) return;
     let userIdx = idx - 1;
     while (userIdx >= 0 && currentChat.messages[userIdx].role !== 'user') {
       userIdx--;
@@ -961,9 +993,10 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     if (userIdx < 0) return;
     const userMsg = currentChat.messages[userIdx];
     const baseMessages = currentChat.messages.slice(0, userIdx);
-    const files = turnFiles.current.get(userMsg.id) ?? [];
+    const files = filesFor(userMsg);
     if (userMsg.attachment && !files.length) { setNotice('Attach the original file again to regenerate this reply.'); return; }
-    void send(false, userMsg.text, { baseMessages, overrideAttachments: files, readOnly: true });
+    void send(false, userMsg.text, { baseMessages, overrideAttachments: files, readOnly: true,
+      regenerating: { message: currentChat.messages[idx], user: userMsg } });
   }
 
   // Handle queued askPip triggers cleanly once UI switches
@@ -1604,6 +1637,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     usage,
     configured,
     serverStatus,
+    geminiHealth,
+    online,
     setKey,
     keyStorage,
     keyStorageError,

@@ -13,7 +13,8 @@ export interface CheckInSettings {
 export interface CheckIn {
   key: string;
   text: string;
-  task?: { title: string; subjectId: string };
+  task?: { id: string; title: string; subjectId: string };
+  session?: { id: string; date: string };
 }
 export function chooseCheckIn(input: {
   settings: CheckInSettings; date: string; time: string; now: number; running: boolean;
@@ -39,11 +40,11 @@ export function chooseCheckIn(input: {
       hour >= s.startHour + s.durationHours && hour < s.startHour + s.durationHours + 3 &&
       unseen('session/' + s.id) && !input.focusHistory.some(h => h.calendarSessionId === s.id ||
         (h.calendarSessionId == null && h.subjectId === s.subjectId && h.completedAt.startsWith(date) && h.taskTitle === s.title)));
-    if (session) return {key:'session/' + session.id, text:'There’s no focus log for “' + session.title + '”. Did you study offline, or would a short catch-up help?'};
+    if (session) return {key:'session/' + session.id, session:{id:session.id,date:session.date}, text:'There’s no focus log for “' + session.title + '”. Did you study offline, or would a short catch-up help?'};
   }
   if (settings.evening !== false && time >= '18:00') {
     const task = input.tasks.filter(t => t.status !== 'done' && t.dueDate && t.dueDate <= date && unseen('task/' + t.id))
       .sort((a,b) => a.dueDate.localeCompare(b.dueDate))[0];
-    if (task) return {key:'task/' + task.id, text:'“' + task.title + '” is still open. Want to give it ten minutes this evening?', task:{title:task.title,subjectId:task.subjectId}};
+    if (task) return {key:'task/' + task.id, text:'“' + task.title + '” is still open. Want to give it ten minutes this evening?', task:{id:task.id,title:task.title,subjectId:task.subjectId}};
   }
 }

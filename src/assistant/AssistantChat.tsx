@@ -1204,9 +1204,15 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
 
                       {message.savePending && <button type="button" className="pip-action-link" disabled={assistant.busy}
                         onClick={() => void assistant.retryWorkspaceSave(message.id)}>Retry saving</button>}
+                      {message.suggestedSession && app.sessions.some(s => s.id === message.suggestedSession?.id) &&
+                        <button type="button" className="pip-action-link" onClick={() => {
+                          const event = message.suggestedSession!;
+                          app.openCalendarEvent(event.id, event.date);
+                          if (onClose) onClose();
+                        }}>Review session</button>}
                       {message.suggestedTask && <button className="pip-action-link" disabled={app.focusTimer.running} onClick={() => {
                         const task = message.suggestedTask!;
-                        if (app.focusTimer.running || !app.tasks.some(t => t.title === task.title && t.subjectId === task.subjectId && t.status !== 'done')) return;
+                        if (app.focusTimer.running || !app.tasks.some(t => t.id === task.id && t.status !== 'done')) return;
                         app.setFocusDuration(0, 10);
                         app.setFocusContext(task.subjectId, task.title);
                         app.toggleFocusRunning();
@@ -1307,7 +1313,7 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                           <button
                             type="button"
                             className="pip-copy-btn"
-                            disabled={assistant.busy}
+                            disabled={assistant.busy || message.savePending || message.id.startsWith('pip/')}
                             aria-label="Regenerate reply"
                             title="Regenerate this reply"
                             onClick={() => {
@@ -1548,7 +1554,11 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                       </select>
                     )}
 
-                    <span role="status" className="pip-muted">{configured ? 'Gemini configured' : assistant.keyStorage === 'loading' || assistant.serverStatus === 'checking' ? 'Checking Gemini…' : 'Gemini needs setup'}</span>
+                    <span role="status" className="pip-muted">
+                      {!assistant.online ? 'Device offline' : configured
+                        ? assistant.geminiHealth === 'responded' ? 'Gemini responded' : assistant.geminiHealth === 'failed' ? 'Last Gemini request failed' : 'Gemini configured'
+                        : assistant.keyStorage === 'loading' || assistant.serverStatus === 'checking' ? 'Checking Gemini…' : 'Gemini needs setup'}
+                    </span>
                     {assistant.includeContext && !floating && (
                       <details className="pip-context-popover">
                         <summary title="Inspect StudyFlow context sent with your message">

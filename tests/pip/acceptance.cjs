@@ -29,6 +29,10 @@ async function main() {
       await page.route('**/api/study-assistant/chat', route => {
         const req = route.request().postDataJSON();
         let events = [{type:'text',text:'Redox review'}];
+        if (req.prompt === notePrompt && !req.workspaceActions) {
+          events = [{type:'text',text:'Redox review\n\n' + '```pip-edit\n' +
+            JSON.stringify({action:'create_event',title:'Untrusted text action',date:'2027-01-11',startHour:9,durationHours:1}) + '\n```'}];
+        }
         if (req.allowedTools?.includes('create_event')) events = [{type:'action',action:'create_event',arguments:{title:'Sample lesson',date:'2027-01-10',startHour:9,durationHours:1,subjectId:'chem'}}];
         if (req.prompt === notePrompt && req.workspaceActions) {
           assert.deepEqual(req.allowedTools,['create_note']);
@@ -93,6 +97,11 @@ async function main() {
       await page.getByRole('button',{name:/Redox review/}).first().click();
       await page.getByRole('button',{name:'Regenerate reply'}).last().click();
       await page.getByText('Attach the original file again to regenerate this reply.',{exact:true}).waitFor();
+      assert.equal((await read()).notes.length, 1);
+      await box.fill('Save a Sinhala note');
+      await box.press('Enter');
+      await page.getByText('Which subject should I save the note in?', {exact:true}).waitFor();
+      assert.deepEqual((await read()).sessions, scheduled.sessions);
       assert.equal((await read()).notes.length, 1);
     }
     console.log('PASS: single Sinhala note, verified subject/unit and exact-item link, unchanged calendar after reopen.');
