@@ -225,6 +225,21 @@ export function AssistantSettings() {
           }}>Forget {field.label.toLowerCase()}</button>}
         </label>)}
       </details>
+      <details className="pip-settings-form">
+        <summary>Local study check-ins</summary>
+        <label><input type="checkbox" checked={Boolean(preferences.pipCheckIns?.enabled)}
+          onChange={e => updatePreferences({pipCheckIns:{...preferences.pipCheckIns,enabled:e.target.checked}})} />Allow one check-in per day</label>
+        {preferences.pipCheckIns?.enabled && <>
+          {([['recovery','Unlogged study sessions'],['milestone','Completed milestones'],['evening','Evening next step']] as const).map(([key,label]) =>
+            <label key={key}><input type="checkbox" checked={preferences.pipCheckIns?.[key] !== false} onChange={e =>
+              updatePreferences({pipCheckIns:{...preferences.pipCheckIns,[key]:e.target.checked}})} />{label}</label>)}
+          {([['quietFrom','Quiet hours start','21:30'],['quietUntil','Quiet hours end','07:00']] as const).map(([key,label,fallback]) =>
+            <label key={key}>{label}<input type="time" value={preferences.pipCheckIns?.[key] ?? fallback}
+              onChange={e => updatePreferences({pipCheckIns:{...preferences.pipCheckIns,[key]:e.target.value || fallback}})} /></label>)}
+          <button onClick={() => updatePreferences({pipCheckIns:{...preferences.pipCheckIns,snoozeUntil:Date.now()+86400000}})}>Snooze for 24 hours</button>
+          {Number(preferences.pipCheckIns.snoozeUntil) > Date.now() && <button onClick={() => updatePreferences({pipCheckIns:{...preferences.pipCheckIns,snoozeUntil:0}})}>Resume check-ins</button>}
+        </>}
+      </details>
       {/* Usage & Rate Limits Options */}
       <div
         className="pt-4 mt-1 space-y-3"

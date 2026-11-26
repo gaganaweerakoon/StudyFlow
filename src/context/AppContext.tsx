@@ -129,6 +129,7 @@ export interface UserPreferences {
   highContrastText: boolean;
   showFocusStreak: boolean;
   localBackupAuto: boolean;
+  pipCheckIns?: import('../assistant/checkIns').CheckInSettings;
   pipMemory?: import('../assistant/studyPreferences').StudyPreferences;
   goalsPrefs?: GoalViewPreferences;
 }
@@ -280,6 +281,7 @@ interface AppContextValue {
   xpPoints: number;
 
   notifications: NotificationItem[];
+  addPipNotification: (item: NotificationItem) => void;
   markAllNotificationsRead: () => void;
   markNotificationRead: (id: string) => void;
 
@@ -1965,6 +1967,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         claimChallenge,
         xpPoints: xpPoints + (desktop ? summary.xp : 0),
         notifications,
+        addPipNotification: item => setNotifications(prev => prev.some(n => n.id === item.id) ? prev : [item, ...prev]),
         markAllNotificationsRead,
         markNotificationRead,
         preferences,

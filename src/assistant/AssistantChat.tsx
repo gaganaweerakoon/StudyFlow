@@ -1196,6 +1196,13 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                         </a>
                       )}
 
+                      {message.suggestedTask && <button className="pip-action-link" disabled={app.focusTimer.running} onClick={() => {
+                        const task = message.suggestedTask!;
+                        if (app.focusTimer.running || !app.tasks.some(t => t.title === task.title && t.subjectId === task.subjectId && t.status !== 'done')) return;
+                        app.setFocusDuration(0, 10);
+                        app.setFocusContext(task.subjectId, task.title);
+                        app.toggleFocusRunning();
+                      }}>Start 10 min</button>}
                       {Boolean(message.appliedActions?.length) && (
                         <div className="pip-action-card" role="status">
                           <div className="pip-action-card-list">

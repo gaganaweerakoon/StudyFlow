@@ -1,3 +1,4 @@
+import {chooseCheckIn, type CheckIn} from './checkIns';
 import { noteDestination } from './noteDestination';
 import { allowedTurnTools } from './turnPermissions';
 import { normalizeReviewEdits, selectedReviewAction } from './reviewPolicy';
@@ -65,6 +66,7 @@ export interface ChatMessage extends ChatTurn {
   appliedActions?: string[];
   actionLinks?: AppliedActionLink[];
   id: string;
+  suggestedTask?: CheckIn['task'];
   writeLocked?: boolean;
   attachment?: string;
   attachments?: ChatMessageAttachmentBadge[];
@@ -184,6 +186,32 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   const [dashboardOverview, setDashboardOverview] = useState<DashboardAiOverview | null>(readCachedOverview);
   const [dashboardOverviewLoading, setDashboardOverviewLoading] = useState(false);
   const [dashboardOverviewError, setDashboardOverviewError] = useState('');
+  const pastMilestones = useRef<Set<string> | undefined>(undefined);
+  const delivered = useRef('');
+  useEffect(() => {
+    function check() {
+      const state = currentApp.current;
+      const completed = new Set(state.goals.flatMap(g => g.milestones.filter(m => m.done).map(m => 'milestone/' + g.id + '/' + m.id)));
+      const previous = pastMilestones.current ?? completed;
+      pastMilestones.current = completed;
+      const clock = requestClock(settings.timezone);
+      if (busy || delivered.current === clock.date) return;
+      const candidate = chooseCheckIn({settings:state.preferences.pipCheckIns ?? {}, date:clock.date, time:clock.time, now:Date.now(),
+        running:state.focusTimer.running, notifications:state.notifications, sessions:state.sessions, focusHistory:state.focusHistory,
+        goals:state.goals, newMilestones:new Set([...completed].filter(key => !previous.has(key))), tasks:state.tasks});
+      if (!candidate) return;
+      delivered.current = clock.date;
+      const id = 'pip/' + clock.date + '/' + candidate.key;
+      state.addPipNotification({id,title:'Pip',detail:candidate.text,time:clock.time,read:false,route:'assistant'});
+      setConversations(items => items.map(chat => chat.id !== activeId ? chat : {
+        ...chat, title:chat.messages.length ? chat.title : 'Study check-in',
+        messages:[...chat.messages,{id,role:'assistant',state:'complete',text:candidate.text,suggestedTask:candidate.task}],
+      }));
+    }
+    check();
+    const timer = window.setInterval(check, 30000);
+    return () => window.clearInterval(timer);
+  }, [activeId, busy, app.goals, app.preferences.pipCheckIns, settings.timezone]);
   const keys = useRef<Partial<Record<Provider, string>>>({});
   const activeRequest = useRef<AbortController | null>(null);
   const pendingAskPrompt = useRef<string | null>(null);
