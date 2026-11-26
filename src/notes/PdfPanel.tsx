@@ -1,3 +1,4 @@
+import { excerptFromSelection, type NoteExcerpt } from '../utils/noteSelection';
 import { isTauri } from '@tauri-apps/api/core';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -41,6 +42,7 @@ interface PdfPanelProps {
   onInsertMarkdown: (markdown: string, label?: string, detectedFont?: string) => void;
   uploadingStatus?: string;
   noteFontFamily: string;
+  onSelectExcerpt?: (excerpt: NoteExcerpt | undefined) => void;
 }
 
 function PageThumbnail({ doc, page }: { doc: PdfDocument; page: number }) {
@@ -77,6 +79,7 @@ export function PdfPanel({
   onInsertMarkdown,
   uploadingStatus,
   noteFontFamily,
+  onSelectExcerpt,
 }: PdfPanelProps) {
   const [working, setWorking] = useState(false);
   const [progressText, setProgressText] = useState('');
@@ -661,12 +664,16 @@ export function PdfPanel({
 
               <div
                 className="p-3 max-h-[380px] overflow-y-auto"
+                tabIndex={0}
+                onMouseUp={e=>onSelectExcerpt?.(excerptFromSelection(window.getSelection(),e.currentTarget,`${source.name} — ${selectedMdPage === 'all' ? 'extracted text' : `page ${selectedMdPage}`}`))}
+                onKeyUp={e=>onSelectExcerpt?.(excerptFromSelection(window.getSelection(),e.currentTarget,`${source.name} — ${selectedMdPage === 'all' ? 'extracted text' : `page ${selectedMdPage}`}`))}
                 style={{ '--note-font-family': noteFontFamily } as React.CSSProperties}
               >
                 {activeMarkdownSlice ? (
                   mdViewMode === 'preview' ? (
                     <div className="note-markdown text-[12.5px]">
                       <AssistantMarkdown
+                      noteDiagrams
                         text={activeMarkdownSlice}
                         figures={allFigures}
                         dirAuto
@@ -1061,6 +1068,7 @@ export function PdfPanel({
                         {source.pages[page - 1]?.text ? (
                           <div className="note-markdown text-[13px]">
                             <AssistantMarkdown
+                      noteDiagrams
                               text={source.pages[page - 1].text}
                               figures={source.pages[page - 1].figures}
                               dirAuto

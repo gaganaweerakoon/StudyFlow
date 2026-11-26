@@ -851,7 +851,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   });
 
   const askPip = useCallback(
-    (prompt: string, options?: { openFullPage?: boolean; openFloating?: boolean }) => {
+    (prompt: string, options?: { openFullPage?: boolean; openFloating?: boolean; draftOnly?: boolean; excerptOnly?: boolean }) => {
       const clean = prompt.trim();
       if (!clean) return;
       if (options?.openFullPage) {
@@ -859,6 +859,12 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         currentApp.current.setRoute('assistant');
       } else if (options?.openFloating !== false && currentApp.current.route !== 'assistant') {
         setPetOpen(true);
+      }
+      if (options?.excerptOnly) setIncludeContext(false);
+      if (options?.draftOnly) {
+        pendingAskPrompt.current = null;
+        setDraft(previous => previous.trim() ? `${previous.trim()}\n\n${clean}` : clean);
+        return;
       }
       if (busy || activeRequest.current) {
         setDraft(clean);

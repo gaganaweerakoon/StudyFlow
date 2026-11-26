@@ -944,3 +944,12 @@ test('Pip note links accept real syllabus IDs and reject invalid references', ()
   assert.deepEqual(ws.notes.find(note=>note.title==='Linked note')?.syllabusLinks?.chapterIds,['ch1']);
   assert.equal(parseWorkspaceEdit(JSON.stringify({action:'create_note',title:'Bad note',content:'Theory',subjectId:'chem210',syllabusLinks:{chapterIds:['missing']}}),ws),undefined);
 });
+
+test('note Markdown preserves fenced and raw SVG while normalizing surrounding math and Sinhala', () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><title>Bond diagram</title><circle cx="50" cy="50" r="10"/></svg>';
+  const md = normalizeMarkdownForDisplay(`## බන්ධන\n\n${svg}\n\n$C=\\frac{n}{V}$`);
+  assert.ok(md.includes('```svg\n'+svg+'\n```'));
+  assert.ok(md.includes('බන්ධන'));
+  assert.ok(md.includes('$C=\\frac{n}{V}$'));
+  assert.ok(normalizeMarkdownForDisplay('```svg\n'+svg+'\n```').includes(svg));
+});

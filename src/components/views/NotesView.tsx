@@ -1,3 +1,4 @@
+import { buildExcerptPrompt, excerptFromSelection, excerptFromText, MAX_NOTE_EXCERPT, selectionActions, type NoteExcerpt, type SelectionAction } from '../../utils/noteSelection';
 import { SyllabusLinkPicker } from '../syllabus/SyllabusLinkPicker';
 import { chapterNumber, groupedChapters, matchesSyllabusScope, syllabusLinkLabels } from '../../utils/syllabusHierarchy';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -115,7 +116,7 @@ export const NotesView: React.FC = () => {
     content: string;
     label: string;
   } | null>(null);
-  const [selectedExcerpt, setSelectedExcerpt] = useState('');
+  const [selectedExcerpt, setSelectedExcerpt] = useState<NoteExcerpt>();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const rightFileInputRef = useRef<HTMLInputElement>(null);
@@ -149,7 +150,7 @@ export const NotesView: React.FC = () => {
 
   // If a brand-new empty note is opened, switch straight to Edit mode so typing works immediately
   useEffect(() => {
-    setSelectedExcerpt('');
+    setSelectedExcerpt(undefined);
     if (activeNote && !activeNote.content.trim()) {
       setViewMode('edit');
     }
@@ -201,24 +202,17 @@ export const NotesView: React.FC = () => {
 
   const handleSyncSelection = () => {
     const ta = textareaRef.current;
-    if (!ta || !activeNote) {
-      setSelectedExcerpt('');
-      return;
-    }
-    const raw = activeNote.content.slice(ta.selectionStart, ta.selectionEnd).trim();
-    if (raw.length >= 8) {
-      setSelectedExcerpt(raw.slice(0, 600));
-    } else {
-      setSelectedExcerpt('');
-    }
+    if (!ta || !activeNote) return;
+    setSelectedExcerpt(excerptFromText(activeNote.content.slice(ta.selectionStart, ta.selectionEnd), 'Markdown editor'));
   };
-
-  const handleAskSelection = () => {
+  const capturePreviewSelection = (event: React.SyntheticEvent<HTMLElement>) => {
+    setSelectedExcerpt(excerptFromSelection(window.getSelection(),event.currentTarget,'Note preview'));
+  };
+  const handleAskSelection = (action: SelectionAction) => {
     if (!activeNote || !selectedExcerpt) return;
-    askPip(
-      `Explain this passage from my note "${activeNote.title}" clearly with a concrete example and one quick self-check question:\n\n> ${selectedExcerpt}`,
-      { openFloating: true },
-    );
+    const prompt = buildExcerptPrompt(selectedExcerpt,activeNote.title,syllabusLinkLabels(activeSubject,activeNote.syllabusLinks),action);
+    if (!prompt) { pushToast(`Select up to ${MAX_NOTE_EXCERPT.toLocaleString()} characters to ask Pip.`); return; }
+    askPip(prompt,{openFloating:true,draftOnly:true,excerptOnly:true});
   };
 
   const handleAiTransform = async (mode: 'polish' | 'summary') => {
@@ -826,22 +820,7 @@ export const NotesView: React.FC = () => {
 
             {/* Right Toolbar Utilities: AI Assist, Font Preservation, Save State, Pin, Delete, Panel Toggle */}
             <div className="flex items-center gap-2 shrink-0 text-[11.5px]">
-              {selectedExcerpt && (viewMode === 'edit' || viewMode === 'split') && (
-                <button
-                  type="button"
-                  onClick={handleAskSelection}
-                  className="inline-flex items-center gap-1 rounded-lg px-2.5 h-7 text-[11.5px] font-medium transition-colors whitespace-nowrap"
-                  style={{
-                    backgroundColor: 'var(--accent-soft)',
-                    border: '1px solid var(--accent)',
-                    color: 'var(--accent)',
-                  }}
-                  title="Ask Pip to explain the highlighted passage"
-                >
-                  <MessageSquare className="w-3 h-3 shrink-0" />
-                  Explain selection
-                </button>
-              )}
+
 
               <button
                 type="button"
@@ -1062,6 +1041,15 @@ export const NotesView: React.FC = () => {
             </div>
           </div>
 
+          {selectedExcerpt && <div className="shrink-0 flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--border-subtle)] text-xs bg-[var(--bg-surface-subtle)]">
+            <span className="flex-1 min-w-0 truncate" title={selectedExcerpt.text}>{selectedExcerpt.text.length > MAX_NOTE_EXCERPT ? `Select up to ${MAX_NOTE_EXCERPT.toLocaleString()} characters` : `${selectedExcerpt.source}: ${selectedExcerpt.text}`}</span>
+            <select aria-label="Ask Pip about selected text" value="" onChange={e=>{if(e.target.value) handleAskSelection(e.target.value as SelectionAction);}} className="rounded-lg px-2 h-7 text-xs bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]" disabled={selectedExcerpt.text.length > MAX_NOTE_EXCERPT}>
+              <option value="">Ask Pip about selection</option>
+              {selectionActions.map(action=><option key={action} value={action}>{action}</option>)}
+            </select>
+            <button type="button" onClick={()=>setSelectedExcerpt(undefined)} aria-label="Clear selected excerpt" title="Clear selection" className="px-2 text-[var(--text-muted)]">×</button>
+          </div>}
+
           {/* Document Body: Preview, Edit, or Split */}
           <div
             className="flex-1 min-h-0 flex"
@@ -1095,8 +1083,12 @@ export const NotesView: React.FC = () => {
                   <article
                     className="note-markdown max-w-[74ch]"
                     aria-label="Note preview"
+                    tabIndex={0}
+                    onMouseUp={capturePreviewSelection}
+                    onKeyUp={capturePreviewSelection}
                   >
                     <AssistantMarkdown
+                      noteDiagrams
                       text={normalizedPreviewMarkdown}
                       figures={allPdfFigures}
                       allowDataImages
@@ -1358,6 +1350,7 @@ export const NotesView: React.FC = () => {
                 onInsertMarkdown={openMarkdownImportPrompt}
                 uploadingStatus={uploadingStatus}
                 noteFontFamily={noteFontFamily}
+                onSelectExcerpt={setSelectedExcerpt}
               />
             </div>
           ) : (

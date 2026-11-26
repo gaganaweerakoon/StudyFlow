@@ -533,6 +533,7 @@ export const MarkdownImportModal: React.FC<MarkdownImportModalProps> = ({
                 {markdown.trim() ? (
                   <div className="note-markdown text-[13.5px]">
                     <AssistantMarkdown
+                      noteDiagrams
                       text={markdown}
                       figures={pending.figures}
                       allowDataImages

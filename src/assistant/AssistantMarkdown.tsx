@@ -5,12 +5,14 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { AssistantDiagram } from './AssistantDiagram';
+import { NoteDiagram } from './NoteDiagram';
 import { normalizeMarkdownForDisplay } from './markdownNormalize';
 import type { PdfFigure } from '../notes/pdfMarkdown';
 
 interface AssistantMarkdownProps {
   text: string;
   diagrams?: boolean;
+  noteDiagrams?: boolean;
   figures?: PdfFigure[];
   allowDataImages?: boolean;
   dirAuto?: boolean;
@@ -19,6 +21,7 @@ interface AssistantMarkdownProps {
 export default memo(function AssistantMarkdown({
   text,
   diagrams = false,
+  noteDiagrams = false,
   figures,
   allowDataImages = false,
   dirAuto = false,
@@ -60,6 +63,7 @@ export default memo(function AssistantMarkdown({
               /^(?:<\?xml[\s\S]*?\?>\s*)?<svg(?=[\s>])/i.test(rawCode);
             if (isExplicitSvg || looksLikeSvg) {
               const hasClosingTag = /<\/svg>\s*$/i.test(rawCode);
+              if (noteDiagrams) return <NoteDiagram markup={rawCode} />;
               if (diagrams && hasClosingTag) {
                 return <AssistantDiagram markup={rawCode} />;
               }
