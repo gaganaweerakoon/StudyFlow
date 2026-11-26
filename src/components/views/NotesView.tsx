@@ -462,7 +462,10 @@ export const NotesView: React.FC = () => {
           ? { ...att, markdown: destination.markdown }
           : att,
       );
+      const importScope = destination.subjectId === notesSyllabusScope.subjectId ? notesSyllabusScope : undefined;
       createNote(destination.subjectId, destination.folderId, {
+        syllabusLinks: importScope?.chapterId ? { chapterIds: [importScope.chapterId] }
+          : importScope?.unitId ? { unitIds: [importScope.unitId] } : undefined,
         title: destination.title,
         content: destination.markdown,
         attachments: updatedAttachments,

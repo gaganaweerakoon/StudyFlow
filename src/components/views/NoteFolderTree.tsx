@@ -1,3 +1,4 @@
+import { playSessionStartChime } from '../../utils/soundAlert';
 import { useState } from 'react';
 import { Folder } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -56,6 +57,7 @@ export function NoteFolderTree({ folderId, select }: {
       } else if (selected) renameFolder(selected.id, title);
       else if (subject && unit) updateUnit(subject.id, unit.id, { title });
       else if (subject) updateSubject(subject.id, { name: title });
+      playSessionStartChime();
       setEditing(undefined);
     }}>
       <label>{editing === 'new' ? 'New folder in ' + (unit?.title ?? subject?.name ?? 'All notes') :

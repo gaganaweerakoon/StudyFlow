@@ -116,7 +116,7 @@ export const MarkdownImportModal: React.FC<MarkdownImportModalProps> = ({
   const [newTitle, setNewTitle] = useState(pending.suggestedTitle || 'Imported Study Note');
   const [newSubjectId, setNewSubjectId] = useState(defaultSubjectId);
   const [newFolderId, setNewFolderId] = useState(
-    defaultFolderId === 'fld-all' ? folders[0]?.id ?? 'fld-all' : defaultFolderId,
+    defaultFolderId === 'fld-all' ? 'notes' : defaultFolderId,
   );
   const [targetNoteId, setTargetNoteId] = useState(activeNoteId ?? notes[0]?.id ?? '');
   const [placement, setPlacement] = useState<'append' | 'replace'>('append');
@@ -655,7 +655,7 @@ export const MarkdownImportModal: React.FC<MarkdownImportModalProps> = ({
                   </label>
                   <select
                     value={newSubjectId}
-                    onChange={(e) => setNewSubjectId(e.target.value)}
+                    onChange={(e) => { setNewSubjectId(e.target.value); setNewFolderId('notes'); }}
                     className="w-full h-9 rounded-lg px-2.5 text-[12.5px]"
                     style={{
                       backgroundColor: 'var(--bg-surface)',
@@ -685,7 +685,8 @@ export const MarkdownImportModal: React.FC<MarkdownImportModalProps> = ({
                       color: 'var(--text-primary)',
                     }}
                   >
-                    {folders.map((f) => (
+                    <option value="notes">{folders.find(f => f.id === 'notes')?.name ?? 'General notes'}</option>
+                    {folders.filter(f => f.id !== 'fld-all' && f.id !== 'notes' && (!f.subjectId || f.subjectId === newSubjectId)).map((f) => (
                       <option key={f.id} value={f.id}>
                         {f.name}
                       </option>

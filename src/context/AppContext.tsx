@@ -1567,6 +1567,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       };
       setNotes((prev) => [newNote, ...prev]);
       setSelectedNoteId(id);
+      playSessionStartChime();
       pushToast('New note created');
       return id;
     },
@@ -1597,6 +1598,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     (id: string) => {
       setDecks((prev) => prev.filter((d) => d.id !== id));
       setFlashcards((prev) => prev.filter((c) => c.deckId !== id));
+      playSessionStartChime();
       pushToast('Flashcard deck deleted');
     },
     [pushToast]
@@ -1686,6 +1688,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
 
   const deleteQuiz = useCallback((id: string) => {
     setQuizzes((previous) => previous.filter((quiz) => quiz.id !== id));
+    playSessionStartChime();
     pushToast('Practice test deleted');
   }, [pushToast]);
 
@@ -1904,7 +1907,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         },
         renameFolder: (id, name) => setFolders(prev => prev.map(folder => folder.id === id ? {...folder, name} : folder)),
         notes,
-        deleteNote: id => setNotes(prev => prev.filter(note => note.id !== id)),
+        deleteNote: id => {
+          setNotes(prev => prev.filter(note => note.id !== id));
+          playSessionStartChime();
+        },
         updateNote,
         createNote,
         decks,
@@ -1916,6 +1922,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         importFlashcardsBulk,
         deleteFlashcard: id => {
           setFlashcards(prev => prev.filter(card => card.id !== id));
+          playSessionStartChime();
           pushToast('Flashcard deleted');
         },
         reviewFlashcard,
