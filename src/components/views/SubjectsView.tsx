@@ -21,6 +21,11 @@ import {
   X,
   Trash2,
   Pencil,
+  MoreHorizontal,
+  ArrowUp,
+  ArrowDown,
+  FileText,
+  FilePlus,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -35,7 +40,7 @@ import { useApp } from '../../context/AppContext';
 import { markdownToPlainPreview } from '../../assistant/markdownNormalize';
 import type { ChapterItem, Subject, TopicItem } from '../../types/studyflow';
 import { calculateSubjectProgress } from '../../utils/studyLogic';
-import { chapterNumber, chapterUnit, groupedChapters, isChapterArchived, syllabusUnits } from '../../utils/syllabusHierarchy';
+import { chapterNumber, chapterUnit, formatChapterTitle, formatUnitTitle, groupedChapters, isChapterArchived, stripSyllabusNumberPrefix, syllabusUnits } from '../../utils/syllabusHierarchy';
 
 type DetailTab = 'chapters' | 'overview' | 'tasks' | 'notes' | 'flashcards' | 'performance';
 type RootSectionTab = 'subjects' | 'chapters';
@@ -106,8 +111,27 @@ export const SubjectsView: React.FC = () => {
   const [editChapterUnitId, setEditChapterUnitId] = useState('');
   const [unitDraft, setUnitDraft] = useState<{ subjectId: string; unitId?: string; title: string } | null>(null);
   const [collapsedUnits, setCollapsedUnits] = useState<Set<string>>(() => new Set());
+  const [openUnitMenuId, setOpenUnitMenuId] = useState<string | null>(null);
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [newChapterTopics, setNewChapterTopics] = useState('');
+
+  useEffect(() => {
+    if (!openUnitMenuId) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-unit-menu]')) return;
+      setOpenUnitMenuId(null);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenUnitMenuId(null);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openUnitMenuId]);
 
   // Edit Subject popup state
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
@@ -239,7 +263,7 @@ export const SubjectsView: React.FC = () => {
 
   const openEditChapterModal = (subjectId: string, chapter: ChapterItem) => {
     setEditingChapter({ subjectId, chapter });
-    setEditChapterTitle(chapter.title);
+    setEditChapterTitle(stripSyllabusNumberPrefix(chapter.title));
     setEditChapterUnitId(chapter.unitId ?? '');
   };
 
@@ -289,6 +313,7 @@ export const SubjectsView: React.FC = () => {
     ch: ChapterItem,
     _chapterNumber: number,
     showSubjectName = false,
+    reorderControls?: { canUp: boolean; canDown: boolean; onUp: () => void; onDown: () => void },
   ) => {
     const stats = getChapterStats(ch);
     const isArchived = Boolean(ch.archived);
@@ -331,7 +356,7 @@ export const SubjectsView: React.FC = () => {
                 {isChapterArchived(sub, ch) ? ' · Archived' : ''}
               </div>
               <h2 className="font-display text-[15px] font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors truncate">
-                {ch.title}
+                {stripSyllabusNumberPrefix(ch.title)}
               </h2>
             </div>
           </div>
@@ -402,20 +427,70 @@ export const SubjectsView: React.FC = () => {
         </div>
 
         <div
-          className="pt-2.5 flex items-center justify-between text-[11.5px] text-[var(--text-muted)]"
+          className="pt-2.5 flex items-center justify-between gap-2 text-[11.5px] text-[var(--text-muted)]"
           style={{ borderTop: '1px solid var(--border-subtle)' }}
         >
-          <span className="font-mono-num tabular-nums">
-            {stats.remaining === 0 && stats.total > 0
-              ? 'All topics mastered'
-              : `${stats.remaining} remaining`}
-          </span>
-          <span className="font-mono-num tabular-nums">
-            {stats.total > 0 ? `Confidence ${stats.avgConfidence}/5` : 'No topics yet'}
-          </span>
-          <span className="inline-flex items-center gap-0.5 text-[var(--text-secondary)] group-hover:text-[var(--accent)] transition-colors">
-            Open <ChevronRight className="w-3 h-3" />
-          </span>
+          <div className="flex items-center gap-2.5 min-w-0 truncate">
+            <span className="truncate">
+              {stats.remaining === 0 && stats.total > 0 ? (
+                'All topics mastered'
+              ) : (
+                <>
+                  <span className="font-mono-num tabular-nums">{stats.remaining}</span> remaining
+                </>
+              )}
+            </span>
+            <span aria-hidden="true" className="opacity-40">
+              ·
+            </span>
+            <span className="truncate">
+              {stats.total > 0 ? (
+                <>
+                  Confidence <span className="font-mono-num tabular-nums">{stats.avgConfidence}/5</span>
+                </>
+              ) : (
+                'No topics yet'
+              )}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {reorderControls && (reorderControls.canUp || reorderControls.canDown) && (
+              <div
+                className="inline-flex items-center gap-0.5 mr-1 opacity-60 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  disabled={!reorderControls.canUp}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    reorderControls.onUp();
+                  }}
+                  aria-label={`Move chapter ${stripSyllabusNumberPrefix(ch.title)} earlier`}
+                  title="Move earlier"
+                  className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-25 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                >
+                  <ArrowUp className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  disabled={!reorderControls.canDown}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    reorderControls.onDown();
+                  }}
+                  aria-label={`Move chapter ${stripSyllabusNumberPrefix(ch.title)} later`}
+                  title="Move later"
+                  className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-25 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                >
+                  <ArrowDown className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+            <span className="inline-flex items-center gap-0.5 text-[var(--text-secondary)] group-hover:text-[var(--accent)] transition-colors">
+              Open <ChevronRight className="w-3 h-3" />
+            </span>
+          </div>
         </div>
       </div>
     );
@@ -485,7 +560,7 @@ export const SubjectsView: React.FC = () => {
             <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">Unit</label>
             <select aria-label="Chapter unit" value={newChapterUnitId} onChange={e => setNewChapterUnitId(e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-[13px]" style={inputStyle} required>
               <option value="" disabled>Select an active unit</option>
-              {subjects.filter(subject => subject.id === newChapterSubjectId).flatMap(subject => syllabusUnits(subject)).filter(unit => !unit.archived).map(unit => <option key={unit.id} value={unit.id}>{unit.title}</option>)}
+              {subjects.filter(subject => subject.id === newChapterSubjectId).flatMap(subject => groupedChapters(subject)).filter(({unit}) => !unit.archived).map(({unit, number}) => <option key={unit.id} value={unit.id}>{formatUnitTitle(number, unit.title)}</option>)}
             </select>
           </div>
           <div>
@@ -496,7 +571,7 @@ export const SubjectsView: React.FC = () => {
               type="text"
               value={newChapterTitle}
               onChange={(e) => setNewChapterTitle(e.target.value)}
-              placeholder="e.g., 4. Randomized & Approximation Algorithms"
+              placeholder="e.g., Randomized & Approximation Algorithms"
               className="w-full px-3 py-2 rounded-lg text-[13px]"
               style={inputStyle}
               autoFocus
@@ -733,7 +808,7 @@ export const SubjectsView: React.FC = () => {
         <form onSubmit={handleEditChapterSubmit} className="p-5 space-y-3.5">
           <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Unit
             <select aria-label="Move chapter to unit" value={editChapterUnitId} onChange={e => setEditChapterUnitId(e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-[13px]" style={inputStyle}>
-              {subjects.filter(subject => subject.id === editingChapter.subjectId).flatMap(subject => syllabusUnits(subject)).filter(unit => !unit.archived || unit.id === editingChapter.chapter.unitId).map(unit => <option key={unit.id} value={unit.id}>{unit.title}</option>)}
+              {subjects.filter(subject => subject.id === editingChapter.subjectId).flatMap(subject => groupedChapters(subject)).filter(({unit}) => !unit.archived || unit.id === editingChapter.chapter.unitId).map(({unit, number}) => <option key={unit.id} value={unit.id}>{formatUnitTitle(number, unit.title)}</option>)}
             </select>
           </label>
           <div>
@@ -881,7 +956,7 @@ export const SubjectsView: React.FC = () => {
                 >
                   {activeSubject.code}
                 </button>
-                <span aria-hidden="true">/</span><span>{chapterUnit(activeSubject, activeChapter)?.title}</span>
+                <span aria-hidden="true">/</span><span>{stripSyllabusNumberPrefix(chapterUnit(activeSubject, activeChapter)?.title ?? '')}</span>
                 {isChapterArchived(activeSubject, activeChapter) && (
                   <>
                     <span aria-hidden="true">·</span>
@@ -890,14 +965,14 @@ export const SubjectsView: React.FC = () => {
                 )}
               </div>
               <h1 className="font-display text-[19px] font-semibold text-[var(--text-primary)] truncate">
-                {chapterNumber(activeSubject, activeChapter.id)} · {activeChapter.title}
+                {formatChapterTitle(activeSubject, activeChapter)}
               </h1>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 shrink-0">
             <button type="button" onClick={()=>{ const scope={subjectId:activeSubject.id,unitId:chapterUnit(activeSubject,activeChapter)?.id,chapterId:activeChapter.id}; setNotesSyllabusScope(scope); setRoute('notes'); }} className="rounded-lg px-3 py-2 text-xs border border-[var(--border-subtle)]">Linked notes ({notes.filter(note=>note.subjectId===activeSubject.id && note.syllabusLinks?.chapterIds?.includes(activeChapter.id)).length})</button>
-            <button type="button" onClick={()=>{createNote(activeSubject.id,'fld-all',{title:activeChapter.title,syllabusLinks:{chapterIds:[activeChapter.id]}}); setNotesSyllabusScope({subjectId:activeSubject.id,unitId:chapterUnit(activeSubject,activeChapter)?.id,chapterId:activeChapter.id}); setRoute('notes');}} className="rounded-lg px-3 py-2 text-xs bg-[var(--accent)] text-[var(--accent-fg)]">+ Create Note</button>
+            <button type="button" onClick={()=>{createNote(activeSubject.id,'fld-all',{title:stripSyllabusNumberPrefix(activeChapter.title),syllabusLinks:{chapterIds:[activeChapter.id]}}); setNotesSyllabusScope({subjectId:activeSubject.id,unitId:chapterUnit(activeSubject,activeChapter)?.id,chapterId:activeChapter.id}); setRoute('notes');}} className="rounded-lg px-3 py-2 text-xs bg-[var(--accent)] text-[var(--accent-fg)]">+ Create Note</button>
             <button
               type="button"
               onClick={() => openEditChapterModal(activeSubject.id, activeChapter)}
@@ -1367,127 +1442,641 @@ export const SubjectsView: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold">Units & chapters</h3>
-              <button type="button" onClick={() => setUnitDraft({subjectId: activeSubject.id, title: ''})} className="rounded-lg px-3 py-1.5 border border-[var(--border-subtle)] text-xs">+ Add Unit</button>
-            </div>
-            {unitDraft?.subjectId === activeSubject.id && (
-              <form className="flex gap-2 items-center p-3 rounded-xl" style={surfaceStyle} onSubmit={e => { e.preventDefault(); if (!unitDraft.title.trim()) return; if (unitDraft.unitId) updateUnit(activeSubject.id, unitDraft.unitId, {title: unitDraft.title}); else addUnit(activeSubject.id, unitDraft.title); setUnitDraft(null); }}>
-                <input aria-label="Unit title" autoFocus required value={unitDraft.title} onChange={e => setUnitDraft({...unitDraft, title: e.target.value})} placeholder="Unit title" className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm" style={inputStyle}/>
-                <button type="submit" className="text-xs font-semibold text-[var(--accent)]">Save</button>
-                <button type="button" onClick={() => setUnitDraft(null)} className="text-xs">Cancel</button>
-              </form>
-            )}
-            {groupedChapters(activeSubject).filter(({unit, chapters}) => chapterArchiveFilter === 'active' ? !unit.archived : Boolean(unit.archived) || chapters.some(ch => ch.archived)).map(({unit, number, chapters}) => {
-              const groupChapters = chapters.filter(ch => chapterArchiveFilter === 'active' ? !isChapterArchived(activeSubject, ch) : isChapterArchived(activeSubject, ch));
-              const key = `${activeSubject.id}:${unit.id}`;
-              const expanded = !collapsedUnits.has(key);
-              return <section key={unit.id} className="rounded-xl p-3 space-y-3" style={surfaceStyle}>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button type="button" aria-expanded={expanded} onClick={() => setCollapsedUnits(previous => { const next = new Set(previous); if (next.has(key)) next.delete(key); else next.add(key); return next; })} className="flex flex-1 items-center gap-2 min-w-0 text-left">
-                    <ChevronRight className={`w-4 h-4 shrink-0 ${expanded ? 'rotate-90' : ''}`} />
-                    <span className="font-semibold text-sm truncate">{number}. {unit.title}</span><span className="text-xs text-[var(--text-muted)]">{groupChapters.length} chapters{unit.archived ? ' · Archived' : ''}</span>
-                  </button>
-                  <button type="button" aria-label="Move unit up" onClick={() => reorderUnit(activeSubject.id, unit.id, -1)} className="px-1.5 text-xs">↑</button>
-                  <button type="button" aria-label="Move unit down" onClick={() => reorderUnit(activeSubject.id, unit.id, 1)} className="px-1.5 text-xs">↓</button>
-                  <button type="button" onClick={() => setUnitDraft({subjectId: activeSubject.id, unitId: unit.id, title: unit.title})} className="px-1.5 text-xs">Rename</button>
-                  <button type="button" onClick={() => updateUnit(activeSubject.id, unit.id, {archived: !unit.archived})} className="px-1.5 text-xs">{unit.archived ? 'Restore' : 'Archive'}</button>
-                  <button type="button" onClick={()=>{setNotesSyllabusScope({subjectId:activeSubject.id,unitId:unit.id});setRoute('notes');}} className="px-1.5 text-xs">Notes</button>
-                  <button type="button" onClick={()=>{createNote(activeSubject.id,'fld-all',{title:unit.title,syllabusLinks:{unitIds:[unit.id]}});setNotesSyllabusScope({subjectId:activeSubject.id,unitId:unit.id});setRoute('notes');}} className="px-1.5 text-xs">+ Note</button>
-                  {!unit.archived && <button type="button" onClick={() => openAddChapterModal(activeSubject.id, unit.id)} className="px-1.5 text-xs text-[var(--accent)]">+ Chapter</button>}
-                </div>
-                {expanded && (groupChapters.length === 0 ? <p className="text-xs text-[var(--text-muted)] pl-6">No chapters in this view.</p> : viewMode === 'grid' ? <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {groupChapters.map((ch, idx) => <div key={ch.id} className="space-y-1">{renderChapterCard(activeSubject, ch, idx + 1, false)}<div className="flex justify-end gap-2 text-xs text-[var(--text-muted)]"><button type="button" aria-label={`Move chapter ${ch.title} up`} onClick={() => reorderChapter(activeSubject.id, ch.id, -1)}>↑ Move</button><button type="button" aria-label={`Move chapter ${ch.title} down`} onClick={() => reorderChapter(activeSubject.id, ch.id, 1)}>↓ Move</button></div></div>)}
-                </div> : <div className="rounded-xl divide-y divide-[var(--border-subtle)]">
-                {groupChapters.map((ch) => {
-                  const stats = getChapterStats(ch);
-                  const isArchived = Boolean(ch.archived);
-                  return (
-                    <div
-                      key={ch.id}
-                      onClick={() => setSelectedChapterId(ch.id)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          setSelectedChapterId(ch.id);
-                        }
+            {(() => {
+              const visibleUnitGroups = groupedChapters(activeSubject).filter(({ unit, chapters }) =>
+                chapterArchiveFilter === 'active'
+                  ? !unit.archived
+                  : Boolean(unit.archived) || chapters.some((ch) => ch.archived),
+              );
+              const visibleKeys = visibleUnitGroups.map(({ unit }) => `${activeSubject.id}:${unit.id}`);
+              const allCollapsed =
+                visibleKeys.length > 0 && visibleKeys.every((k) => collapsedUnits.has(k));
+
+              return (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-display text-[14px] font-semibold text-[var(--text-primary)]">
+                        Units & chapters
+                      </h3>
+                      <span className="text-[12px] text-[var(--text-muted)]">
+                        <span className="font-mono-num tabular-nums">{visibleUnitGroups.length}</span>{' '}
+                        {visibleUnitGroups.length === 1 ? 'unit' : 'units'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {visibleUnitGroups.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCollapsedUnits((previous) => {
+                              const next = new Set(previous);
+                              if (allCollapsed) visibleKeys.forEach((k) => next.delete(k));
+                              else visibleKeys.forEach((k) => next.add(k));
+                              return next;
+                            })
+                          }
+                          className="h-8 px-2.5 rounded-lg text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors whitespace-nowrap"
+                        >
+                          {allCollapsed ? 'Expand all' : 'Collapse all'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setUnitDraft({ subjectId: activeSubject.id, title: '' })}
+                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                        style={surfaceStyle}
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add Unit
+                      </button>
+                    </div>
+                  </div>
+
+                  {unitDraft?.subjectId === activeSubject.id && (
+                    <form
+                      className="flex flex-wrap sm:flex-nowrap gap-2 items-center p-3 rounded-xl"
+                      style={{
+                        backgroundColor: 'var(--bg-surface)',
+                        border: '1px solid var(--accent-border)',
+                        boxShadow: 'var(--shadow-subtle)',
                       }}
-                      className="w-full px-4 py-3 flex items-center justify-between gap-4 hover:bg-[var(--bg-surface-hover)] text-left cursor-pointer"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!unitDraft.title.trim()) return;
+                        if (unitDraft.unitId)
+                          updateUnit(activeSubject.id, unitDraft.unitId, { title: unitDraft.title });
+                        else addUnit(activeSubject.id, unitDraft.title);
+                        setUnitDraft(null);
+                      }}
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0"
-                          style={{ backgroundColor: activeSubject.color }}
-                        />
-                        <div className="min-w-0">
-                          <div className="text-[13.5px] font-semibold text-[var(--text-primary)] truncate">
-                            {chapterNumber(activeSubject, ch.id)} · {ch.title}
-                          </div>
-                          <div className="text-[11.5px] text-[var(--text-muted)] tabular-nums">
-                            {stats.completed}/{stats.total} topics completed · Confidence{' '}
-                            {stats.total > 0 ? `${stats.avgConfidence}/5` : '—'}
+                      <input
+                        aria-label="Unit title"
+                        autoFocus
+                        required
+                        value={unitDraft.title}
+                        onChange={(e) => setUnitDraft({ ...unitDraft, title: e.target.value })}
+                        placeholder="e.g., Core Foundations"
+                        className="flex-1 min-w-[200px] h-9 px-3 rounded-lg text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                        style={inputStyle}
+                      />
+                      <button
+                        type="submit"
+                        className="h-9 px-3.5 rounded-lg text-[12.5px] font-medium whitespace-nowrap"
+                        style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
+                      >
+                        {unitDraft.unitId ? 'Save Unit' : 'Create Unit'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setUnitDraft(null)}
+                        className="h-9 px-3 rounded-lg text-[12.5px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] whitespace-nowrap"
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  )}
+
+                  {visibleUnitGroups.map(({ unit, number, chapters }, unitIdx) => {
+                    const groupChapters = chapters.filter((ch) =>
+                      chapterArchiveFilter === 'active'
+                        ? !isChapterArchived(activeSubject, ch)
+                        : isChapterArchived(activeSubject, ch),
+                    );
+                    const key = `${activeSubject.id}:${unit.id}`;
+                    const expanded = !collapsedUnits.has(key);
+                    const menuOpen = openUnitMenuId === key;
+
+                    const unitTopicsTotal = groupChapters.reduce(
+                      (sum, ch) => sum + ch.topics.length,
+                      0,
+                    );
+                    const unitTopicsDone = groupChapters.reduce(
+                      (sum, ch) => sum + ch.topics.filter((t) => t.completed).length,
+                      0,
+                    );
+                    const unitPercent =
+                      unitTopicsTotal === 0
+                        ? 0
+                        : Math.round((unitTopicsDone / unitTopicsTotal) * 100);
+                    const unitNoteCount = notes.filter(
+                      (n) =>
+                        n.subjectId === activeSubject.id &&
+                        (n.syllabusLinks?.unitIds?.includes(unit.id) ||
+                          groupChapters.some((ch) =>
+                            n.syllabusLinks?.chapterIds?.includes(ch.id),
+                          )),
+                    ).length;
+
+                    const canMoveUnitUp = unitIdx > 0;
+                    const canMoveUnitDown = unitIdx < visibleUnitGroups.length - 1;
+
+                    return (
+                      <section
+                        key={unit.id}
+                        className={`rounded-xl transition-colors hover:border-[var(--border-strong)] ${menuOpen ? 'relative z-20' : 'relative'}`}
+                        style={{
+                          ...surfaceStyle,
+                          opacity: unit.archived ? 0.8 : 1,
+                        }}
+                      >
+                        {/* Unit Card Header — rich, scannable when collapsed and clean when expanded */}
+                        <div className="px-4 py-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3">
+                          <button
+                            type="button"
+                            aria-expanded={expanded}
+                            onClick={() =>
+                              setCollapsedUnits((previous) => {
+                                const next = new Set(previous);
+                                if (next.has(key)) next.delete(key);
+                                else next.add(key);
+                                return next;
+                              })
+                            }
+                            className="flex flex-1 items-center gap-3 min-w-0 text-left group rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                          >
+                            <ChevronRight
+                              className={`w-4 h-4 text-[var(--text-muted)] shrink-0 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
+                            />
+                            <div
+                              className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                              style={{
+                                backgroundColor: `${activeSubject.color}16`,
+                                color: activeSubject.color,
+                              }}
+                            >
+                              <Layers className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-display text-[14.5px] font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors truncate">
+                                {formatUnitTitle(number, unit.title)}
+                              </div>
+                              <div className="text-[12px] text-[var(--text-muted)] truncate mt-0.5">
+                                <span className="font-mono-num tabular-nums">
+                                  {groupChapters.length}
+                                </span>{' '}
+                                {groupChapters.length === 1 ? 'chapter' : 'chapters'}
+                                {unitTopicsTotal > 0 ? (
+                                  <>
+                                    {' '}
+                                    ·{' '}
+                                    <span className="font-mono-num tabular-nums">
+                                      {unitTopicsDone}/{unitTopicsTotal}
+                                    </span>{' '}
+                                    topics
+                                  </>
+                                ) : null}
+                                {unitNoteCount > 0 ? (
+                                  <>
+                                    {' '}
+                                    ·{' '}
+                                    <span className="font-mono-num tabular-nums">
+                                      {unitNoteCount}
+                                    </span>{' '}
+                                    {unitNoteCount === 1 ? 'note' : 'notes'}
+                                  </>
+                                ) : null}
+                                {unit.archived ? ' · Archived' : ''}
+                              </div>
+                            </div>
+                          </button>
+
+                          {/* Right progress preview + uncluttered action cluster */}
+                          <div className="flex items-center gap-3 shrink-0 ml-auto">
+                            {unitTopicsTotal > 0 && (
+                              <div className="hidden md:flex items-center gap-2.5">
+                                <div
+                                  className="w-20 h-1.5 rounded-full overflow-hidden"
+                                  style={{
+                                    backgroundColor:
+                                      'color-mix(in srgb, var(--text-primary) 10%, transparent)',
+                                  }}
+                                >
+                                  <div
+                                    className="h-full rounded-full transition-all"
+                                    style={{
+                                      width: `${unitPercent}%`,
+                                      backgroundColor: activeSubject.color,
+                                    }}
+                                  />
+                                </div>
+                                <span className="font-mono-num tabular-nums text-[12px] font-semibold text-[var(--text-primary)] w-9 text-right">
+                                  {unitPercent}%
+                                </span>
+                              </div>
+                            )}
+
+                            <div className="flex items-center gap-1.5">
+                              {!unit.archived && (
+                                <button
+                                  type="button"
+                                  onClick={() => openAddChapterModal(activeSubject.id, unit.id)}
+                                  className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-[12px] font-medium whitespace-nowrap transition-colors hover:bg-[var(--accent-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                                  style={{
+                                    color: 'var(--accent)',
+                                    border: '1px solid var(--border-subtle)',
+                                  }}
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  Chapter
+                                </button>
+                              )}
+
+                              <div className="relative" data-unit-menu>
+                                <button
+                                  type="button"
+                                  aria-label={`Unit actions for ${stripSyllabusNumberPrefix(unit.title)}`}
+                                  aria-expanded={menuOpen}
+                                  aria-haspopup="menu"
+                                  onClick={() => setOpenUnitMenuId(menuOpen ? null : key)}
+                                  className="h-8 w-8 rounded-lg inline-flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                                >
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </button>
+
+                                {menuOpen && (
+                                  <div
+                                    role="menu"
+                                    className="absolute right-0 mt-1.5 w-48 rounded-xl py-1.5 z-30"
+                                    style={{
+                                      backgroundColor: 'var(--bg-elevated)',
+                                      border: '1px solid var(--border-subtle)',
+                                      boxShadow: 'var(--shadow-floating)',
+                                    }}
+                                  >
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() => {
+                                        setOpenUnitMenuId(null);
+                                        setNotesSyllabusScope({
+                                          subjectId: activeSubject.id,
+                                          unitId: unit.id,
+                                        });
+                                        setRoute('notes');
+                                      }}
+                                      className="w-full px-3 py-2 text-left text-[12.5px] text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] flex items-center justify-between gap-2"
+                                    >
+                                      <span className="inline-flex items-center gap-2">
+                                        <FileText className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                                        View unit notes
+                                      </span>
+                                      {unitNoteCount > 0 && (
+                                        <span className="font-mono-num tabular-nums text-[11.5px] text-[var(--text-muted)]">
+                                          {unitNoteCount}
+                                        </span>
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() => {
+                                        setOpenUnitMenuId(null);
+                                        createNote(activeSubject.id, 'fld-all', {
+                                          title: stripSyllabusNumberPrefix(unit.title),
+                                          syllabusLinks: { unitIds: [unit.id] },
+                                        });
+                                        setNotesSyllabusScope({
+                                          subjectId: activeSubject.id,
+                                          unitId: unit.id,
+                                        });
+                                        setRoute('notes');
+                                      }}
+                                      className="w-full px-3 py-2 text-left text-[12.5px] text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] flex items-center gap-2"
+                                    >
+                                      <FilePlus className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                                      New note in unit
+                                    </button>
+
+                                    <div
+                                      className="my-1"
+                                      style={{ borderTop: '1px solid var(--border-subtle)' }}
+                                    />
+
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() => {
+                                        setOpenUnitMenuId(null);
+                                        setUnitDraft({
+                                          subjectId: activeSubject.id,
+                                          unitId: unit.id,
+                                          title: stripSyllabusNumberPrefix(unit.title),
+                                        });
+                                      }}
+                                      className="w-full px-3 py-2 text-left text-[12.5px] text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] flex items-center gap-2"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                                      Rename unit
+                                    </button>
+
+                                    {visibleUnitGroups.length > 1 && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          role="menuitem"
+                                          disabled={!canMoveUnitUp}
+                                          onClick={() => {
+                                            setOpenUnitMenuId(null);
+                                            reorderUnit(activeSubject.id, unit.id, -1);
+                                          }}
+                                          className="w-full px-3 py-2 text-left text-[12.5px] text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2"
+                                        >
+                                          <ArrowUp className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                                          Move unit up
+                                        </button>
+                                        <button
+                                          type="button"
+                                          role="menuitem"
+                                          disabled={!canMoveUnitDown}
+                                          onClick={() => {
+                                            setOpenUnitMenuId(null);
+                                            reorderUnit(activeSubject.id, unit.id, 1);
+                                          }}
+                                          className="w-full px-3 py-2 text-left text-[12.5px] text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 disabled:pointer-events-none flex items-center gap-2"
+                                        >
+                                          <ArrowDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                                          Move unit down
+                                        </button>
+                                      </>
+                                    )}
+
+                                    <div
+                                      className="my-1"
+                                      style={{ borderTop: '1px solid var(--border-subtle)' }}
+                                    />
+
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() => {
+                                        setOpenUnitMenuId(null);
+                                        updateUnit(activeSubject.id, unit.id, {
+                                          archived: !unit.archived,
+                                        });
+                                      }}
+                                      className="w-full px-3 py-2 text-left text-[12.5px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] flex items-center gap-2"
+                                    >
+                                      {unit.archived ? (
+                                        <>
+                                          <ArchiveRestore className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                                          Restore unit
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Archive className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                                          Archive unit
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button type="button" aria-label={`Move ${ch.title} up`} onClick={e => {e.stopPropagation(); reorderChapter(activeSubject.id, ch.id, -1);}}>↑</button>
-                        <button type="button" aria-label={`Move ${ch.title} down`} onClick={e => {e.stopPropagation(); reorderChapter(activeSubject.id, ch.id, 1);}}>↓</button>
-                        <span className="font-mono-num text-[12px] font-semibold text-[var(--text-primary)] tabular-nums mr-1.5">
-                          {stats.percent}%
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEditChapterModal(activeSubject.id, ch);
-                          }}
-                          aria-label={`Edit ${ch.title}`}
-                          title="Edit chapter"
-                          className={fadedIconBtnClass}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleArchiveChapter(activeSubject.id, ch.id);
-                          }}
-                          aria-label={isArchived ? `Restore ${ch.title}` : `Archive ${ch.title}`}
-                          title={isArchived ? 'Restore chapter' : 'Archive chapter'}
-                          className={fadedIconBtnClass}
-                        >
-                          {isArchived ? (
-                            <ArchiveRestore className="w-3.5 h-3.5" />
-                          ) : (
-                            <Archive className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteTarget({
-                              kind: 'chapter',
-                              subjectId: activeSubject.id,
-                              chapter: ch,
-                            });
-                          }}
-                          aria-label={`Delete ${ch.title}`}
-                          title="Delete chapter"
-                          className={fadedTrashBtnClass}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-                </div>)}
-              </section>;
-            })}
+
+                        {/* Collapsed Unit Preview — scannable chapter index with direct jump */}
+                        {!expanded && groupChapters.length > 0 && (
+                          <div
+                            className="px-4 py-2 rounded-b-xl flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px]"
+                            style={{
+                              borderTop: '1px solid var(--border-subtle)',
+                              backgroundColor: 'var(--bg-surface-subtle)',
+                            }}
+                          >
+                            {groupChapters.slice(0, 4).map((ch) => {
+                              const chStats = getChapterStats(ch);
+                              const chNum = chapterNumber(activeSubject, ch.id);
+                              const chTitle = stripSyllabusNumberPrefix(ch.title);
+                              return (
+                                <button
+                                  key={ch.id}
+                                  type="button"
+                                  onClick={() => setSelectedChapterId(ch.id)}
+                                  className="inline-flex items-center gap-1.5 min-w-0 max-w-[260px] text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                                >
+                                  <span
+                                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                                    style={
+                                      chStats.total > 0 && chStats.percent === 100
+                                        ? { backgroundColor: activeSubject.color }
+                                        : chStats.completed > 0
+                                          ? {
+                                              backgroundColor: `${activeSubject.color}40`,
+                                              boxShadow: `inset 0 0 0 1px ${activeSubject.color}`,
+                                            }
+                                          : {
+                                              backgroundColor: 'transparent',
+                                              boxShadow: 'inset 0 0 0 1px var(--border-strong)',
+                                            }
+                                    }
+                                    aria-hidden="true"
+                                  />
+                                  <span className="font-mono-num tabular-nums text-[11px] text-[var(--text-muted)] shrink-0">
+                                    {chNum}
+                                  </span>
+                                  <span className="truncate">{chTitle}</span>
+                                </button>
+                              );
+                            })}
+                            {groupChapters.length > 4 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCollapsedUnits((previous) => {
+                                    const next = new Set(previous);
+                                    next.delete(key);
+                                    return next;
+                                  })
+                                }
+                                className="text-[11.5px] font-medium text-[var(--accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded"
+                              >
+                                +
+                                <span className="font-mono-num tabular-nums">
+                                  {groupChapters.length - 4}
+                                </span>{' '}
+                                more
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Expanded Unit Body */}
+                        {expanded && (
+                          <div
+                            className="px-4 py-3.5 rounded-b-xl"
+                            style={{
+                              borderTop: '1px solid var(--border-subtle)',
+                              backgroundColor: 'var(--bg-surface-subtle)',
+                            }}
+                          >
+                            {groupChapters.length === 0 ? (
+                              <div className="py-4 px-2 flex flex-wrap items-center justify-between gap-2 text-[12.5px] text-[var(--text-muted)]">
+                                <span>No chapters in this unit yet.</span>
+                                {!unit.archived && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openAddChapterModal(activeSubject.id, unit.id)}
+                                    className="inline-flex items-center gap-1 text-[12px] font-medium hover:underline"
+                                    style={{ color: 'var(--accent)' }}
+                                  >
+                                    <Plus className="w-3.5 h-3.5" /> Add first chapter
+                                  </button>
+                                )}
+                              </div>
+                            ) : viewMode === 'grid' ? (
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                {groupChapters.map((ch, idx) =>
+                                  renderChapterCard(activeSubject, ch, idx + 1, false, {
+                                    canUp: idx > 0,
+                                    canDown: idx < groupChapters.length - 1,
+                                    onUp: () => reorderChapter(activeSubject.id, ch.id, -1),
+                                    onDown: () => reorderChapter(activeSubject.id, ch.id, 1),
+                                  }),
+                                )}
+                              </div>
+                            ) : (
+                              <div
+                                className="rounded-lg divide-y divide-[var(--border-subtle)] overflow-hidden"
+                                style={{
+                                  backgroundColor: 'var(--bg-surface)',
+                                  border: '1px solid var(--border-subtle)',
+                                }}
+                              >
+                                {groupChapters.map((ch, idx) => {
+                                  const stats = getChapterStats(ch);
+                                  const isArchived = Boolean(ch.archived);
+                                  return (
+                                    <div
+                                      key={ch.id}
+                                      onClick={() => setSelectedChapterId(ch.id)}
+                                      role="button"
+                                      tabIndex={0}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.preventDefault();
+                                          setSelectedChapterId(ch.id);
+                                        }
+                                      }}
+                                      className="w-full px-4 py-3 flex items-center justify-between gap-4 hover:bg-[var(--bg-surface-hover)] text-left cursor-pointer transition-colors"
+                                    >
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <span
+                                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                                          style={{ backgroundColor: activeSubject.color }}
+                                          aria-hidden="true"
+                                        />
+                                        <div className="min-w-0">
+                                          <div className="text-[13.5px] font-semibold text-[var(--text-primary)] truncate">
+                                            {formatChapterTitle(activeSubject, ch)}
+                                          </div>
+                                          <div className="text-[11.5px] text-[var(--text-muted)]">
+                                            <span className="font-mono-num tabular-nums">
+                                              {stats.completed}/{stats.total}
+                                            </span>{' '}
+                                            topics completed · Confidence{' '}
+                                            <span className="font-mono-num tabular-nums">
+                                              {stats.total > 0 ? `${stats.avgConfidence}/5` : '—'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        {groupChapters.length > 1 && (
+                                          <>
+                                            <button
+                                              type="button"
+                                              disabled={idx === 0}
+                                              aria-label={`Move ${stripSyllabusNumberPrefix(ch.title)} up`}
+                                              title="Move up"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                reorderChapter(activeSubject.id, ch.id, -1);
+                                              }}
+                                              className={`${fadedIconBtnClass} disabled:opacity-25 disabled:pointer-events-none`}
+                                            >
+                                              <ArrowUp className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              disabled={idx === groupChapters.length - 1}
+                                              aria-label={`Move ${stripSyllabusNumberPrefix(ch.title)} down`}
+                                              title="Move down"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                reorderChapter(activeSubject.id, ch.id, 1);
+                                              }}
+                                              className={`${fadedIconBtnClass} disabled:opacity-25 disabled:pointer-events-none`}
+                                            >
+                                              <ArrowDown className="w-3.5 h-3.5" />
+                                            </button>
+                                          </>
+                                        )}
+                                        <span className="font-mono-num text-[12px] font-semibold text-[var(--text-primary)] tabular-nums mx-1.5">
+                                          {stats.percent}%
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            openEditChapterModal(activeSubject.id, ch);
+                                          }}
+                                          aria-label={`Edit ${ch.title}`}
+                                          title="Edit chapter"
+                                          className={fadedIconBtnClass}
+                                        >
+                                          <Pencil className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleArchiveChapter(activeSubject.id, ch.id);
+                                          }}
+                                          aria-label={
+                                            isArchived
+                                              ? `Restore ${ch.title}`
+                                              : `Archive ${ch.title}`
+                                          }
+                                          title={isArchived ? 'Restore chapter' : 'Archive chapter'}
+                                          className={fadedIconBtnClass}
+                                        >
+                                          {isArchived ? (
+                                            <ArchiveRestore className="w-3.5 h-3.5" />
+                                          ) : (
+                                            <Archive className="w-3.5 h-3.5" />
+                                          )}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setDeleteTarget({
+                                              kind: 'chapter',
+                                              subjectId: activeSubject.id,
+                                              chapter: ch,
+                                            });
+                                          }}
+                                          aria-label={`Delete ${ch.title}`}
+                                          title="Delete chapter"
+                                          className={fadedTrashBtnClass}
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -1557,7 +2146,7 @@ export const SubjectsView: React.FC = () => {
                         >
                           <div className="flex items-center justify-between text-[12.5px] mb-1">
                             <span className="font-medium text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors">
-                              {ch.title}
+                              {formatChapterTitle(activeSubject, ch)}
                             </span>
                             <span className="font-mono-num text-[12px] text-[var(--text-muted)] tabular-nums">
                               {stats.completed}/{stats.total} ({stats.percent}%)
@@ -2282,7 +2871,7 @@ export const SubjectsView: React.FC = () => {
                     />
                     <div className="min-w-0">
                       <div className="text-[13.5px] font-semibold text-[var(--text-primary)] truncate">
-                        {chapterNumber(subject, chapter.id)} · {chapter.title}
+                        {formatChapterTitle(subject, chapter)}
                       </div>
                       <div className="text-[11.5px] text-[var(--text-muted)] tabular-nums">
                         {subject.code} · {subject.name} · {stats.completed}/{stats.total} topics

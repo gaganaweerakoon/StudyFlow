@@ -7,6 +7,7 @@ import type {
   Subject,
   TaskItem,
 } from '../types/studyflow';
+import { formatChapterTitle } from './syllabusHierarchy';
 
 export type ReviewRating = 'again' | 'hard' | 'good' | 'easy';
 
@@ -196,7 +197,7 @@ export function searchWorkspace(
               id: `topic-${tp.id}`,
               category: 'Topic',
               title: tp.title,
-              subtitle: `${s.code} · ${ch.title}`,
+              subtitle: `${s.code} · ${formatChapterTitle(s, ch)}`,
               targetRoute: 'subjects',
               targetId: s.id,
             });

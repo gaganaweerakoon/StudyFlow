@@ -1,6 +1,7 @@
 import { SyllabusResourceBrowser } from '../syllabus/SyllabusResourceBrowser';
 import { SyllabusLinkPicker } from '../syllabus/SyllabusLinkPicker';
 import { StudyGeneration } from '../../notes/StudyGeneration';
+import { stripSyllabusNumberPrefix, syllabusLinkLabels } from '../../utils/syllabusHierarchy';
 import React, { lazy, Suspense, useMemo, useRef, useState } from 'react';
 import {
   ResponsiveContainer,
@@ -29,6 +30,7 @@ import {
   AlertTriangle,
   ShieldCheck,
   Clock,
+  Layers,
   X,
   Check,
 } from 'lucide-react';
@@ -118,6 +120,7 @@ export const FlashcardsView: React.FC = () => {
   const [showHint, setShowHint] = useState(false);
   const [sessionDone, setSessionDone] = useState(false);
   const [reviewedInSession, setReviewedInSession] = useState(0);
+  const [organizingDeckId, setOrganizingDeckId] = useState<string | null>(null);
 
   // Micro-review approval state
   const [pendingMicroReviews, setPendingMicroReviews] = useState<ProposedMicroReview[] | null>(null);
@@ -525,7 +528,7 @@ export const FlashcardsView: React.FC = () => {
             <button
               type="button"
               onClick={() => setViewTab('decks')}
-              className="px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap"
+              className="h-8 px-3 rounded-md font-medium transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               style={{
                 backgroundColor: viewTab === 'decks' ? 'var(--bg-surface)' : 'transparent',
                 color: viewTab === 'decks' ? 'var(--text-primary)' : 'var(--text-muted)',
@@ -536,7 +539,7 @@ export const FlashcardsView: React.FC = () => {
             <button
               type="button"
               onClick={() => setViewTab('intelligence')}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md font-medium transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               style={{
                 backgroundColor: viewTab === 'intelligence' ? 'var(--bg-surface)' : 'transparent',
                 color: viewTab === 'intelligence' ? 'var(--text-primary)' : 'var(--text-muted)',
@@ -550,7 +553,7 @@ export const FlashcardsView: React.FC = () => {
           <button
             type="button"
             onClick={handleOpenAnkiModal}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={surfaceStyle}
           >
             <Upload className="w-3.5 h-3.5" /> Import Anki
@@ -564,7 +567,7 @@ export const FlashcardsView: React.FC = () => {
                 { openFloating: true },
               )
             }
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]"
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={surfaceStyle}
           >
             <Sparkles className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} /> Ask Pip
@@ -573,7 +576,7 @@ export const FlashcardsView: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveModal('create_flashcard')}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[12.5px] font-medium whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
           >
             <Plus className="w-3.5 h-3.5" /> Add Flashcard
@@ -911,38 +914,131 @@ export const FlashcardsView: React.FC = () => {
           />
 
           {/* Deck Library */}
-          <SyllabusResourceBrowser subjects={subjects} resources={decks} label="decks" onCreate={(subject,chapterId)=>{const chapter=subject.chapters.find(ch=>ch.id===chapterId);if(chapter){addDeck({title:`${chapter.title} Deck`,subjectId:subject.id,description:'',syllabusLinks:{chapterIds:[chapterId]}})}}} render={(deck,displayTitle)=>{
+          <SyllabusResourceBrowser
+            subjects={subjects}
+            resources={decks}
+            label="decks"
+            createLabel="New deck"
+            onCreate={(subject, chapterId) => {
+              const chapter = subject.chapters.find((ch) => ch.id === chapterId);
+              if (chapter) {
+                addDeck({
+                  title: `${stripSyllabusNumberPrefix(chapter.title)} Deck`,
+                  subjectId: subject.id,
+                  description: '',
+                  syllabusLinks: { chapterIds: [chapterId] },
+                });
+              }
+            }}
+            render={(deck, displayTitle) => {
               const sub = subjects.find((s) => s.id === deck.subjectId);
               const cards = flashcards.filter((c) => c.deckId === deck.id);
               const due = cards.filter((c) => c.dueToday).length;
               const deckSrs = srsAnalysis.decks.find((d) => d.deckId === deck.id);
+              const linkLabels = syllabusLinkLabels(sub, deck.syllabusLinks);
+              const isOrganizing = organizingDeckId === deck.id;
 
               return (
-                <div key={deck.id} className="rounded-xl p-4 flex flex-col justify-between gap-3.5" style={surfaceStyle}>
-                  <div>
-                    <div className="flex items-center justify-between text-[11.5px]">
-                      <span className="inline-flex items-center gap-1.5 font-medium" style={{ color: sub?.color }}>
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: sub?.color }} />
-                        {sub?.code}
+                <article
+                  key={deck.id}
+                  className="rounded-xl p-4 flex flex-col justify-between gap-3.5 transition-colors hover:border-[var(--border-strong)]"
+                  style={surfaceStyle}
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2 text-[12px]">
+                      <span
+                        className="inline-flex items-center gap-1.5 font-medium truncate"
+                        style={{ color: sub?.color ?? 'var(--text-muted)' }}
+                      >
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: sub?.color ?? 'var(--text-muted)' }}
+                          aria-hidden="true"
+                        />
+                        <span className="truncate">{sub ? `${sub.code} · ${sub.name}` : 'Unassigned'}</span>
                       </span>
-                      <span className="font-mono-num text-[var(--text-muted)]">
-                        {deckSrs ? `${deckSrs.avgRetentionToday}% recall` : legacyCalendar ? '—' : `${deck.retentionRate}% retention`}
+                      <span className="text-[var(--text-muted)] shrink-0">
+                        {deckSrs ? (
+                          <>
+                            <span className="font-mono-num tabular-nums font-medium text-[var(--text-secondary)]">
+                              {deckSrs.avgRetentionToday}%
+                            </span>{' '}
+                            recall
+                          </>
+                        ) : legacyCalendar ? (
+                          '—'
+                        ) : (
+                          <>
+                            <span className="font-mono-num tabular-nums font-medium text-[var(--text-secondary)]">
+                              {deck.retentionRate}%
+                            </span>{' '}
+                            retention
+                          </>
+                        )}
                       </span>
                     </div>
-                    <h2 className="font-display text-[15.5px] font-semibold text-[var(--text-primary)] mt-1">
-                      {displayTitle}
-                    </h2>
-                    <p className="text-[12.5px] text-[var(--text-secondary)] mt-0.5">{deck.description}</p>
+
+                    <div>
+                      <h2 className="font-display text-[15.5px] font-semibold text-[var(--text-primary)] leading-snug">
+                        {displayTitle}
+                      </h2>
+                      {deck.description && (
+                        <p className="text-[12.5px] text-[var(--text-secondary)] mt-0.5 line-clamp-2">
+                          {deck.description}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Clean quiet syllabus assignment bar */}
+                    <div className="flex items-center justify-between gap-2 pt-0.5 text-[12px]">
+                      <span className="inline-flex items-center gap-1.5 min-w-0 text-[var(--text-muted)]">
+                        <Layers className="w-3.5 h-3.5 shrink-0 opacity-75" />
+                        <span className="truncate">
+                          {linkLabels.length ? linkLabels.join(' · ') : 'No unit or chapter linked'}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        aria-expanded={isOrganizing}
+                        aria-label={`Organize syllabus links for ${deck.title}`}
+                        onClick={() => setOrganizingDeckId(isOrganizing ? null : deck.id)}
+                        className="text-[12px] font-medium px-2 py-0.5 rounded-md whitespace-nowrap shrink-0 transition-colors hover:bg-[var(--bg-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                        style={{ color: isOrganizing ? 'var(--accent)' : 'var(--text-secondary)' }}
+                      >
+                        {isOrganizing ? 'Close' : 'Organize'}
+                      </button>
+                    </div>
+
+                    {isOrganizing && (
+                      <SyllabusLinkPicker
+                        embedded
+                        subjects={subjects}
+                        subjectId={deck.subjectId}
+                        onSubjectChange={(nextSubjectId) =>
+                          updateDeckLinks(deck.id, nextSubjectId, undefined)
+                        }
+                        links={deck.syllabusLinks}
+                        onChange={(links) => updateDeckLinks(deck.id, deck.subjectId, links)}
+                        onDone={() => setOrganizingDeckId(null)}
+                      />
+                    )}
                   </div>
 
-<div className="space-y-2"><label className="text-xs text-[var(--text-muted)]">Subject <select value={deck.subjectId} onChange={e=>updateDeckLinks(deck.id,e.target.value,undefined)} className="ml-2 rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)]"><option value="">Unassigned</option>{subjects.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>{sub&&<SyllabusLinkPicker subject={sub} links={deck.syllabusLinks} onChange={links=>updateDeckLinks(deck.id,sub.id,links)}/>}</div>
-                                    <div className="pt-3 flex flex-wrap items-center justify-between gap-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                  <div
+                    className="pt-3 flex flex-wrap items-center justify-between gap-2"
+                    style={{ borderTop: '1px solid var(--border-subtle)' }}
+                  >
                     <div className="text-[12px] text-[var(--text-muted)]">
-                      <span className="font-mono-num font-semibold text-[var(--text-primary)]">{due}</span> due today ·{' '}
-                      <span className="font-mono-num">{cards.length}</span> total
+                      <span className="font-mono-num tabular-nums font-semibold text-[var(--text-primary)]">
+                        {due}
+                      </span>{' '}
+                      due ·{' '}
+                      <span className="font-mono-num tabular-nums">{cards.length}</span>{' '}
+                      {cards.length === 1 ? 'card' : 'cards'}
                       {deckSrs && deckSrs.atRiskCount > 0 ? (
-                        <span className="ml-1.5 text-rose-600 dark:text-rose-400 font-mono-num">
-                          · {deckSrs.atRiskCount} at-risk
+                        <span className="ml-1.5 text-rose-600 dark:text-rose-400">
+                          · <span className="font-mono-num tabular-nums">{deckSrs.atRiskCount}</span>{' '}
+                          at-risk
                         </span>
                       ) : null}
                     </div>
@@ -951,7 +1047,7 @@ export const FlashcardsView: React.FC = () => {
                         type="button"
                         onClick={() => handleExportAnkiDeck(deck.id, deck.title)}
                         title="Export deck as Anki-compatible TSV"
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] whitespace-nowrap"
+                        className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                         style={{ border: '1px solid var(--border-subtle)' }}
                       >
                         <Download className="w-3.5 h-3.5" /> Anki TSV
@@ -965,16 +1061,17 @@ export const FlashcardsView: React.FC = () => {
                           setSessionDone(false);
                           setReviewedInSession(0);
                         }}
-                        className="px-3 py-1.5 rounded-lg text-[12.5px] font-medium whitespace-nowrap"
+                        className="h-8 px-3.5 rounded-lg text-[12.5px] font-medium whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                         style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
                       >
                         Study Deck
                       </button>
                     </div>
                   </div>
-                </div>
+                </article>
               );
-}} />
+            }}
+          />
 
           {/* Review History & Spaced Repetition Schedule */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">

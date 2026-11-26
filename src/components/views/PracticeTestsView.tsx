@@ -2,6 +2,7 @@ import { SyllabusResourceBrowser } from '../syllabus/SyllabusResourceBrowser';
 import { SyllabusLinkPicker } from '../syllabus/SyllabusLinkPicker';
 import { useAssistant } from '../../assistant/AssistantContext';
 import { StudyGeneration } from '../../notes/StudyGeneration';
+import { formatChapterTitle, syllabusLinkLabels } from '../../utils/syllabusHierarchy';
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import {
   ResponsiveContainer,
@@ -21,6 +22,8 @@ import {
   Play,
   Sparkles,
   PenTool,
+  Layers,
+  History,
 } from 'lucide-react';
 import type { PracticeAttempt } from '../../types/studyflow';
 import { useApp } from '../../context/AppContext';
@@ -43,6 +46,8 @@ export const PracticeTestsView: React.FC = () => {
   const shortMarks=Object.fromEntries(Object.entries(marks).map(([id,mark])=>[id,mark.correct]));
   const [review, setReview] = useState<PracticeAttempt['review']>();
   const [submitted, setSubmitted] = useState(false);
+  const [organizingQuizId, setOrganizingQuizId] = useState<string | null>(null);
+  const [openHistoryId, setOpenHistoryId] = useState<string | null>(null);
 
   const activeQuiz = quizzes.find((q) => q.id === activeQuizId) ?? null;
 
@@ -519,7 +524,7 @@ export const PracticeTestsView: React.FC = () => {
               { openFloating: true },
             )
           }
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]"
+          className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[12.5px] font-medium whitespace-nowrap text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           style={{ border: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-surface)' }}
         >
           <Sparkles className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} /> Ask Pip for a Quiz
@@ -528,65 +533,197 @@ export const PracticeTestsView: React.FC = () => {
 
       <StudyGeneration quiz onQuizCreated={(id) => startQuiz(id)} />
 
-      <SyllabusResourceBrowser subjects={subjects} resources={quizzes} label="practice tests" onCreate={(subject,chapterId)=>{const chapter=subject.chapters.find(ch=>ch.id===chapterId);if(chapter)askPip(`Create a practice test for ${subject.name}, ${chapter.title}. Use subject ID ${subject.id} and syllabusLinks.chapterIds [${JSON.stringify(chapterId)}]. Review before saving.`,{draftOnly:true,openFloating:true})}} render={(qz,displayTitle)=>{
+      <SyllabusResourceBrowser
+        subjects={subjects}
+        resources={quizzes}
+        label="practice tests"
+        createLabel="Create test"
+        onCreate={(subject, chapterId) => {
+          const chapter = subject.chapters.find((ch) => ch.id === chapterId);
+          if (chapter) {
+            askPip(
+              `Create a practice test for ${subject.name}, ${formatChapterTitle(subject, chapter)}. Use subject ID ${subject.id} and syllabusLinks.chapterIds [${JSON.stringify(chapterId)}]. Review before saving.`,
+              { draftOnly: true, openFloating: true },
+            );
+          }
+        }}
+        render={(qz, displayTitle) => {
           const sub = subjects.find((s) => s.id === qz.subjectId);
+          const linkLabels = syllabusLinkLabels(sub, qz.syllabusLinks);
+          const isOrganizing = organizingQuizId === qz.id;
+          const isHistoryOpen = openHistoryId === qz.id;
+          const attempts = qz.attempts ?? [];
+          const topicsPreview = Array.from(new Set(qz.questions.map((x) => x.topic)))
+            .slice(0, 2)
+            .join(', ');
+
           return (
-            <div key={qz.id} className="rounded-xl p-5 flex flex-col justify-between gap-4" style={surfaceStyle}>
-              <div>
-                <div className="flex items-center justify-between text-[12px]">
-                  <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: sub?.color }}>
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: sub?.color }} />
-                    {sub?.code} · {qz.difficulty}
+            <article
+              key={qz.id}
+              className="rounded-xl p-4 flex flex-col justify-between gap-3.5 transition-colors hover:border-[var(--border-strong)]"
+              style={surfaceStyle}
+            >
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2 text-[12px]">
+                  <span
+                    className="inline-flex items-center gap-1.5 font-medium truncate"
+                    style={{ color: sub?.color ?? 'var(--text-muted)' }}
+                  >
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: sub?.color ?? 'var(--text-muted)' }}
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">
+                      {sub ? `${sub.code} · ${qz.difficulty}` : qz.difficulty}
+                    </span>
                   </span>
                   {qz.lastScore !== undefined && (
-                    <span className="font-mono-num text-[var(--text-secondary)]">
-                      Last: {qz.lastScore}%
+                    <span className="text-[var(--text-muted)] shrink-0">
+                      Last{' '}
+                      <span className="font-mono-num tabular-nums font-medium text-[var(--text-secondary)]">
+                        {qz.lastScore}%
+                      </span>
                     </span>
                   )}
                 </div>
-                <h2 className="font-display text-[16px] font-semibold text-[var(--text-primary)] mt-1.5">
-                  {displayTitle}
-                </h2>
-                <div className="text-[12px] text-[var(--text-muted)] mt-1">
-                  {qz.questions.length} questions (MCQ + short answer) · {qz.durationMinutes} min timer
+
+                <div>
+                  <h2 className="font-display text-[15.5px] font-semibold text-[var(--text-primary)] leading-snug">
+                    {displayTitle}
+                  </h2>
+                  <div className="text-[12px] text-[var(--text-muted)] mt-0.5">
+                    <span className="font-mono-num tabular-nums">{qz.questions.length}</span>{' '}
+                    {qz.questions.length === 1 ? 'question' : 'questions'} ·{' '}
+                    <span className="font-mono-num tabular-nums">{qz.durationMinutes}</span> min timer
+                  </div>
                 </div>
+
+                {/* Quiet syllabus link & history controls */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-[12px]">
+                  <span className="inline-flex items-center gap-1.5 min-w-0 text-[var(--text-muted)]">
+                    <Layers className="w-3.5 h-3.5 shrink-0 opacity-75" />
+                    <span className="truncate">
+                      {linkLabels.length ? linkLabels.join(' · ') : 'No unit or chapter linked'}
+                    </span>
+                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {attempts.length > 0 && (
+                      <button
+                        type="button"
+                        aria-expanded={isHistoryOpen}
+                        onClick={() => {
+                          setOpenHistoryId(isHistoryOpen ? null : qz.id);
+                          if (!isHistoryOpen) setOrganizingQuizId(null);
+                        }}
+                        className="inline-flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-md whitespace-nowrap transition-colors hover:bg-[var(--bg-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                        style={{ color: isHistoryOpen ? 'var(--accent)' : 'var(--text-secondary)' }}
+                      >
+                        <History className="w-3 h-3" />
+                        <span className="font-mono-num tabular-nums">{attempts.length}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      aria-expanded={isOrganizing}
+                      aria-label={`Organize syllabus links for ${qz.title}`}
+                      onClick={() => {
+                        setOrganizingQuizId(isOrganizing ? null : qz.id);
+                        if (!isOrganizing) setOpenHistoryId(null);
+                      }}
+                      className="text-[12px] font-medium px-2 py-0.5 rounded-md whitespace-nowrap transition-colors hover:bg-[var(--bg-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                      style={{ color: isOrganizing ? 'var(--accent)' : 'var(--text-secondary)' }}
+                    >
+                      {isOrganizing ? 'Close' : 'Organize'}
+                    </button>
+                  </div>
+                </div>
+
+                {isOrganizing && (
+                  <SyllabusLinkPicker
+                    embedded
+                    subjects={subjects}
+                    subjectId={qz.subjectId}
+                    onSubjectChange={(nextSubjectId) =>
+                      updateQuizLinks(qz.id, nextSubjectId, undefined)
+                    }
+                    links={qz.syllabusLinks}
+                    onChange={(links) => updateQuizLinks(qz.id, qz.subjectId, links)}
+                    onDone={() => setOrganizingQuizId(null)}
+                  />
+                )}
+
+                {isHistoryOpen && attempts.length > 0 && (
+                  <div
+                    className="rounded-lg divide-y divide-[var(--border-subtle)] text-[12px]"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-subtle)',
+                      border: '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    {[...attempts].reverse().map((attempt, index) => (
+                      <div
+                        key={attempt.id ?? index}
+                        className="px-3 py-2 flex items-center justify-between gap-2"
+                      >
+                        <span className="text-[var(--text-secondary)] truncate">
+                          {new Date(attempt.at).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}{' '}
+                          ·{' '}
+                          <span className="font-mono-num tabular-nums font-semibold text-[var(--text-primary)]">
+                            {attempt.score}%
+                          </span>
+                        </span>
+                        {attempt.review ? (
+                          <button
+                            type="button"
+                            className="text-[12px] font-medium hover:underline whitespace-nowrap shrink-0"
+                            style={{ color: 'var(--accent)' }}
+                            onClick={() => {
+                              setActiveQuizId(qz.id);
+                              setReview(attempt.review);
+                              setAnswers(attempt.review!.answers);
+                              setMarks(attempt.review!.marks);
+                              setSubmitted(true);
+                            }}
+                          >
+                            Review
+                          </button>
+                        ) : (
+                          <span className="text-[11.5px] text-[var(--text-muted)] shrink-0">
+                            Score only
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-<div className="space-y-2"><label className="text-xs text-[var(--text-muted)]">Subject <select value={qz.subjectId} onChange={e=>updateQuizLinks(qz.id,e.target.value,undefined)} className="ml-2 rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)]"><option value="">Unassigned</option>{subjects.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>{sub&&<SyllabusLinkPicker subject={sub} links={qz.syllabusLinks} onChange={links=>updateQuizLinks(qz.id,sub.id,links)}/>}</div>
-                                {!!qz.attempts?.length && <details className="text-sm">
-                <summary>Attempt history ({qz.attempts.length})</summary>
-                <ul className="mt-2 space-y-2">
-                  {[...qz.attempts].reverse().map((attempt, index) => (
-                    <li key={attempt.id ?? index} className="flex flex-wrap items-center justify-between gap-2">
-                      <span>{new Date(attempt.at).toLocaleString()} · {attempt.score}%</span>
-                      {attempt.review ? <button type="button" className="underline" onClick={() => {
-                        setActiveQuizId(qz.id);
-                        setReview(attempt.review);
-                        setAnswers(attempt.review!.answers);
-                        setMarks(attempt.review!.marks);
-                        setSubmitted(true);
-                      }}>Review attempt</button> : <span className="text-[var(--text-muted)]">Score only</span>}
-                    </li>
-                  ))}
-                </ul>
-              </details>}
-
-              <div className="pt-3 flex items-center justify-between" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                <span className="text-[12px] text-[var(--text-secondary)]">
-                  Topics: {Array.from(new Set(qz.questions.map((x) => x.topic))).slice(0, 2).join(', ')}
+              <div
+                className="pt-3 flex items-center justify-between gap-3"
+                style={{ borderTop: '1px solid var(--border-subtle)' }}
+              >
+                <span className="text-[12px] text-[var(--text-muted)] truncate min-w-0">
+                  {topicsPreview ? `Topics: ${topicsPreview}` : 'General review'}
                 </span>
                 <button
                   type="button"
                   onClick={() => startQuiz(qz.id)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[12.5px] font-medium shrink-0"
+                  className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-[12.5px] font-medium shrink-0 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                   style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
                 >
                   <Play className="w-3.5 h-3.5" /> Start Quiz
                 </button>
               </div>
-            </div>
+            </article>
           );
-}} />
+        }}
+      />
     </div>
   );
 };

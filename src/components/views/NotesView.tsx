@@ -1,6 +1,6 @@
 import { buildExcerptPrompt, excerptFromSelection, excerptFromText, MAX_NOTE_EXCERPT, selectionActions, type NoteExcerpt, type SelectionAction } from '../../utils/noteSelection';
 import { SyllabusLinkPicker } from '../syllabus/SyllabusLinkPicker';
-import { chapterNumber, groupedChapters, matchesSyllabusScope, syllabusLinkLabels } from '../../utils/syllabusHierarchy';
+import { formatChapterTitle, formatUnitTitle, groupedChapters, matchesSyllabusScope, syllabusLinkLabels } from '../../utils/syllabusHierarchy';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bold,
@@ -641,8 +641,8 @@ export const NotesView: React.FC = () => {
           </div>
           <div className="space-y-1">
             <select aria-label="Filter notes by subject" value={notesSyllabusScope.subjectId} onChange={e=>setNotesSyllabusScope({subjectId:e.target.value})} className="w-full text-xs rounded px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)]"><option value="">All subjects</option>{subjects.map(subject=><option key={subject.id} value={subject.id}>{subject.name}</option>)}</select>
-            {scopeSubject && <select aria-label="Filter notes by unit" value={notesSyllabusScope.unitId ?? ''} onChange={e=>setNotesSyllabusScope({subjectId:scopeSubject.id,unitId:e.target.value || undefined})} className="w-full text-xs rounded px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)]"><option value="">All units</option>{groups.map(({unit,number})=><option key={unit.id} value={unit.id}>{number}. {unit.title}</option>)}</select>}
-            {scopeSubject && <select aria-label="Filter notes by chapter" value={notesSyllabusScope.chapterId ?? ''} onChange={e=>setNotesSyllabusScope({...notesSyllabusScope,chapterId:e.target.value || undefined})} className="w-full text-xs rounded px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)]"><option value="">All chapters</option>{groups.filter(({unit})=>!notesSyllabusScope.unitId || unit.id===notesSyllabusScope.unitId).flatMap(({chapters})=>chapters.map(ch=><option key={ch.id} value={ch.id}>{chapterNumber(scopeSubject,ch.id)} {ch.title}</option>))}</select>}
+            {scopeSubject && <select aria-label="Filter notes by unit" value={notesSyllabusScope.unitId ?? ''} onChange={e=>setNotesSyllabusScope({subjectId:scopeSubject.id,unitId:e.target.value || undefined})} className="w-full text-xs rounded px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)]"><option value="">All units</option>{groups.map(({unit,number})=><option key={unit.id} value={unit.id}>{formatUnitTitle(number, unit.title)}</option>)}</select>}
+            {scopeSubject && <select aria-label="Filter notes by chapter" value={notesSyllabusScope.chapterId ?? ''} onChange={e=>setNotesSyllabusScope({...notesSyllabusScope,chapterId:e.target.value || undefined})} className="w-full text-xs rounded px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)]"><option value="">All chapters</option>{groups.filter(({unit})=>!notesSyllabusScope.unitId || unit.id===notesSyllabusScope.unitId).flatMap(({chapters})=>chapters.map(ch=><option key={ch.id} value={ch.id}>{formatChapterTitle(scopeSubject, ch)}</option>))}</select>}
           </div>
         </div>
 

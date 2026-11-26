@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Coffee, Moon } from 'lucide-react';
 import { useCompanion } from '../CompanionContext';
+import { computeAdaptiveHourHeight } from '../../utils/calendarLayout';
 import {
   WEEK_DAYS,
   calculateDailyStudyMinutes,
@@ -11,7 +12,7 @@ import {
 } from '../companionLogic';
 import { COMPANION_UTC_OFFSET } from '../sampleData';
 
-const HOUR_HEIGHT = 54;
+const DEFAULT_MOBILE_HOUR_HEIGHT = 54;
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 function formatAxisHour(hour: number): string {
@@ -36,16 +37,98 @@ export const CalendarView: React.FC = () => {
   const { dayIndex: todayIndex, minuteOfDay: nowMinute } = fromAbsMin(nowAbsMin);
   const subjectMap = new Map(subjects.map((s) => [s.id, s]));
 
-  const segments = getTimelineSegmentsForDay(blocks, selectedDayIndex);
+  const segments = useMemo(
+    () => getTimelineSegmentsForDay(blocks, selectedDayIndex),
+    [blocks, selectedDayIndex],
+  );
   const studyTotalMin = calculateDailyStudyMinutes(blocks, selectedDayIndex);
   const selectedDay = WEEK_DAYS[selectedDayIndex] ?? WEEK_DAYS[0];
+
+  const adaptive = useMemo(
+    () =>
+      computeAdaptiveHourHeight(
+        [
+          segments.map((seg) => ({
+            from: seg.segmentStartMin / 60,
+            to: seg.segmentEndMin / 60,
+            isBackground: seg.block.type === 'sleep' || seg.block.type === 'free',
+          })),
+        ],
+        { minHourHeight: 36, maxHourHeight: 88, defaultHourHeight: DEFAULT_MOBILE_HOUR_HEIGHT },
+      ),
+    [segments],
+  );
+
+  const hourHeightRef = useRef<number>(adaptive.hourHeight);
+  const heightVelocityRef = useRef<number>(0);
+  const [hourHeight, setHourHeight] = useState<number>(adaptive.hourHeight);
+
+  useEffect(() => {
+    const toH = adaptive.hourHeight;
+    if (Math.abs(hourHeightRef.current - toH) < 0.1 && Math.abs(heightVelocityRef.current) < 0.1) {
+      hourHeightRef.current = toH;
+      heightVelocityRef.current = 0;
+      setHourHeight(toH);
+      return;
+    }
+
+    const syncScroll = (prevH: number, nextH: number) => {
+      const el = scrollRef.current;
+      if (!el || prevH <= 0) return;
+      const centerHour = (el.scrollTop + el.clientHeight / 2) / prevH;
+      el.scrollTop = Math.max(0, centerHour * nextH - el.clientHeight / 2);
+    };
+
+    const reducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion) {
+      syncScroll(hourHeightRef.current, toH);
+      hourHeightRef.current = toH;
+      heightVelocityRef.current = 0;
+      setHourHeight(toH);
+      return;
+    }
+
+    let rafId = 0;
+    let lastTs = performance.now();
+    const stiffness = 170;
+    const damping = 26;
+
+    const step = (nowTs: number) => {
+      const dt = Math.min(0.032, Math.max(0.001, (nowTs - lastTs) / 1000));
+      lastTs = nowTs;
+
+      const prevH = hourHeightRef.current;
+      const acceleration = -stiffness * (prevH - toH) - damping * heightVelocityRef.current;
+      const nextVelocity = heightVelocityRef.current + acceleration * dt;
+      const nextH = prevH + nextVelocity * dt;
+
+      if (Math.abs(toH - nextH) < 0.08 && Math.abs(nextVelocity) < 0.5) {
+        syncScroll(prevH, toH);
+        hourHeightRef.current = toH;
+        heightVelocityRef.current = 0;
+        setHourHeight(toH);
+        return;
+      }
+
+      syncScroll(prevH, nextH);
+      hourHeightRef.current = nextH;
+      heightVelocityRef.current = nextVelocity;
+      setHourHeight(nextH);
+      rafId = window.requestAnimationFrame(step);
+    };
+
+    rafId = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [adaptive.hourHeight]);
 
   // Auto-scroll timeline to roughly 1 hour before current time on mount or day switch
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const focusMin = selectedDayIndex === todayIndex ? Math.max(0, nowMinute - 90) : 6 * 60;
-    el.scrollTop = (focusMin / 60) * HOUR_HEIGHT;
+    el.scrollTop = (focusMin / 60) * hourHeightRef.current;
   }, [selectedDayIndex, todayIndex]);
 
   return (
@@ -171,7 +254,7 @@ export const CalendarView: React.FC = () => {
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-2 py-2">
         <div
           className="relative"
-          style={{ height: `${HOURS.length * HOUR_HEIGHT}px` }}
+          style={{ height: `${HOURS.length * hourHeight}px` }}
         >
           {/* Hour grid lines */}
           {HOURS.map((hour) => (
@@ -179,8 +262,8 @@ export const CalendarView: React.FC = () => {
               key={hour}
               className="absolute inset-x-0 flex items-start"
               style={{
-                top: `${hour * HOUR_HEIGHT}px`,
-                height: `${HOUR_HEIGHT}px`,
+                top: `${hour * hourHeight}px`,
+                height: `${hourHeight}px`,
               }}
             >
               <div className="w-[52px] pr-2 text-right font-mono-num text-[calc(10.5px*var(--sf-font-scale,1))] text-[var(--text-muted)] -mt-1.5 shrink-0 select-none">
@@ -197,8 +280,8 @@ export const CalendarView: React.FC = () => {
           <div className="absolute top-0 bottom-0 left-[54px] right-1">
             {segments.map((seg) => {
               const { block, segmentStartMin, segmentEndMin } = seg;
-              const topPx = (segmentStartMin / 60) * HOUR_HEIGHT;
-              const heightPx = Math.max(48, ((segmentEndMin - segmentStartMin) / 60) * HOUR_HEIGHT - 3);
+              const topPx = (segmentStartMin / 60) * hourHeight;
+              const heightPx = Math.max(32, ((segmentEndMin - segmentStartMin) / 60) * hourHeight - 3);
               const sub = block.subjectId ? subjectMap.get(block.subjectId) : undefined;
               const isSelected = selectedBlockId === block.id;
 
@@ -297,7 +380,7 @@ export const CalendarView: React.FC = () => {
               <div
                 aria-label={`Current time ${formatMinutes12h(nowMinute)}`}
                 className="absolute inset-x-0 pointer-events-none flex items-center z-10"
-                style={{ top: `${(nowMinute / 60) * HOUR_HEIGHT}px` }}
+                style={{ top: `${(nowMinute / 60) * hourHeight}px` }}
               >
                 <span className="w-2.5 h-2.5 rounded-full -ml-1.5 bg-rose-500 shrink-0" />
                 <div className="flex-1 h-[1.5px] bg-rose-500" />

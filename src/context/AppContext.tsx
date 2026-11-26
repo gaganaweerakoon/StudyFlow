@@ -51,8 +51,9 @@ import { localDay } from '../assistant/workspaceContext';
 import { resolveOfflineFocus, validOfflineRecord, type OfflineFocusRecord, type OfflineReceipts } from '../companion/offlineFocus';
 import { scheduleFlashcardReview, type ReviewRating } from '../utils/studyLogic';
 import { removeLegacySubject, unassignSubject } from '../utils/subjectReferences';
-import { normalizeSyllabus, moveChapter, moveSyllabusItem, mergeImportedChapters, sanitizeSyllabusLinks, removeChapterLink, type SyllabusScope, type IncomingChapter } from '../utils/syllabusHierarchy';
-import { calendarProjectionDates } from '../utils/calendarLayout';
+import { normalizeSyllabus, moveChapter, moveSyllabusItem, mergeImportedChapters, sanitizeSyllabusLinks, removeChapterLink, stripSyllabusNumberPrefix, type SyllabusScope, type IncomingChapter } from '../utils/syllabusHierarchy';
+import { calendarProjectionDates, formatSessionDurationCompact } from '../utils/calendarLayout';
+import { plannedBlocksForDay } from '../utils/workspaceMetrics';
 import {
   advanceFocusTimerState,
   clampBreakMinutes,
@@ -73,6 +74,7 @@ import { playSessionStartChime, showBrowserSessionNotification } from '../utils/
 export interface ToastMessage {
   id: string;
   text: string;
+  replaceKey?: string;
 }
 
 export interface FocusTimerState {
@@ -280,7 +282,7 @@ interface AppContextValue {
   updatePreferences: (patch: Partial<UserPreferences>) => void;
 
   toasts: ToastMessage[];
-  pushToast: (text: string) => void;
+  pushToast: (text: string, replaceKey?: string) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -472,20 +474,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
 
   useEffect(autosave, [saveWorkspace]);
 
-  const toastTimerRef = useRef<number[]>([]);
+  const toastTimerRef = useRef<Map<string, number>>(new Map());
 
-  const pushToast = useCallback((text: string) => {
-    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    setToasts((prev) => [...prev.slice(-2), { id, text }]);
+  const pushToast = useCallback((text: string, replaceKey?: string) => {
+    const id = replaceKey ? `toast-${replaceKey}` : `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const existingTimer = toastTimerRef.current.get(id);
+    if (existingTimer !== undefined) {
+      window.clearTimeout(existingTimer);
+    }
+    setToasts((prev) => {
+      const filtered = replaceKey ? prev.filter((t) => t.replaceKey !== replaceKey) : prev;
+      return [...filtered.slice(-2), { id, text, replaceKey }];
+    });
     const timer = window.setTimeout(() => {
+      toastTimerRef.current.delete(id);
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3000);
-    toastTimerRef.current.push(timer);
+    }, 3200);
+    toastTimerRef.current.set(id, timer);
   }, []);
 
   useEffect(() => {
     return () => {
-      toastTimerRef.current.forEach((id) => window.clearTimeout(id));
+      toastTimerRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      toastTimerRef.current.clear();
     };
   }, []);
 
@@ -1151,8 +1162,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   );
 
   const addUnit = useCallback((subjectId: string, title: string) => {
-    if (!title.trim()) return;
-    const unit = { id: `unit-${crypto.randomUUID()}`, title: title.trim() };
+    const cleanTitle = stripSyllabusNumberPrefix(title);
+    if (!cleanTitle) return;
+    const unit = { id: `unit-${crypto.randomUUID()}`, title: cleanTitle };
     setSubjects(previous => previous.map(subject => {
       if (subject.id !== subjectId) return subject;
       const next = normalizeSyllabus(subject);
@@ -1160,9 +1172,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     }));
   }, []);
   const updateUnit = useCallback((subjectId: string, unitId: string, patch: { title?: string; archived?: boolean }) => {
-    if (patch.title !== undefined && !patch.title.trim()) return;
+    const cleanTitle = patch.title !== undefined ? stripSyllabusNumberPrefix(patch.title) : undefined;
+    if (patch.title !== undefined && !cleanTitle) return;
     setSubjects(previous => previous.map(subject => subject.id !== subjectId ? subject : {
-      ...subject, units: (normalizeSyllabus(subject).units ?? []).map(unit => unit.id !== unitId ? unit : { ...unit, ...patch, ...(patch.title !== undefined ? { title: patch.title.trim() } : {}) }),
+      ...subject, units: (normalizeSyllabus(subject).units ?? []).map(unit => unit.id !== unitId ? unit : { ...unit, ...patch, ...(cleanTitle !== undefined ? { title: cleanTitle } : {}) }),
     }));
   }, []);
   const reorderUnit = useCallback((subjectId: string, unitId: string, delta: -1 | 1) => {
@@ -1173,7 +1186,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   }, []);
   const addChapter = useCallback(
     (subjectId: string, title: string, topicTitles: string[] = [], unitId?: string) => {
-      const cleanTitle = title.trim();
+      const cleanTitle = stripSyllabusNumberPrefix(title);
       if (!cleanTitle) return;
       const cleanTopics = topicTitles
         .map((t) => t.trim())
@@ -1285,7 +1298,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
 
   const updateChapter = useCallback(
     (subjectId: string, chapterId: string, title: string, unitId?: string) => {
-      const cleanTitle = title.trim();
+      const cleanTitle = stripSyllabusNumberPrefix(title);
       if (!cleanTitle) return;
       setSubjects((prev) =>
         prev.map((sub) => {
@@ -1374,6 +1387,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   // Study Session mutations
   const addSession = useCallback(
     (session: Omit<StudySession, 'id'>, weekdays: number[] = []) => {
+      const createdId = `ses-${crypto.randomUUID()}`;
+      const previewEntry: StudySession = { ...session, id: createdId };
+      const appliesToDate = weekdays.length === 0 || weekdays.includes(session.dayIndex);
+      const nextSessions = appliesToDate ? [...sessions, previewEntry] : sessions;
+      const dailyLoadHours = plannedBlocksForDay(nextSessions, session.date).reduce(
+        (sum, block) => sum + (block.to - block.from),
+        0,
+      );
+
       if (weekdays.length) {
         const clock = (hours: number) => {
           const minutes = Math.round(hours * 60) % 1440;
@@ -1393,11 +1415,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
           };
         });
       } else {
-        setSessions(previous => [...previous, { ...session, id: `ses-${crypto.randomUUID()}` }]);
+        setSessions(previous => [...previous, previewEntry]);
       }
-      pushToast(`Scheduled: ${session.title}`);
+
+      const durationText = formatSessionDurationCompact(session.durationHours);
+      const loadText = formatSessionDurationCompact(dailyLoadHours);
+      pushToast(
+        `Scheduled "${session.title}" · ${durationText} · ${loadText} daily load`,
+        'session-activity',
+      );
     },
-    [pushToast],
+    [pushToast, sessions],
   );
 
   const updateSession = useCallback((id: string, patch: Partial<StudySession>) => {
@@ -1406,7 +1434,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       if (prev.some(item => item.id === id)) return prev.map(item => item.id === id ? { ...item, ...patch } : item);
       return projected ? [...prev, { ...projected, ...patch }] : prev;
     });
-  }, [sessions]);
+
+    if (
+      projected &&
+      patch.durationHours !== undefined &&
+      Math.abs(patch.durationHours - projected.durationHours) > 0.001
+    ) {
+      const updated: StudySession = { ...projected, ...patch };
+      const nextSessions = sessions.some(item => item.id === id)
+        ? sessions.map(item => (item.id === id ? updated : item))
+        : [...sessions, updated];
+      const dailyLoadHours = plannedBlocksForDay(nextSessions, updated.date).reduce(
+        (sum, block) => sum + (block.to - block.from),
+        0,
+      );
+      const durationText = formatSessionDurationCompact(updated.durationHours);
+      const loadText = formatSessionDurationCompact(dailyLoadHours);
+      pushToast(
+        `Resized "${updated.title}" to ${durationText} · ${loadText} daily load`,
+        'session-activity',
+      );
+    }
+  }, [sessions, pushToast]);
 
   const updateRecurringSeries = archive && ((id: number, title: string, startHour: number, durationHours: number, fields?: Pick<StudySession, 'blockType' | 'countsTowardStudy' | 'alarms'>, subjectId?: string, weekdays?: number[]) => {
     const clock = (hours: number) => {

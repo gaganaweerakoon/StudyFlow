@@ -31,6 +31,30 @@ export function chapterNumber(subject: Subject, chapterId: string): string {
   return `${unitIndex + 1}.${chapterIndex + 1}`;
 }
 
+const LEADING_SYLLABUS_NUMBER_RE =
+  /^\s*(?:\d+(?:\.\d+)+\.?(?:\s*[·:–—-]\s*|\s+)|\d+(?:\.(?!\d)|\)|:|\s+[·–—-])\s*)/;
+
+export function stripSyllabusNumberPrefix(title: string): string {
+  let current = title.trim();
+  while (current) {
+    const next = current.replace(LEADING_SYLLABUS_NUMBER_RE, '').trim();
+    if (!next || next === current) break;
+    current = next;
+  }
+  return current;
+}
+
+export function formatUnitTitle(unitNumber: number, title: string): string {
+  const clean = stripSyllabusNumberPrefix(title);
+  return clean ? `${unitNumber}. ${clean}` : `${unitNumber}.`;
+}
+
+export function formatChapterTitle(subject: Subject, chapter: Pick<ChapterItem, 'id' | 'title'>): string {
+  const num = chapterNumber(subject, chapter.id);
+  const clean = stripSyllabusNumberPrefix(chapter.title);
+  return num ? (clean ? `${num} ${clean}` : num) : clean;
+}
+
 export function groupedChapters(subject: Subject) {
   const normalized = normalizeSyllabus(subject);
   return (normalized.units ?? []).map((unit, index) => ({ unit, number: index + 1, chapters: normalized.chapters.filter(chapter => chapter.unitId === unit.id) }));
@@ -69,16 +93,18 @@ export function mergeImportedChapters(subject: Subject, incoming: IncomingChapte
   const chapters = [...normalized.chapters];
   for (const item of incoming) {
     const { unitTitle, ...chapter } = item;
-    if (!chapter.title.trim()) continue;
+    const cleanTitle = stripSyllabusNumberPrefix(chapter.title);
+    if (!cleanTitle) continue;
+    const cleanUnitTitle = unitTitle ? stripSyllabusNumberPrefix(unitTitle) : '';
     let unit = units.find(candidate => candidate.id === chapter.unitId && !candidate.archived);
-    if (!unit && unitTitle?.trim()) {
-      unit = units.find(candidate => key(candidate.title) === key(unitTitle) && !candidate.archived);
-      if (!unit) { unit = { id: `unit-${crypto.randomUUID()}`, title: unitTitle.trim() }; units.push(unit); }
+    if (!unit && cleanUnitTitle) {
+      unit = units.find(candidate => key(stripSyllabusNumberPrefix(candidate.title)) === key(cleanUnitTitle) && !candidate.archived);
+      if (!unit) { unit = { id: `unit-${crypto.randomUUID()}`, title: cleanUnitTitle }; units.push(unit); }
     }
     if (!unit) unit = units.find(candidate => !candidate.archived);
     if (!unit) { unit = { id: `unit-${crypto.randomUUID()}`, title: 'General' }; units.push(unit); }
-    const existingIndex = chapters.findIndex(candidate => candidate.unitId === unit.id && key(candidate.title) === key(chapter.title));
-    if (existingIndex < 0) { chapters.push({ ...chapter, unitId: unit.id }); continue; }
+    const existingIndex = chapters.findIndex(candidate => candidate.unitId === unit.id && key(stripSyllabusNumberPrefix(candidate.title)) === key(cleanTitle));
+    if (existingIndex < 0) { chapters.push({ ...chapter, title: cleanTitle, unitId: unit.id }); continue; }
     const existing = chapters[existingIndex];
     const known = new Set(existing.topics.map(topic => key(topic.title)));
     const topics = [...existing.topics];
@@ -113,7 +139,10 @@ export function removeChapterLink<T extends {subjectId: string; syllabusLinks?: 
 export function syllabusLinkLabels(subject: Subject | undefined, links: SyllabusLinks | undefined): string[] {
   if (!subject || !links) return [];
   const normalized = normalizeSyllabus(subject);
-  return [...(normalized.units ?? []).flatMap((unit,index) => links.unitIds?.includes(unit.id) ? [`${index+1}. ${unit.title}`] : []), ...normalized.chapters.flatMap(ch => links.chapterIds?.includes(ch.id) ? [`${chapterNumber(normalized,ch.id)} ${ch.title}`] : [])];
+  return [
+    ...(normalized.units ?? []).flatMap((unit, index) => links.unitIds?.includes(unit.id) ? [formatUnitTitle(index + 1, unit.title)] : []),
+    ...normalized.chapters.flatMap(ch => links.chapterIds?.includes(ch.id) ? [formatChapterTitle(normalized, ch)] : []),
+  ];
 }
 
 /** Reject unknown or cross-subject IDs rather than silently trusting model output. */

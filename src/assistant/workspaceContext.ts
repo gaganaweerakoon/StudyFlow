@@ -1,4 +1,4 @@
-import { isChapterArchived, chapterNumber, groupedChapters } from '../utils/syllabusHierarchy';
+import { isChapterArchived, chapterNumber, groupedChapters, stripSyllabusNumberPrefix } from '../utils/syllabusHierarchy';
 import type { useApp } from '../context/AppContext';
 import { computeWorkspaceDiagnostics, findOpenSlotsForDay } from './workspaceDiagnostics';
 
@@ -423,7 +423,7 @@ export function workspaceContext(
           completionPercent: summary?.completionPercent ?? 0,
           pendingTasks: summary?.pendingTasks ?? 0,
           ...(focusTopics.length ? { weakOrPendingTopics: focusTopics } : {}),
-          ...(asksNote || asksPractice || asksFlashcards || page === 'subjects' ? { syllabus: groupedChapters(sub).filter(({unit}) => !unit.archived).slice(0, 20).map(({unit, number, chapters}) => ({id: unit.id, title: clip(unit.title), number, chapters: chapters.filter(ch => !ch.archived).slice(0, 30).map(ch => ({id: ch.id, title: clip(ch.title), number: chapterNumber(sub, ch.id)}))})) } : {}),
+          ...(asksNote || asksPractice || asksFlashcards || page === 'subjects' ? { syllabus: groupedChapters(sub).filter(({unit}) => !unit.archived).slice(0, 20).map(({unit, number, chapters}) => ({id: unit.id, title: clip(stripSyllabusNumberPrefix(unit.title)), number, chapters: chapters.filter(ch => !ch.archived).slice(0, 30).map(ch => ({id: ch.id, title: clip(stripSyllabusNumberPrefix(ch.title)), number: chapterNumber(sub, ch.id)}))})) } : {}),
         };
       }),
     );

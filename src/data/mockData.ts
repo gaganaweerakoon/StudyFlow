@@ -134,7 +134,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     chapters: [
       {
         id: 'cs-ch1',
-        title: '1. Divide & Conquer and Recurrences',
+        title: 'Divide & Conquer and Recurrences',
         topics: [
           { id: 'cs-t1', title: 'Master Theorem & Akra-Bazzi Bounds', completed: true, difficulty: 'medium', confidence: 5, revisionStatus: 'mastered' },
           { id: 'cs-t2', title: 'Fast Fourier Transform (FFT)', completed: true, difficulty: 'hard', confidence: 4, revisionStatus: 'mastered' },
@@ -142,7 +142,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
       },
       {
         id: 'cs-ch2',
-        title: '2. Dynamic Programming & Greedy Choice',
+        title: 'Dynamic Programming & Greedy Choice',
         topics: [
           { id: 'cs-t3', title: 'Optimal Substructure & Memoization', completed: true, difficulty: 'medium', confidence: 5, revisionStatus: 'mastered' },
           { id: 'cs-t4', title: 'Sequence Alignment & Edit Distance', completed: true, difficulty: 'medium', confidence: 4, revisionStatus: 'in_review' },
@@ -151,7 +151,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
       },
       {
         id: 'cs-ch3',
-        title: '3. Network Flows & NP-Completeness',
+        title: 'Network Flows & NP-Completeness',
         topics: [
           { id: 'cs-t6', title: 'Ford-Fulkerson & Max-Flow Min-Cut', completed: true, difficulty: 'medium', confidence: 4, revisionStatus: 'in_review' },
           { id: 'cs-t7', title: 'Polynomial-Time Reductions (3-SAT to Clique)', completed: false, difficulty: 'hard', confidence: 2, revisionStatus: 'not_started' },
@@ -177,7 +177,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     chapters: [
       {
         id: 'ma-ch1',
-        title: '1. Partial Derivatives & Gradients',
+        title: 'Partial Derivatives & Gradients',
         topics: [
           { id: 'ma-t1', title: 'Directional Derivatives & Tangent Planes', completed: true, difficulty: 'easy', confidence: 5, revisionStatus: 'mastered' },
           { id: 'ma-t2', title: 'Lagrange Multipliers with Two Constraints', completed: true, difficulty: 'medium', confidence: 4, revisionStatus: 'mastered' },
@@ -185,7 +185,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
       },
       {
         id: 'ma-ch2',
-        title: '2. Multiple Integrals',
+        title: 'Multiple Integrals',
         topics: [
           { id: 'ma-t3', title: 'Triple Integrals in Spherical Coordinates', completed: true, difficulty: 'medium', confidence: 4, revisionStatus: 'mastered' },
           { id: 'ma-t4', title: 'Jacobian Change of Variables', completed: true, difficulty: 'medium', confidence: 4, revisionStatus: 'in_review' },
@@ -193,7 +193,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
       },
       {
         id: 'ma-ch3',
-        title: '3. Vector Calculus Theorems',
+        title: 'Vector Calculus Theorems',
         topics: [
           { id: 'ma-t5', title: "Green's Theorem & Flux Form", completed: true, difficulty: 'medium', confidence: 4, revisionStatus: 'in_review' },
           { id: 'ma-t6', title: "Stokes' Theorem on Oriented Surfaces", completed: false, difficulty: 'hard', confidence: 3, revisionStatus: 'in_review' },
@@ -219,7 +219,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     chapters: [
       {
         id: 'ch-ch1',
-        title: '1. Aromaticity & EAS Mechanisms',
+        title: 'Aromaticity & EAS Mechanisms',
         topics: [
           { id: 'ch-t1', title: 'Hückel Rule & Annulene Stability', completed: true, difficulty: 'easy', confidence: 5, revisionStatus: 'mastered' },
           { id: 'ch-t2', title: 'Friedel-Crafts Acylation & Directing Effects', completed: true, difficulty: 'medium', confidence: 4, revisionStatus: 'mastered' },
@@ -227,7 +227,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
       },
       {
         id: 'ch-ch2',
-        title: '2. Carbonyl Condensations',
+        title: 'Carbonyl Condensations',
         topics: [
           { id: 'ch-t3', title: 'Aldol Addition vs Condensation Kinetics', completed: true, difficulty: 'medium', confidence: 3, revisionStatus: 'in_review' },
           { id: 'ch-t4', title: 'Claisen & Dieckmann Ester Cyclization', completed: false, difficulty: 'hard', confidence: 2, revisionStatus: 'in_review' },
@@ -253,7 +253,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     chapters: [
       {
         id: 'ne-ch1',
-        title: '1. Sensory Encoding & Retinotopy',
+        title: 'Sensory Encoding & Retinotopy',
         topics: [
           { id: 'ne-t1', title: 'Center-Surround Receptive Fields in LGN', completed: true, difficulty: 'medium', confidence: 5, revisionStatus: 'mastered' },
           { id: 'ne-t2', title: 'V1 Orientation Columns & Ocular Dominance', completed: true, difficulty: 'medium', confidence: 4, revisionStatus: 'mastered' },
@@ -261,7 +261,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
       },
       {
         id: 'ne-ch2',
-        title: '2. Synaptic Plasticity & Memory',
+        title: 'Synaptic Plasticity & Memory',
         topics: [
           { id: 'ne-t3', title: 'NMDA Coincidence Detection in Hippocampal CA1', completed: true, difficulty: 'hard', confidence: 4, revisionStatus: 'in_review' },
           { id: 'ne-t4', title: 'Spike-Timing Dependent Plasticity (STDP)', completed: false, difficulty: 'hard', confidence: 3, revisionStatus: 'in_review' },
@@ -286,7 +286,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     chapters: [
       {
         id: 'ec-ch1',
-        title: '1. Linear Regression & Gauss-Markov',
+        title: 'Linear Regression & Gauss-Markov',
         topics: [
           { id: 'ec-t1', title: 'OLS Asymptotics & Heteroskedasticity-Robust SE', completed: true, difficulty: 'medium', confidence: 5, revisionStatus: 'mastered' },
           { id: 'ec-t2', title: 'Omitted Variable Bias Derivation', completed: true, difficulty: 'easy', confidence: 5, revisionStatus: 'mastered' },
@@ -294,7 +294,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
       },
       {
         id: 'ec-ch2',
-        title: '2. Identification Strategies',
+        title: 'Identification Strategies',
         topics: [
           { id: 'ec-t3', title: 'Instrumental Variables & Two-Stage Least Squares', completed: true, difficulty: 'hard', confidence: 4, revisionStatus: 'in_review' },
           { id: 'ec-t4', title: 'Difference-in-Differences Parallel Trends', completed: false, difficulty: 'medium', confidence: 3, revisionStatus: 'not_started' },

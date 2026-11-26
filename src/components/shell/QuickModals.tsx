@@ -1042,25 +1042,25 @@ export const QuickModals: React.FC = () => {
         </div>
       )}
 
-      {/* Subtle Toast Stack */}
+      {/* Subtle Non-Intrusive Toast Stack */}
       {toasts.length > 0 && (
         <div
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-1.5 pointer-events-none"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-1.5 pointer-events-none max-w-[calc(100vw-2rem)]"
           aria-live="polite"
         >
           {toasts.map((t) => (
             <div
               key={t.id}
-              className="px-3.5 py-2 rounded-xl text-[12.5px] font-medium flex items-center gap-2"
+              className="px-3 py-1.5 rounded-lg text-[12px] font-medium flex items-center gap-2 tabular-nums max-w-full"
               style={{
                 backgroundColor: 'var(--bg-elevated)',
-                border: '1px solid var(--border-strong)',
+                border: '1px solid var(--border-subtle)',
                 color: 'var(--text-primary)',
                 boxShadow: 'var(--shadow-floating)',
               }}
             >
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
-              <span>{t.text}</span>
+              <span className="truncate">{t.text}</span>
             </div>
           ))}
         </div>

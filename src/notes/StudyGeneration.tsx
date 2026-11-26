@@ -221,7 +221,7 @@ export function StudyGeneration({
             </div>
             <div className="text-[11.5px] text-[var(--text-muted)] truncate">
               {quiz
-                ? 'Turn any study note or PDF section into a timed MCQ & short-answer quiz with Gemini'
+                ? 'Turn any study note or PDF section into a timed MCQ and short-answer quiz'
                 : 'Convert your notes into spaced-repetition flashcards and save to an existing or new deck'}
             </div>
           </div>

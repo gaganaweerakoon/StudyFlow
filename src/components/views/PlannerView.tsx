@@ -28,7 +28,7 @@ import { localDay } from '../../assistant/workspaceContext';
 import { useApp } from '../../context/AppContext';
 import { recurringSeriesTemplate, recurringWeekdays } from '../../desktop/legacy';
 import type { StudySession, TaskItem } from '../../types/studyflow';
-import { layoutCalendarDay } from '../../utils/calendarLayout';
+import { computeAdaptiveHourHeight, layoutCalendarDay } from '../../utils/calendarLayout';
 import { plannedBlocksForDay } from '../../utils/workspaceMetrics';
 import { formatHourLabel } from '../../utils/studyLogic';
 import { CalendarBlockFields, readCalendarBlockFields, RepeatWeekdays } from '../shell/CalendarBlockFields';
@@ -42,7 +42,9 @@ type DragPayload =
 
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
-const HOUR_HEIGHT = 60;
+const MIN_HOUR_HEIGHT = 34;
+const MAX_HOUR_HEIGHT = 96;
+const DEFAULT_HOUR_HEIGHT = 56;
 
 function parseIso(iso: string): Date {
   return new Date(`${iso}T12:00:00`);
@@ -172,24 +174,6 @@ export const PlannerView: React.FC = () => {
   const editDialogRef = useRef<HTMLDialogElement>(null);
   const createDialogRef = useRef<HTMLDialogElement>(null);
 
-  // Auto-scroll time grid to working hours (7:00 AM) on initial mount and view switches
-  useEffect(() => {
-    if (viewMode !== 'week' && viewMode !== 'day') return;
-    const el = gridScrollRef.current;
-    if (!el) return;
-    const targetHour = Math.max(0, Math.min(18, Math.floor(Math.min(7, currentHourFloat - 1))));
-    el.scrollTop = targetHour * HOUR_HEIGHT;
-  }, [viewMode]);
-
-  const scrollToNow = () => {
-    const el = gridScrollRef.current;
-    if (!el) return;
-    el.scrollTo({
-      top: Math.max(0, (currentHourFloat - 2) * HOUR_HEIGHT),
-      behavior: 'smooth',
-    });
-  };
-
   // Sync native modals cleanly
   const editingSession = useMemo(
     () => sessions.find((s) => s.id === editingSessionId) ?? null,
@@ -266,6 +250,119 @@ export const PlannerView: React.FC = () => {
     () => new Map(weekDays.map((day) => [day.date, layoutCalendarDay(visibleSessions, day.date)])),
     [weekDays, visibleSessions],
   );
+
+  // Smart auto-height adjuster for the active week/day view (uniform 1-hour gaps across the current view)
+  const adaptiveHeight = useMemo(() => {
+    const dayGroups = displayedDays.map((day) => {
+      const blocks = filteredBlocksByDate.get(day.date) ?? layoutCalendarDay(visibleSessions, day.date);
+      return blocks.map((b) => ({
+        from: b.from,
+        to: b.to,
+        columns: b.columns,
+        isBackground:
+          b.session.blockType === 'sleep' ||
+          b.session.blockType === 'free' ||
+          b.session.countsTowardStudy === false,
+      }));
+    });
+    return computeAdaptiveHourHeight(dayGroups, {
+      minHourHeight: MIN_HOUR_HEIGHT,
+      maxHourHeight: MAX_HOUR_HEIGHT,
+      defaultHourHeight: DEFAULT_HOUR_HEIGHT,
+    });
+  }, [displayedDays, filteredBlocksByDate, visibleSessions]);
+
+  const targetHourHeight = adaptiveHeight.hourHeight;
+  const hourHeightRef = useRef<number>(targetHourHeight);
+  const heightVelocityRef = useRef<number>(0);
+  const [hourHeight, setHourHeight] = useState<number>(targetHourHeight);
+
+  // Auto-scroll time grid to working hours (7:00 AM) on initial mount and view switches
+  useEffect(() => {
+    if (viewMode !== 'week' && viewMode !== 'day') return;
+    const el = gridScrollRef.current;
+    if (!el) return;
+    const targetHour = Math.max(0, Math.min(18, Math.floor(Math.min(7, currentHourFloat - 1))));
+    el.scrollTop = targetHour * hourHeightRef.current;
+  }, [viewMode]);
+
+  const scrollToNow = () => {
+    const el = gridScrollRef.current;
+    if (!el) return;
+    el.scrollTo({
+      top: Math.max(0, (currentHourFloat - 2) * hourHeightRef.current),
+      behavior: 'smooth',
+    });
+  };
+
+  // Smooth critically-damped spring transition when switching between weeks/days of different density
+  useEffect(() => {
+    const toHeight = targetHourHeight;
+    if (Math.abs(hourHeightRef.current - toHeight) < 0.1 && Math.abs(heightVelocityRef.current) < 0.1) {
+      hourHeightRef.current = toHeight;
+      heightVelocityRef.current = 0;
+      setHourHeight(toHeight);
+      return;
+    }
+
+    const syncScrollAroundCenter = (prevHeight: number, nextHeight: number) => {
+      const el = gridScrollRef.current;
+      if (!el || prevHeight <= 0) return;
+      const centerHour = (el.scrollTop + el.clientHeight / 2) / prevHeight;
+      el.scrollTop = Math.max(0, centerHour * nextHeight - el.clientHeight / 2);
+    };
+
+    const reducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+    if (reducedMotion) {
+      syncScrollAroundCenter(hourHeightRef.current, toHeight);
+      hourHeightRef.current = toHeight;
+      heightVelocityRef.current = 0;
+      setHourHeight(toHeight);
+      return;
+    }
+
+    let rafId = 0;
+    let lastTs = performance.now();
+    const stiffness = 170;
+    const damping = 26;
+
+    const step = (nowTs: number) => {
+      const dt = Math.min(0.032, Math.max(0.001, (nowTs - lastTs) / 1000));
+      lastTs = nowTs;
+
+      const prevHeight = hourHeightRef.current;
+      const displacement = prevHeight - toHeight;
+      const springForce = -stiffness * displacement;
+      const dampingForce = -damping * heightVelocityRef.current;
+      const acceleration = springForce + dampingForce;
+
+      const nextVelocity = heightVelocityRef.current + acceleration * dt;
+      const nextHeight = prevHeight + nextVelocity * dt;
+
+      const settled =
+        Math.abs(toHeight - nextHeight) < 0.08 && Math.abs(nextVelocity) < 0.5;
+
+      if (settled) {
+        syncScrollAroundCenter(prevHeight, toHeight);
+        hourHeightRef.current = toHeight;
+        heightVelocityRef.current = 0;
+        setHourHeight(toHeight);
+        return;
+      }
+
+      syncScrollAroundCenter(prevHeight, nextHeight);
+      hourHeightRef.current = nextHeight;
+      heightVelocityRef.current = nextVelocity;
+      setHourHeight(nextHeight);
+      rafId = window.requestAnimationFrame(step);
+    };
+
+    rafId = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [targetHourHeight]);
 
   const getWorkloadForDate = (dateIso: string) =>
     plannedBlocksForDay(sessions, dateIso)
@@ -418,7 +515,6 @@ export const PlannerView: React.FC = () => {
       notes: task.description,
     });
     setAnchorDate(dateIso);
-    pushToast(`Scheduled "${task.title}" · ${formatShortDate(dateIso)} ${formatHourLabel(startHour)}`);
   };
 
   const handleAutoSlotTask = (task: TaskItem) => {
@@ -501,7 +597,6 @@ export const PlannerView: React.FC = () => {
       location: ses.location,
       notes: ses.notes,
     });
-    pushToast(`Duplicated to ${formatShortDate(nextDate)}`);
   };
 
   const handleStartFocus = (ses: StudySession) => {
@@ -573,8 +668,8 @@ export const PlannerView: React.FC = () => {
     const isSelected = ses.id === selectedSessionId;
     const isSleep = ses.blockType === 'sleep';
     const isFree = ses.blockType === 'free' || (!isSleep && ses.countsTowardStudy === false);
-    const topPx = from * HOUR_HEIGHT;
-    const heightPx = Math.max(20, (to - from) * HOUR_HEIGHT - 2);
+    const topPx = from * hourHeight;
+    const heightPx = Math.max(20, (to - from) * hourHeight - 2);
     const color = sub?.color ?? 'var(--accent)';
     const hasAlarm = Boolean(
       ses.alarms?.ringAtStart ||
@@ -708,7 +803,6 @@ export const PlannerView: React.FC = () => {
             onClick={(e) => {
               e.stopPropagation();
               handleResizeDuration(ses, 0.5);
-              pushToast(`Extended "${ses.title}" by 30m`);
             }}
             aria-label={`Extend ${ses.title} by 30 minutes`}
             title="Click bottom edge to extend +30m"
@@ -1004,7 +1098,7 @@ export const PlannerView: React.FC = () => {
                   style={{
                     gridTemplateColumns:
                       viewMode === 'week' ? '60px repeat(7, minmax(0, 1fr))' : '60px 1fr',
-                    height: HOURS.length * HOUR_HEIGHT,
+                    height: HOURS.length * hourHeight,
                   }}
                 >
                   {/* Hour Labels */}
@@ -1013,7 +1107,7 @@ export const PlannerView: React.FC = () => {
                       <div
                         key={h}
                         className="pr-2.5 text-right text-[10.5px] font-mono-num text-[var(--text-muted)]"
-                        style={{ height: HOUR_HEIGHT, paddingTop: 3 }}
+                        style={{ height: hourHeight, paddingTop: 3 }}
                       >
                         {h === 0 ? '12 AM' : `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`}
                       </div>
@@ -1060,7 +1154,7 @@ export const PlannerView: React.FC = () => {
                               }}
                               className="relative group/cell cursor-pointer transition-colors"
                               style={{
-                                height: HOUR_HEIGHT,
+                                height: hourHeight,
                                 borderBottom: '1px solid var(--border-subtle)',
                                 backgroundColor: isDropTarget ? 'var(--accent-soft)' : undefined,
                                 outline: isDropTarget ? '1.5px dashed var(--accent)' : undefined,
@@ -1071,8 +1165,9 @@ export const PlannerView: React.FC = () => {
                               <div
                                 className="absolute left-0 right-0 pointer-events-none"
                                 style={{
-                                  top: HOUR_HEIGHT / 2,
+                                  top: hourHeight / 2,
                                   borderTop: '1px dashed var(--chart-grid)',
+                                  opacity: hourHeight < 42 ? 0.45 : 1,
                                 }}
                               />
                               {isDropTarget ? (
@@ -1095,7 +1190,7 @@ export const PlannerView: React.FC = () => {
                         {d.isToday && (
                           <div
                             className="absolute left-0 right-0 z-10 pointer-events-none flex items-center"
-                            style={{ top: currentHourFloat * HOUR_HEIGHT }}
+                            style={{ top: currentHourFloat * hourHeight }}
                           >
                             <span
                               className="w-2 h-2 rounded-full -ml-1 shrink-0"
@@ -1973,8 +2068,13 @@ export const PlannerView: React.FC = () => {
                       location,
                       notes,
                     });
+                    if (Math.abs(durationHours - editingSession.durationHours) <= 0.001) {
+                      pushToast('Calendar changes saved');
+                    }
                   }
-                  pushToast('Calendar changes saved');
+                  if (editingEntireSeries && editingSeries && updateRecurringSeries) {
+                    pushToast('Calendar changes saved');
+                  }
                   setEditingSessionId(null);
                 }}
               >

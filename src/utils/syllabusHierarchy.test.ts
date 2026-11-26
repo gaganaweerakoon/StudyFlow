@@ -2,7 +2,7 @@ import { resourceGroups, resourceTitle } from './syllabusResources';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Subject, ChapterItem } from '../types/studyflow';
-import { chapterNumber, groupedChapters, isChapterArchived, mergeImportedChapters, moveChapter, moveSyllabusItem, normalizeSyllabus, matchesSyllabusScope, sanitizeSyllabusLinks, removeChapterLink, parseSyllabusLinks, syllabusLinkLabels } from './syllabusHierarchy';
+import { chapterNumber, formatChapterTitle, formatUnitTitle, groupedChapters, isChapterArchived, mergeImportedChapters, moveChapter, moveSyllabusItem, normalizeSyllabus, matchesSyllabusScope, sanitizeSyllabusLinks, removeChapterLink, parseSyllabusLinks, stripSyllabusNumberPrefix, syllabusLinkLabels } from './syllabusHierarchy';
 const chapter = (id: string, title = id, unitId?: string): ChapterItem => ({id, title, unitId, topics: [{id: `topic-${id}`, title: 'Theory', completed: true, confidence: 4, difficulty: 'medium', revisionStatus: 'mastered'}]});
 const subject = (chapters: ChapterItem[], units?: Subject['units']): Subject => ({id:'chem', code:'CHEM', name:'Chemistry', color:'#123456', icon:'flask', instructor:'', totalHours:0, weeklyTargetHours:0, lastStudied:'', nextExamDate:'', nextExamTitle:'', currentGrade:'', targetGrade:'', chapters, units});
 test('migration preserves chapter and topic identities, progress, and archive flags', () => {
@@ -78,4 +78,35 @@ test('resource groups share multi-chapter resources and numbering follows syllab
   assert.equal(resourceTitle(newer,original,resources),'1.1.2 A / 1.2.1 B — Newer');
   assert.equal(resourceTitle(newer,moveChapter(original,'b',-1),resources),'1.1.1 B / 1.2.2 A — Newer');
   assert.equal(JSON.parse(JSON.stringify(resources))[0].id,'new');
+});
+
+test('formats unit and chapter titles consistently without duplicating manual numeric prefixes', () => {
+  assert.equal(stripSyllabusNumberPrefix('1. Linear Regression & Gauss-Markov'), 'Linear Regression & Gauss-Markov');
+  assert.equal(stripSyllabusNumberPrefix('1.1 · 1. Linear Regression & Gauss-Markov'), 'Linear Regression & Gauss-Markov');
+  assert.equal(stripSyllabusNumberPrefix('1.1.2 - Linear Regression'), 'Linear Regression');
+  assert.equal(stripSyllabusNumberPrefix('2) Identification Strategies'), 'Identification Strategies');
+  assert.equal(stripSyllabusNumberPrefix('3-SAT Reductions'), '3-SAT Reductions');
+  assert.equal(stripSyllabusNumberPrefix('2SLS IV Regression'), '2SLS IV Regression');
+  assert.equal(stripSyllabusNumberPrefix('2026 Exam Review'), '2026 Exam Review');
+  assert.equal(stripSyllabusNumberPrefix('1.1'), '1.1');
+
+  const legacy = subject(
+    [
+      chapter('c1', '1. Linear Regression & Gauss-Markov', 'u1'),
+      chapter('c2', '1.2 · Identification Strategies', 'u1'),
+    ],
+    [{ id: 'u1', title: '1. Core Econometrics' }],
+  );
+  assert.equal(formatUnitTitle(1, legacy.units![0].title), '1. Core Econometrics');
+  assert.equal(formatChapterTitle(legacy, legacy.chapters[0]), '1.1 Linear Regression & Gauss-Markov');
+  assert.equal(formatChapterTitle(legacy, legacy.chapters[1]), '1.2 Identification Strategies');
+  assert.deepEqual(syllabusLinkLabels(legacy, { unitIds: ['u1'], chapterIds: ['c1'] }), [
+    '1. Core Econometrics',
+    '1.1 Linear Regression & Gauss-Markov',
+  ]);
+  const res = [{ id: 'r1', subjectId: 'chem', title: 'Problem Set', syllabusLinks: { chapterIds: ['c1'] } }];
+  assert.equal(resourceTitle(res[0], legacy, res), '1.1.1 Linear Regression & Gauss-Markov — Problem Set');
+
+  const merged = mergeImportedChapters(legacy, [{ ...chapter('dup', 'Linear Regression & Gauss-Markov'), unitTitle: 'Core Econometrics' }]);
+  assert.equal(merged.chapters.length, 2);
 });
