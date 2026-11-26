@@ -1,4 +1,4 @@
-import type { Subject, NoteItem } from '../types/studyflow';
+import type { Subject, NoteItem, FlashcardDeck, PracticeQuiz } from '../types/studyflow';
 import { mergeImportedChapters, type IncomingChapter } from '../utils/syllabusHierarchy';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -107,7 +107,7 @@ function createMockWorkspace(): Workspace {
       pdfHighlights: [],
     },
   ];
-  const decks = [
+  const decks: FlashcardDeck[] = [
     {
       id: 'deck-1',
       title: 'CHEM 210 Core',
@@ -139,7 +139,7 @@ function createMockWorkspace(): Workspace {
       mastery: 'learning',
     },
   ];
-  const quizzes = [
+  const quizzes: PracticeQuiz[] = [
     {
       id: 'qz-1',
       title: 'Carbonyl Diagnostic',
@@ -952,4 +952,19 @@ test('note Markdown preserves fenced and raw SVG while normalizing surrounding m
   assert.ok(md.includes('බන්ධන'));
   assert.ok(md.includes('$C=\\frac{n}{V}$'));
   assert.ok(normalizeMarkdownForDisplay('```svg\n'+svg+'\n```').includes(svg));
+});
+
+
+test('Pip resource generation inherits source links, rejects unknown chapters and never overwrites by title', () => {
+  const ws=createMockWorkspace();
+  ws.notes[0].syllabusLinks={chapterIds:['ch1']};
+  const create=()=>parseWorkspaceEdit(JSON.stringify({action:'create_flashcards',noteId:'note-1',deckTitle:'Same title',cards:[{front:'Q?',back:'A'}]}),ws);
+  const first=create();assert.ok(first);assert.ok(first.title.includes('1.1.1'));assert.equal(first.apply(ws),true);
+  assert.deepEqual(ws.decks.at(-1)?.syllabusLinks?.chapterIds,['ch1']);
+  const second=create();assert.ok(second);assert.ok(second.title.includes('1.1.2'));assert.equal(second.apply(ws),true);
+  assert.notEqual(ws.decks.at(-1)?.id,ws.decks.at(-2)?.id);
+  assert.equal(parseWorkspaceEdit(JSON.stringify({action:'create_flashcards',noteId:'note-1',syllabusLinks:{chapterIds:['missing']},cards:[{front:'Q?',back:'A'}]}),ws),undefined);
+  const testEdit=parseWorkspaceEdit(JSON.stringify({action:'create_practice_test',noteId:'note-1',title:'Check',questions:[{type:'short',prompt:'Explain',answer:'Answer',explanation:'Explanation'}]}),ws);
+  assert.ok(testEdit);assert.ok(testEdit.title.includes('1.1.1'));assert.equal(testEdit.apply(ws),true);
+  assert.deepEqual(ws.quizzes.at(-1)?.syllabusLinks?.chapterIds,['ch1']);
 });

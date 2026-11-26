@@ -656,7 +656,24 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "syllabusLinks": { "type": "object", "description": "Stable IDs of selected subject units and chapters. Multiple links are allowed; omit to preserve existing links.", "properties": { "unitIds": { "type": "array", "items": { "type": "string" } }, "chapterIds": { "type": "array", "items": { "type": "string" } } } },
+        "syllabusLinks": {
+          "type": "object",
+          "description": "Stable IDs of selected subject units and chapters. Multiple links are allowed; omit to preserve existing links.",
+          "properties": {
+            "unitIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "chapterIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
         "title": {
           "type": "string"
         },
@@ -687,7 +704,24 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "syllabusLinks": { "type": "object", "description": "Stable IDs of selected subject units and chapters. Multiple links are allowed; omit to preserve existing links.", "properties": { "unitIds": { "type": "array", "items": { "type": "string" } }, "chapterIds": { "type": "array", "items": { "type": "string" } } } },
+        "syllabusLinks": {
+          "type": "object",
+          "description": "Stable IDs of selected subject units and chapters. Multiple links are allowed; omit to preserve existing links.",
+          "properties": {
+            "unitIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "chapterIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
         "id": {
           "type": "string"
         },
@@ -736,6 +770,24 @@
         "subjectId": {
           "type": "string",
           "description": "Optional subject ID or subject code."
+        },
+        "syllabusLinks": {
+          "type": "object",
+          "description": "Optional validated syllabus references using actual IDs from workspace context. Omit to inherit source note links; do not invent IDs.",
+          "properties": {
+            "unitIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "chapterIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
         }
       },
       "required": [
@@ -762,7 +814,7 @@
   },
   {
     "name": "create_flashcards",
-    "description": "Create flashcards from a student's note or study topic and save them to an existing deck (deckId) or a new deck (deckTitle).",
+    "description": "Create flashcards from an explicit source note or topic. Use deckId only to add to an existing deck; deckTitle creates a new deck.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -776,7 +828,7 @@
         },
         "deckTitle": {
           "type": "string",
-          "description": "If creating a new deck or matching by name, provide the deck title."
+          "description": "Title of a new deck; no automatic title-based overwrite."
         },
         "subjectId": {
           "type": "string",
@@ -802,6 +854,24 @@
               "front",
               "back"
             ]
+          }
+        },
+        "syllabusLinks": {
+          "type": "object",
+          "description": "Optional validated syllabus references using actual IDs from workspace context. Omit to inherit source note links; do not invent IDs.",
+          "properties": {
+            "unitIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "chapterIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         }
       },
@@ -881,6 +951,24 @@
               "answer",
               "explanation"
             ]
+          }
+        },
+        "syllabusLinks": {
+          "type": "object",
+          "description": "Optional validated syllabus references using actual IDs from workspace context. Omit to inherit source note links; do not invent IDs.",
+          "properties": {
+            "unitIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "chapterIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         }
       },
@@ -1223,7 +1311,10 @@
               "name": {
                 "type": "string"
               },
-              "unitTitle": { "type": "string", "description": "Parent unit name; resolved within the selected subject during import." },
+              "unitTitle": {
+                "type": "string",
+                "description": "Parent unit name; resolved within the selected subject during import."
+              },
               "topics": {
                 "type": "array",
                 "items": {

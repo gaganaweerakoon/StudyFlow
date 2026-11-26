@@ -1,3 +1,4 @@
+import { resourceTitle } from '../utils/syllabusResources';
 import { parseSyllabusLinks, syllabusLinkLabels } from '../utils/syllabusHierarchy';
 import { readGeneratedCards, readGeneratedQuestions } from '../notes/generatedStudyItems';
 import type { useApp } from '../context/AppContext';
@@ -108,6 +109,15 @@ function resolveNote(raw: unknown, app: Workspace) {
     if (byTitle) return byTitle;
   }
   return app.notes.find((n) => n.id === app.selectedNoteId) ?? app.notes[0];
+}
+
+function resourceNote(raw: unknown, app: Workspace) {
+  if (typeof raw !== 'string' || !raw.trim()) return undefined;
+  const needle=raw.trim().toLowerCase();
+  const exact=app.notes.find(n=>n.id===raw.trim());
+  if(exact)return exact;
+  const matches=app.notes.filter(n=>n.title.toLowerCase().includes(needle));
+  return matches.length===1?matches[0]:undefined;
 }
 
 function resolveDeck(deckIdRaw: unknown, deckTitleRaw: unknown, app: Workspace) {
@@ -660,17 +670,22 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
     // 3. Create Deck
     if (action === 'create_deck' && title) {
       const subjectId = resolveSubjectId(edit.subjectId, app);
+      if(edit.subjectId && !subjectId)return;
+      const subject=app.subjects.find(s=>s.id===subjectId);
+      const parsed=parseSyllabusLinks(subject,edit.syllabusLinks);
+      if(!parsed.valid)return;
       const description =
         typeof edit.description === 'string' ? edit.description.trim().slice(0, 240) : 'Created with Pip';
       return {
         action,
-        title: `Create flashcard deck “${title}”`,
+        title: `Create flashcard deck “${resourceTitle({id:'draft',subjectId,title,syllabusLinks:parsed.links},subject,[{id:'draft',subjectId,title,syllabusLinks:parsed.links},...app.decks])}”`,
+        ...(parsed.links?{confirmation:true,details:[`Syllabus: ${syllabusLinkLabels(subject,parsed.links).join(" · ") || "Unclassified"}`]}:{}),
         success: `Created deck “${title}” in Flashcards.`,
         route: 'flashcards',
         routeLabel: 'Open Flashcards',
         apply: (current) => {
-          if (current.decks.some((d) => d.title.toLowerCase() === title.toLowerCase())) return true;
-          current.addDeck({ title, subjectId, description });
+          if (!parseSyllabusLinks(current.subjects.find(s=>s.id===subjectId), edit.syllabusLinks).valid) return false;
+          current.addDeck({ title, subjectId, description, syllabusLinks:parsed.links });
           return true;
         },
       };
@@ -680,36 +695,39 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
     if (action === 'create_flashcards') {
       const cards = readGeneratedCards(edit.cards);
       if (!cards.length) return;
-      const note = resolveNote(edit.noteId, app);
-      const existingDeck = resolveDeck(edit.deckId, edit.deckTitle, app);
+      const note = resourceNote(edit.noteId, app);
+      if(edit.noteId&&!note)return;
+      const existingDeck = edit.deckId ? resolveDeck(edit.deckId, undefined, app) : undefined;
+      if(edit.deckId&&!existingDeck)return;
       const requestedNewTitle =
         typeof edit.deckTitle === 'string' && edit.deckTitle.trim()
           ? edit.deckTitle.trim().slice(0, 120)
           : note
             ? `${note.title} Deck`
             : 'Pip Study Deck';
-      const fallbackDeck = existingDeck ?? (!edit.deckTitle ? app.decks[0] : undefined);
+      const fallbackDeck = existingDeck;
       const targetDeckName = fallbackDeck ? fallbackDeck.title : requestedNewTitle;
-      const subjectId = resolveSubjectId(edit.subjectId, app) || note?.subjectId || '';
+      const explicitSubject=resolveSubjectId(edit.subjectId,app);
+      if(edit.subjectId&&!explicitSubject)return;
+      if(note?.subjectId&&explicitSubject&&explicitSubject!==note.subjectId)return;
+      const subjectId = explicitSubject || note?.subjectId || '';
+      const subject=app.subjects.find(s=>s.id===subjectId);
+      const parsed=parseSyllabusLinks(subject,edit.syllabusLinks??note?.syllabusLinks);
+      if(!parsed.valid)return;
+      const linksLabel=syllabusLinkLabels(subject,parsed.links).join(' · ') || 'Unclassified';
+      if(fallbackDeck&&subjectId&&fallbackDeck.subjectId!==subjectId)return;
       const indexedCards = cards.map((card, idx) => ({ id: `card-${idx}`, card }));
 
       const applySubset = (current: Workspace, selectedSet?: Set<string>) => {
+        if(!parseSyllabusLinks(current.subjects.find(s=>s.id===subjectId),parsed.links).valid)return false;
         const chosen = selectedSet
           ? indexedCards.filter((item) => selectedSet.has(item.id)).map((item) => item.card)
           : cards;
         if (!chosen.length) return false;
         let deckId = fallbackDeck && current.decks.some((d) => d.id === fallbackDeck.id) ? fallbackDeck.id : '';
+        if (fallbackDeck && !deckId) return false;
         if (!deckId) {
-          const matchByName = current.decks.find(
-            (d) => d.title.toLowerCase() === targetDeckName.toLowerCase(),
-          );
-          deckId = matchByName
-            ? matchByName.id
-            : current.addDeck({
-                title: targetDeckName,
-                subjectId,
-                description: note ? `Generated from note: ${note.title}` : 'Generated with Pip',
-              });
+          deckId = current.addDeck({title: targetDeckName,subjectId,syllabusLinks:parsed.links,description:note ? `Generated from note: ${note.title}` : 'Generated with Pip'});
         }
         const saved = new Set(
           current.flashcards
@@ -729,7 +747,8 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
         action,
         confirmation: true,
         reviewKind: 'approval',
-        title: `Add ${cards.length} flashcards to “${targetDeckName}”`,
+        title: `Add ${cards.length} flashcards to “${fallbackDeck ? resourceTitle(fallbackDeck,app.subjects.find(s=>s.id===fallbackDeck.subjectId),app.decks) : resourceTitle({id:'draft',title:targetDeckName,subjectId,syllabusLinks:parsed.links},subject,[{id:'draft',title:targetDeckName,subjectId,syllabusLinks:parsed.links},...app.decks])}”`,
+        details:[`Syllabus: ${fallbackDeck ? syllabusLinkLabels(app.subjects.find(s=>s.id===fallbackDeck.subjectId),fallbackDeck.syllabusLinks).join(" · ") || "Unclassified (existing deck unchanged)" : linksLabel}`],
         reviewItems: indexedCards.map(({ id: itemId, card }) => ({
           id: itemId,
           label: card.front,
@@ -745,12 +764,20 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
 
     // 5. Create Practice Test (always requires review & approval!)
     if (action === 'create_practice_test') {
-      const note = resolveNote(edit.noteId, app);
+      const note = resourceNote(edit.noteId, app);
+      if(edit.noteId&&!note)return;
       const defaultTopic = title ?? note?.title ?? 'Study Review';
       const questions = readGeneratedQuestions(edit.questions, defaultTopic);
       if (!questions.length) return;
       const name = title ?? (note ? `${note.title} Practice Test` : 'Pip Practice Test');
-      const subjectId = resolveSubjectId(edit.subjectId, app) || note?.subjectId || '';
+      const explicitSubject=resolveSubjectId(edit.subjectId,app);
+      if(edit.subjectId&&!explicitSubject)return;
+      if(note?.subjectId&&explicitSubject&&explicitSubject!==note.subjectId)return;
+      const subjectId = explicitSubject || note?.subjectId || '';
+      const subject=app.subjects.find(s=>s.id===subjectId);
+      const parsed=parseSyllabusLinks(subject,edit.syllabusLinks??note?.syllabusLinks);
+      if(!parsed.valid)return;
+      const linksLabel=syllabusLinkLabels(subject,parsed.links).join(' · ') || 'Unclassified';
       const rawDiff = typeof edit.difficulty === 'string' ? edit.difficulty : 'Standard';
       const difficulty: 'Standard' | 'Challenge' | 'Exam Level' =
         rawDiff === 'Challenge' || rawDiff === 'Exam Level'
@@ -763,6 +790,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       const indexedQuestions = questions.map((q, idx) => ({ id: `q-${idx}`, q }));
 
       const applySubset = (current: Workspace, selectedSet?: Set<string>) => {
+        if(!parseSyllabusLinks(current.subjects.find(s=>s.id===subjectId),parsed.links).valid)return false;
         const chosen = selectedSet
           ? indexedQuestions.filter((item) => selectedSet.has(item.id)).map((item) => item.q)
           : questions;
@@ -775,6 +803,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
           durationMinutes: Math.max(5, chosen.length * 2),
           questions: chosen,
           sourceNoteId: note?.id,
+          syllabusLinks: parsed.links,
           sourceSection,
         });
         return true;
@@ -784,7 +813,8 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
         action,
         confirmation: true,
         reviewKind: 'approval',
-        title: `Create practice test “${name}” (${questions.length} questions)`,
+        title: `Create practice test “${resourceTitle({id:'draft',title:name,subjectId,syllabusLinks:parsed.links},subject,[{id:'draft',title:name,subjectId,syllabusLinks:parsed.links},...app.quizzes])}” (${questions.length} questions)`,
+        details:[`Syllabus: ${linksLabel}`],
         reviewItems: indexedQuestions.map(({ id: itemId, q }) => ({
           id: itemId,
           label: q.prompt,

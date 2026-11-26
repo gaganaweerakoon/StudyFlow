@@ -1,3 +1,4 @@
+import { resourceGroups, resourceTitle } from './syllabusResources';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Subject, ChapterItem } from '../types/studyflow';
@@ -61,4 +62,20 @@ test('multi-chapter note links resolve membership and preserve identity after a 
   assert.equal(parseSyllabusLinks(original,{chapterIds:['other']}).valid,false);
   assert.equal(parseSyllabusLinks(original,{chapterIds:['a','b']}).valid,true);
   assert.equal(sanitizeSyllabusLinks(undefined,links),undefined);
+});
+
+
+test('resource groups share multi-chapter resources and numbering follows syllabus order without replacing IDs',()=>{
+  const original=subject([chapter('a','A','u'),chapter('b','B','u')],[{id:'u',title:'Unit'}]);
+  const legacy={id:'legacy',subjectId:'chem',title:'Legacy'};
+  const older={id:'old',subjectId:'chem',title:'Older',syllabusLinks:{chapterIds:['a']}};
+  const newer={id:'new',subjectId:'chem',title:'Newer',syllabusLinks:{chapterIds:['a','b']}};
+  const resources=[newer,older,legacy];const groups=resourceGroups(original,resources);
+  assert.equal(groups.units[0].children[0].resources[0],newer);
+  assert.equal(groups.units[0].children[1].resources[0],newer);
+  assert.deepEqual(groups.unclassified,[legacy]);
+  assert.equal(resourceTitle(older,original,resources),'1.1.1 A — Older');
+  assert.equal(resourceTitle(newer,original,resources),'1.1.2 A / 1.2.1 B — Newer');
+  assert.equal(resourceTitle(newer,moveChapter(original,'b',-1),resources),'1.1.1 B / 1.2.2 A — Newer');
+  assert.equal(JSON.parse(JSON.stringify(resources))[0].id,'new');
 });

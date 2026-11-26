@@ -376,6 +376,8 @@ export function workspaceContext(
       diag.decksSummary.slice(0, 8).map((d) => ({
         id: d.id,
         title: clip(d.title),
+        syllabusLinks: app.decks.find(deck=>deck.id===d.id)?.syllabusLinks,
+        subjectId: app.decks.find(deck=>deck.id===d.id)?.subjectId,
         due: d.due,
         total: d.total,
       })),
@@ -389,6 +391,7 @@ export function workspaceContext(
         id: q.id,
         title: clip(q.title),
         subjectId: q.subjectId,
+        syllabusLinks:q.syllabusLinks,
         questionCount: q.questions.length,
         lastScore: q.lastScore,
         topics: [...new Set(q.questions.map((item) => item.topic))].slice(0, 4),

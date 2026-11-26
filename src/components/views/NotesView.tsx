@@ -210,7 +210,7 @@ export const NotesView: React.FC = () => {
   };
   const handleAskSelection = (action: SelectionAction) => {
     if (!activeNote || !selectedExcerpt) return;
-    const prompt = buildExcerptPrompt(selectedExcerpt,activeNote.title,syllabusLinkLabels(activeSubject,activeNote.syllabusLinks),action);
+    const prompt = buildExcerptPrompt(selectedExcerpt,activeNote.title,syllabusLinkLabels(activeSubject,activeNote.syllabusLinks),action,activeNote.id);
     if (!prompt) { pushToast(`Select up to ${MAX_NOTE_EXCERPT.toLocaleString()} characters to ask Pip.`); return; }
     askPip(prompt,{openFloating:true,draftOnly:true,excerptOnly:true});
   };

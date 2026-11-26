@@ -1,3 +1,5 @@
+import { SyllabusResourceBrowser } from '../syllabus/SyllabusResourceBrowser';
+import { SyllabusLinkPicker } from '../syllabus/SyllabusLinkPicker';
 import { StudyGeneration } from '../../notes/StudyGeneration';
 import React, { lazy, Suspense, useMemo, useRef, useState } from 'react';
 import {
@@ -102,6 +104,7 @@ export const FlashcardsView: React.FC = () => {
     setActiveModal,
     pushToast,
     addDeck,
+    updateDeckLinks,
     addSession,
     importFlashcardsBulk,
     saveWorkspace,
@@ -908,8 +911,7 @@ export const FlashcardsView: React.FC = () => {
           />
 
           {/* Deck Library */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {decks.map((deck) => {
+          <SyllabusResourceBrowser subjects={subjects} resources={decks} label="decks" onCreate={(subject,chapterId)=>{const chapter=subject.chapters.find(ch=>ch.id===chapterId);if(chapter){addDeck({title:`${chapter.title} Deck`,subjectId:subject.id,description:'',syllabusLinks:{chapterIds:[chapterId]}})}}} render={(deck,displayTitle)=>{
               const sub = subjects.find((s) => s.id === deck.subjectId);
               const cards = flashcards.filter((c) => c.deckId === deck.id);
               const due = cards.filter((c) => c.dueToday).length;
@@ -928,12 +930,13 @@ export const FlashcardsView: React.FC = () => {
                       </span>
                     </div>
                     <h2 className="font-display text-[15.5px] font-semibold text-[var(--text-primary)] mt-1">
-                      {deck.title}
+                      {displayTitle}
                     </h2>
                     <p className="text-[12.5px] text-[var(--text-secondary)] mt-0.5">{deck.description}</p>
                   </div>
 
-                  <div className="pt-3 flex flex-wrap items-center justify-between gap-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+<div className="space-y-2"><label className="text-xs text-[var(--text-muted)]">Subject <select value={deck.subjectId} onChange={e=>updateDeckLinks(deck.id,e.target.value,undefined)} className="ml-2 rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)]"><option value="">Unassigned</option>{subjects.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>{sub&&<SyllabusLinkPicker subject={sub} links={deck.syllabusLinks} onChange={links=>updateDeckLinks(deck.id,sub.id,links)}/>}</div>
+                                    <div className="pt-3 flex flex-wrap items-center justify-between gap-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                     <div className="text-[12px] text-[var(--text-muted)]">
                       <span className="font-mono-num font-semibold text-[var(--text-primary)]">{due}</span> due today ·{' '}
                       <span className="font-mono-num">{cards.length}</span> total
@@ -971,8 +974,7 @@ export const FlashcardsView: React.FC = () => {
                   </div>
                 </div>
               );
-            })}
-          </div>
+}} />
 
           {/* Review History & Spaced Repetition Schedule */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">

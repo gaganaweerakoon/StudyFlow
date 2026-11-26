@@ -243,6 +243,7 @@ export interface SyllabusExtractionBundle {
 }
 
 export interface FlashcardDeck {
+  syllabusLinks?: import('../utils/syllabusHierarchy').SyllabusLinks;
   id: string;
   title: string;
   subjectId: string;
@@ -288,6 +289,7 @@ export interface PracticeAttempt {
 }
 
 export interface PracticeQuiz {
+  syllabusLinks?: import('../utils/syllabusHierarchy').SyllabusLinks;
   sourceNoteId?: string;
   sourceSection?: string;
   attempts?: PracticeAttempt[];

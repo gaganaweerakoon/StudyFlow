@@ -1,3 +1,5 @@
+import { SyllabusResourceBrowser } from '../syllabus/SyllabusResourceBrowser';
+import { SyllabusLinkPicker } from '../syllabus/SyllabusLinkPicker';
 import { useAssistant } from '../../assistant/AssistantContext';
 import { StudyGeneration } from '../../notes/StudyGeneration';
 import React, { lazy, Suspense, useState, useEffect } from 'react';
@@ -27,7 +29,7 @@ import { formatTimerSeconds, gradePracticeTest } from '../../utils/studyLogic';
 const AssistantMarkdown = lazy(() => import('../../assistant/AssistantMarkdown'));
 
 export const PracticeTestsView: React.FC = () => {
-  const { quizzes, subjects, recordQuizScore, pushToast, notes, setSelectedNoteId, setRoute, openStudyLab } = useApp();
+  const { quizzes, subjects, updateQuizLinks, recordQuizScore, pushToast, notes, setSelectedNoteId, setRoute, openStudyLab } = useApp();
 
   const [activeQuizId, setActiveQuizId] = useState<string | null>(null);
   const [questionIdx, setQuestionIdx] = useState(0);
@@ -526,8 +528,7 @@ export const PracticeTestsView: React.FC = () => {
 
       <StudyGeneration quiz onQuizCreated={(id) => startQuiz(id)} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {quizzes.map((qz) => {
+      <SyllabusResourceBrowser subjects={subjects} resources={quizzes} label="practice tests" onCreate={(subject,chapterId)=>{const chapter=subject.chapters.find(ch=>ch.id===chapterId);if(chapter)askPip(`Create a practice test for ${subject.name}, ${chapter.title}. Use subject ID ${subject.id} and syllabusLinks.chapterIds [${JSON.stringify(chapterId)}]. Review before saving.`,{draftOnly:true,openFloating:true})}} render={(qz,displayTitle)=>{
           const sub = subjects.find((s) => s.id === qz.subjectId);
           return (
             <div key={qz.id} className="rounded-xl p-5 flex flex-col justify-between gap-4" style={surfaceStyle}>
@@ -544,14 +545,15 @@ export const PracticeTestsView: React.FC = () => {
                   )}
                 </div>
                 <h2 className="font-display text-[16px] font-semibold text-[var(--text-primary)] mt-1.5">
-                  {qz.title}
+                  {displayTitle}
                 </h2>
                 <div className="text-[12px] text-[var(--text-muted)] mt-1">
                   {qz.questions.length} questions (MCQ + short answer) · {qz.durationMinutes} min timer
                 </div>
               </div>
 
-              {!!qz.attempts?.length && <details className="text-sm">
+<div className="space-y-2"><label className="text-xs text-[var(--text-muted)]">Subject <select value={qz.subjectId} onChange={e=>updateQuizLinks(qz.id,e.target.value,undefined)} className="ml-2 rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)]"><option value="">Unassigned</option>{subjects.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>{sub&&<SyllabusLinkPicker subject={sub} links={qz.syllabusLinks} onChange={links=>updateQuizLinks(qz.id,sub.id,links)}/>}</div>
+                                {!!qz.attempts?.length && <details className="text-sm">
                 <summary>Attempt history ({qz.attempts.length})</summary>
                 <ul className="mt-2 space-y-2">
                   {[...qz.attempts].reverse().map((attempt, index) => (
@@ -584,8 +586,7 @@ export const PracticeTestsView: React.FC = () => {
               </div>
             </div>
           );
-        })}
-      </div>
+}} />
     </div>
   );
 };

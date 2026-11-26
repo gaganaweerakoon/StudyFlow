@@ -221,6 +221,7 @@ interface AppContextValue {
   ) => string;
 
   decks: FlashcardDeck[];
+  updateDeckLinks: (id: string, subjectId: string, links: FlashcardDeck['syllabusLinks']) => void;
   addDeck: (deck: Omit<FlashcardDeck, 'id' | 'lastReviewed' | 'retentionRate'>) => string;
   deleteDeck: (id: string) => void;
   flashcards: FlashcardItem[];
@@ -234,6 +235,7 @@ interface AppContextValue {
   addExam: (exam: Omit<ExamItem, 'id' | 'mockHistory'>) => void;
 
   quizzes: PracticeQuiz[];
+  updateQuizLinks: (id: string, subjectId: string, links: PracticeQuiz['syllabusLinks']) => void;
   addQuiz: (quiz:PracticeQuiz) => void;
   deleteQuiz: (id: string) => void;
   updateQuizQuestionExplanation: (quizId: string, questionId: string, explanation: string) => void;
@@ -1313,7 +1315,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         })
       );
       setNotes(previous => previous.map(note => removeChapterLink(note, subjectId, chapterId)));
-      pushToast('Chapter deleted; linked notes kept');
+      setDecks(previous => previous.map(deck => removeChapterLink(deck, subjectId, chapterId)));
+      setQuizzes(previous => previous.map(quiz => removeChapterLink(quiz, subjectId, chapterId)));
+      pushToast('Chapter deleted; linked resources kept');
     },
     [pushToast]
   );
@@ -1510,6 +1514,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       setDecks((prev) => [
         {
           ...deck,
+          syllabusLinks: sanitizeSyllabusLinks(subjects.find(subject=>subject.id===deck.subjectId),deck.syllabusLinks),
           id,
           lastReviewed: 'Just created',
           retentionRate: 0,
@@ -1519,7 +1524,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       pushToast(`Deck created: ${deck.title}`);
       return id;
     },
-    [pushToast]
+    [pushToast, subjects]
   );
 
   const deleteDeck = useCallback(
@@ -1832,6 +1837,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         createNote,
         decks,
         addDeck,
+        updateDeckLinks: (id, subjectId, links) => setDecks(prev=>prev.map(deck=>deck.id===id?{...deck,subjectId,syllabusLinks:sanitizeSyllabusLinks(subjects.find(s=>s.id===subjectId),links)}:deck)),
         deleteDeck,
         flashcards,
         addFlashcard,
@@ -1840,7 +1846,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         exams,
         addExam, updateExam, deleteExam,
         quizzes,
-        addQuiz: quiz=>setQuizzes(prev=>[quiz,...prev]),
+        addQuiz: quiz=>setQuizzes(prev=>[{...quiz,syllabusLinks:sanitizeSyllabusLinks(subjects.find(s=>s.id===quiz.subjectId),quiz.syllabusLinks)},...prev]),
+        updateQuizLinks: (id, subjectId, links) => setQuizzes(prev=>prev.map(quiz=>quiz.id===id?{...quiz,subjectId,syllabusLinks:sanitizeSyllabusLinks(subjects.find(s=>s.id===subjectId),links)}:quiz)),
         deleteQuiz,
         updateQuizQuestionExplanation,
         recordQuizScore,

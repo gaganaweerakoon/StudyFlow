@@ -1,3 +1,5 @@
+import { SyllabusLinkPicker } from '../components/syllabus/SyllabusLinkPicker';
+import type { SyllabusLinks } from '../utils/syllabusHierarchy';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ChevronDown,
@@ -27,7 +29,7 @@ export function StudyGeneration({
   onQuizCreated,
   onDeckSaved,
 }: StudyGenerationProps) {
-  const { notes, decks, selectedNoteId, addDeck, addQuiz, addFlashcard, pushToast } = useApp();
+  const { notes, decks, subjects, selectedNoteId, addDeck, addQuiz, addFlashcard, pushToast } = useApp();
   const { generate, cooldown } = useAssistant();
 
   const [open, setOpen] = useState(defaultOpen);
@@ -62,6 +64,9 @@ export function StudyGeneration({
   }, [decks, deckId]);
 
   const note = notes.find((n) => n.id === noteId);
+  const [linkOverride,setLinkOverride]=useState<{noteId:string;links:SyllabusLinks}|null>(null);
+  const syllabusLinks=linkOverride?.noteId===noteId?linkOverride.links:note?.syllabusLinks;
+  const sourceSubject=subjects.find(s=>s.id===note?.subjectId);
 
   const sections = useMemo(() => {
     if (!note) return [];
@@ -131,6 +136,7 @@ export function StudyGeneration({
           difficulty,
           questions,
           sourceNoteId: note.id,
+          syllabusLinks,
           sourceSection: activeSection.label.slice(0, 120),
         });
         setCreatedQuizId(id);
@@ -159,6 +165,7 @@ export function StudyGeneration({
       targetDeckId = addDeck({
         title,
         subjectId: note?.subjectId ?? '',
+        syllabusLinks,
         description: note ? `Generated from note: ${note.title}` : 'AI-generated flashcard deck',
       });
       setDeckId(targetDeckId);
@@ -365,6 +372,7 @@ export function StudyGeneration({
                 )}
               </div>
 
+              {(quiz||deckMode==='new')&&sourceSubject&&<SyllabusLinkPicker subject={sourceSubject} links={syllabusLinks} onChange={links=>setLinkOverride({noteId,links})}/>}
               {/* Optional new deck name or custom quiz title */}
               <div className="flex flex-wrap items-end justify-between gap-3">
                 {quiz ? (
