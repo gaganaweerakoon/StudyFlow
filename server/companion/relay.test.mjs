@@ -61,3 +61,32 @@ test('pairing is single-use and expiring, calendar changes persist, and stale wr
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('paired phone claims at most once, and stale or suppressed records stay silent', async () => {
+  const server = createCompanionRelay(':memory:', 'a'.repeat(32), {now:()=>time});
+  let time = Date.parse('2026-11-26T09:00Z');
+  server.listen(0,'127.0.0.1');
+  await once(server,'listening');
+  const call = async (path, method, key, data) => {
+    const response = await fetch('http://127.0.0.1:' + server.address().port + path,
+      {method,headers:{Authorization:'Bearer '+key},body:JSON.stringify(data)});
+    return {status:response.status,body:await response.json()};
+  };
+  try {
+    const pair = (await call('/v1/pairs','POST','a'.repeat(32))).body;
+    const phone = (await call('/v1/claim','POST','',{pairingCode:pair.pairingCode})).body.phoneToken;
+    const payload = {day:'2026-11-26',fingerprint:'b'.repeat(64),kind:'task',observedAt:time,expiresAt:time+60000};
+    assert.equal((await call('/v1/pip','PUT',phone,payload)).status,403);
+    assert.equal((await call('/v1/pip','PUT',pair.desktopToken,payload)).status,200);
+    const claims = await Promise.all([call('/v1/pip','POST',phone),call('/v1/pip','POST',phone)]);
+    assert.equal(claims.filter(c=>c.body.delivery).length,1);
+    assert.equal((await call('/v1/pip','PUT',pair.desktopToken,{...payload,fingerprint:'c'.repeat(64)})).status,200);
+    assert.equal((await call('/v1/pip','POST',phone)).body.delivery,null);
+    time += 86400000;
+    assert.equal((await call('/v1/pip','PUT',pair.desktopToken,payload)).status,400);
+    const next = {...payload,day:'2026-11-27',fingerprint:'d'.repeat(64),observedAt:time,expiresAt:time+60000};
+    await call('/v1/pip','PUT',pair.desktopToken,next);
+    await call('/v1/pip','DELETE',pair.desktopToken);
+    assert.equal((await call('/v1/pip','POST',phone)).body.delivery,null);
+  } finally { await new Promise(resolve=>server.close(resolve)); }
+});

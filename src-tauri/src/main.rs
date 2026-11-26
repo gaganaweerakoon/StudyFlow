@@ -160,6 +160,7 @@ fn main() {
             update_assistant_key,
             cancel_assistant_chat,
             companion::companion_request,
+            companion::pip_relay,
             companion::local_companion,
             google::google_sign_in
         ])

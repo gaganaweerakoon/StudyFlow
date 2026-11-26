@@ -7,3 +7,7 @@ The service listens on loopback port 8475 by default. A production deployment mu
 Windows Settings includes **Mobile companion**. Create a pairing code, enter it on Android, and use **Share calendar** on Windows and **Sync calendar** on Android after desktop edits. Android retains the last calendar it fetched for offline reading. The desktop can revoke pairing from Settings. Pairing codes have a ten-minute lifetime.
 
 Run the relay tests with `node --test server/companion/relay.test.mjs`.
+
+## Experimental Pip phone check-ins
+
+Desktop AI Settings can pair a separate phone delivery connection with the relay. In Android Settings, enter the same HTTPS origin and the one-time code. Both the local check-in option and the phone connection must be enabled on Windows. Android schedules a native background poll, which the OS may defer. The relay rejects stale decisions and delivers a queued check-in at most once. It receives the trigger category, times, and a fingerprint, with no note text, titles, or full study records. An already-queued check-in is eligible for a short time after the PC goes offline. Decisions made after shutdown require fresh desktop records.

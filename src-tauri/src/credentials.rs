@@ -15,7 +15,7 @@ mod vault {
     };
 
     fn target(provider: &str) -> Result<Vec<u16>, String> {
-        if !matches!(provider, "openai" | "gemini" | "claude") {
+        if !matches!(provider, "openai" | "gemini" | "claude" | "pip-relay") {
             return Err("Unknown AI provider.".into());
         }
         Ok(format!("StudyFlow/API/{provider}").encode_utf16().chain([0]).collect())

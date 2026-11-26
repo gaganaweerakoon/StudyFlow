@@ -85,6 +85,9 @@ class MainActivity : Activity() {
 
     private inner class PairingBridge {
         @JavascriptInterface
+        fun configurePipDelivery() = runOnUiThread { PipDeliverySettings.show(this@MainActivity) }
+
+        @JavascriptInterface
         fun syncFocus(id: String, endpoint: String, token: String, record: String) {
             if (id.length > 64 || endpoint.length > 2048 || token.length != 64 || record.length > 1500) return
             pairingWorker.execute {

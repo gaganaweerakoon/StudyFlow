@@ -1,3 +1,4 @@
+import { checkInQueue } from './checkInQueue.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
@@ -64,6 +65,8 @@ export function createCompanionRelay(database, enrollmentKey, { now = Date.now }
   `);
   const remove = db.prepare('DELETE FROM companion_pairs WHERE desktop_hash = ?');
 
+  const deliveries = checkInQueue(db, now);
+
   async function route(request) {
     const auth = /^Bearer ([A-Za-z0-9_-]{1,256})$/.exec(request.headers.authorization ?? '')?.[1];
     const credential = auth ? hash(auth) : '';
@@ -87,10 +90,21 @@ export function createCompanionRelay(database, enrollmentKey, { now = Date.now }
       }
       return { phoneToken };
     }
-    if (path !== '/v1/calendar' && path !== '/v1/pair') throw new RequestError(404, 'Unknown endpoint.');
+    if (!['/v1/calendar','/v1/pair','/v1/pip'].includes(path)) throw new RequestError(404, 'Unknown endpoint.');
     if (!credential) throw new RequestError(401, 'Pair this device first.');
     const pair = lookup.get(credential, credential);
     if (!pair) throw new RequestError(401, 'This pairing is no longer active.');
+    if (path === '/v1/pip') {
+      if (request.method === 'POST' && credential === pair.phone_hash) return {delivery: deliveries.claim(pair.desktop_hash)};
+      if (credential !== pair.desktop_hash) throw new RequestError(403, 'Desktop pairing required.');
+      if (request.method === 'DELETE') { deliveries.cancel(pair.desktop_hash); return { cancelled:true }; }
+      if (request.method === 'PUT') {
+        if (!pair.phone_hash) throw new RequestError(409, 'Pair the phone first.');
+        if (!deliveries.enqueue(pair.desktop_hash, await jsonBody(request))) throw new RequestError(400, 'Invalid or stale check-in.');
+        return { accepted:true };
+      }
+      throw new RequestError(405, 'Unsupported check-in operation.');
+    }
     if (path === '/v1/pair' && request.method === 'DELETE') {
       if (pair.desktop_hash !== credential) throw new RequestError(403, 'Unpair from StudyFlow on Windows.');
       remove.run(credential);

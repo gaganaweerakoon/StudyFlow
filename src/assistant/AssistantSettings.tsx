@@ -1,3 +1,4 @@
+import { PhoneDeliverySettings } from './PhoneDeliverySettings';
 import { useApp } from '../context/AppContext';
 import { memoryFields } from './studyPreferences';
 import { useMemo, useState, type FormEvent } from 'react';
@@ -240,6 +241,7 @@ export function AssistantSettings() {
           {Number(preferences.pipCheckIns.snoozeUntil) > Date.now() && <button onClick={() => updatePreferences({pipCheckIns:{...preferences.pipCheckIns,snoozeUntil:0}})}>Resume check-ins</button>}
         </>}
       </details>
+      {desktop && <PhoneDeliverySettings />}
       {/* Usage & Rate Limits Options */}
       <div
         className="pt-4 mt-1 space-y-3"

@@ -189,8 +189,17 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   const [dashboardOverviewError, setDashboardOverviewError] = useState('');
   const pastMilestones = useRef<Set<string> | undefined>(undefined);
   const delivered = useRef('');
+  const relayWork = useRef(Promise.resolve());
   useEffect(() => {
-    function check() {
+    if (isTauri() && app.preferences.pipCheckIns?.phoneDelivery) {
+      // Any new timer, task, session or preference state invalidates prior eligibility.
+      relayWork.current = relayWork.current.then(async () => {
+        await invoke('pip_relay', { action: 'cancel' });
+      }).catch(() => {});
+    }
+  }, [app.focusTimer.running, app.tasks, app.sessions, app.goals, app.focusHistory, app.preferences.pipCheckIns]);
+  useEffect(() => {
+    async function check() {
       const state = currentApp.current;
       const completed = new Set(state.goals.flatMap(g => g.milestones.filter(m => m.done).map(m => 'milestone/' + g.id + '/' + m.id)));
       const previous = pastMilestones.current ?? completed;
@@ -203,15 +212,43 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       if (!candidate) return;
       delivered.current = clock.date;
       const id = 'pip/' + clock.date + '/' + candidate.key;
-      state.addPipNotification({id,title:'Pip',detail:candidate.text,time:clock.time,read:false,route:'assistant'});
+      const phone = isTauri() && state.preferences.pipCheckIns?.phoneDelivery;
+      flushSync(() => state.addPipNotification({id,title:'Pip',detail:candidate.text,time:clock.time,read:Boolean(phone),route:'assistant'}));
       setConversations(items => items.map(chat => chat.id !== activeId ? chat : {
         ...chat, title:chat.messages.length ? chat.title : 'Study check-in',
         messages:[...chat.messages,{id,role:'assistant',state:'complete',text:candidate.text,suggestedTask:candidate.task}],
       }));
+      if (phone) {
+        const queued = () => publishPhoneCheckIn(candidate, clock, state);
+        relayWork.current = relayWork.current.then(queued).catch(() => {
+          setNotice('Pip could not queue this check-in. Check the relay pairing in AI Settings.');
+        });
+      }
     }
-    check();
+
+    async function publishPhoneCheckIn(candidate: CheckIn, clock: ReturnType<typeof requestClock>, state: typeof app) {
+      await currentApp.current.saveWorkspace();
+      const latest = currentApp.current;
+      if (latest.focusTimer.running || latest.tasks !== state.tasks || latest.sessions !== state.sessions ||
+          latest.goals !== state.goals || latest.focusHistory !== state.focusHistory ||
+          latest.preferences.pipCheckIns !== state.preferences.pipCheckIns) return;
+      const observedAt = Date.now();
+      const time = requestClock(settings.timezone, new Date(observedAt));
+      if (time.date !== clock.date || time.time !== clock.time) return;
+      const toMinute = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+      const nowMinute = toMinute(time.time);
+      const quietStart = toMinute(state.preferences.pipCheckIns?.quietFrom ?? '21:30');
+      const remaining = Math.min(20, 1440 - nowMinute, (1440 + quietStart - nowMinute) % 1440 || 1440);
+      const fingerprint = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(candidate.key))),
+        byte => byte.toString(16).padStart(2, '0')).join('');
+      await invoke('pip_relay', { action: 'enqueue', body: {
+        day: clock.date, fingerprint, kind: candidate.key.split('/')[0],
+        observedAt, expiresAt: Math.floor(observedAt / 60000) * 60000 + remaining * 60000,
+      } });
+    }
+    const first = window.setTimeout(check, 0);
     const timer = window.setInterval(check, 30000);
-    return () => window.clearInterval(timer);
+    return () => { window.clearTimeout(first); window.clearInterval(timer); };
   }, [activeId, busy, app.goals, app.preferences.pipCheckIns, settings.timezone]);
   const keys = useRef<Partial<Record<Provider, string>>>({});
   const activeRequest = useRef<AbortController | null>(null);

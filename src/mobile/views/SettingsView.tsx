@@ -50,6 +50,11 @@ export const SettingsView: React.FC = () => {
         </p>
       </header>
 
+      {(window as Window & {StudyFlowPairing?:{configurePipDelivery?:()=>void}}).StudyFlowPairing?.configurePipDelivery && <button
+        className="w-full text-left rounded-xl p-4" style={sectionCardStyle}
+        onClick={() => (window as Window & {StudyFlowPairing?:{configurePipDelivery?:()=>void}}).StudyFlowPairing?.configurePipDelivery?.()}>
+        Android check-in delivery (experimental)
+      </button>}
       {/* 1. Paired PC */}
       <section aria-label="Paired PC" className="space-y-2">
         <h2 className="font-display text-[calc(13px*var(--sf-font-scale,1))] font-semibold text-[var(--text-secondary)] px-0.5">

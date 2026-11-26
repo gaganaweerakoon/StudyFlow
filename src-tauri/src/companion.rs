@@ -24,6 +24,8 @@ pub async fn companion_request(
         "enroll" => (Method::POST, "/v1/pairs"),
         "read" => (Method::GET, "/v1/calendar"),
         "publish" => (Method::PUT, "/v1/calendar"),
+        "pip_enqueue" => (Method::PUT, "/v1/pip"),
+        "pip_cancel" => (Method::DELETE, "/v1/pip"),
         "unpair" => (Method::DELETE, "/v1/pair"),
         _ => return Err("Unknown companion operation.".into()),
     };
@@ -53,6 +55,37 @@ pub async fn companion_request(
             .into());
     }
     Ok(data)
+}
+
+// Keep the desktop credential bound to its enrolled origin in the Windows vault.
+#[tauri::command]
+pub async fn pip_relay(action: String, origin: Option<String>, enrollment: Option<String>, body: Option<Value>) -> Result<Value, String> {
+    #[cfg(windows)]
+    {
+        use crate::credentials;
+        let stored = credentials::read("pip-relay")?;
+        if action == "enroll" {
+            if stored.is_some() { return Err("Disconnect the previous check-in relay first.".into()); }
+            let origin = origin.ok_or("Enter the relay address.")?;
+            if origin.len() > 240 { return Err("Relay address is too long.".into()); }
+            let result = companion_request(origin.clone(), "enroll".into(), enrollment.ok_or("Enter the enrollment key.")?, None).await?;
+            let token = result["desktopToken"].as_str().ok_or("Invalid enrollment response.")?;
+            let binding = serde_json::to_string(&(origin,token)).map_err(|_| "Invalid relay address.")?;
+            credentials::update("pip-relay", Some(binding))?;
+            return Ok(serde_json::json!({"pairingCode":result["pairingCode"]}));
+        }
+        let binding = stored.ok_or("Pair a check-in relay first.")?;
+        let (origin,token): (String,String) = serde_json::from_str(&binding).map_err(|_| "Invalid relay pairing.")?;
+        let operation = match action.as_str() {
+            "enqueue" => "pip_enqueue", "cancel" => "pip_cancel", "disconnect" => "unpair",
+            _ => return Err("Unknown check-in operation.".into())
+        };
+        let result = companion_request(origin, operation.into(), token, body).await?;
+        if action == "disconnect" { credentials::update("pip-relay", None)?; }
+        Ok(result)
+    }
+    #[cfg(not(windows))]
+    { let _ = (action, origin, enrollment, body); Err("Check-in relay pairing requires Windows.".into()) }
 }
 
 #[derive(Default)]

@@ -2,6 +2,7 @@ import type { FocusHistoryItem, GoalItem, NotificationItem, StudySession, TaskIt
 
 export interface CheckInSettings {
   enabled?: boolean;
+  phoneDelivery?: boolean;
   recovery?: boolean;
   milestone?: boolean;
   evening?: boolean;
