@@ -19,15 +19,23 @@ import {
   Sparkles,
   Smartphone,
   RefreshCw,
+  Globe,
+  Trash2,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../firebase/AuthContext';
 import { useAssistant } from '../../assistant/AssistantContext';
 import { AssistantSettings } from '../../assistant/AssistantSettings';
+import { APP_LANGUAGES, ASSISTANT_LANGUAGE_OPTIONS } from '../../assistant/companion';
+import { LanguageSelector } from '../ui/LanguageSelector';
+import { TimezonePicker } from '../ui/TimezonePicker';
 import { ACCENT_PRESETS, THEME_OPTIONS, USER_AVATAR_URL } from '../../data/mockData';
 
 type SettingsSection =
   | 'profile'
+  | 'language'
   | 'appearance'
   | 'themes'
   | 'study'
@@ -42,6 +50,7 @@ type SettingsSection =
 
 const SECTIONS: { id: SettingsSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'profile', label: 'Profile', icon: User },
+  { id: 'language', label: 'Language & Region', icon: Globe },
   { id: 'appearance', label: 'Appearance', icon: Monitor },
   { id: 'themes', label: 'Themes', icon: Palette },
   { id: 'study', label: 'Study Preferences', icon: BookOpen },
@@ -73,10 +82,15 @@ export const SettingsView: React.FC = () => {
     pushToast,
   } = useApp();
 
-  const { settingsRequested, setSettingsRequested } = useAssistant();
+  const {
+    settingsRequested,
+    setSettingsRequested,
+    settings: assistantSettings,
+    updateSettings: updateAssistantSettings,
+  } = useAssistant();
   const { user, syncing, syncProfileToCloud, saveCloudProfilePatch } = useAuth();
   const profileAvatarSrc = user?.photoURL || preferences.googleAccount?.photoURL || (legacyCalendar ? '' : USER_AVATAR_URL);
-  const resetDialog=React.useRef<HTMLDialogElement>(null);
+  const resetDialog = React.useRef<HTMLDialogElement>(null);
   const [selected,setSelected]=useState<WipeSection[]>([]);
   const categories=Object.keys(WIPE_OPTIONS) as WipeSection[];
   const counts={subjects:subjects.length,tasks:tasks.length,calendar:sessions.length,study:notes.length+goals.length+focusHistory.length+quizzes.length+exams.length+flashcards.length};
@@ -171,6 +185,163 @@ export const SettingsView: React.FC = () => {
         <div className="lg:col-span-9 rounded-xl p-5 space-y-5" style={surfaceStyle}>
           {section === 'companion' && <DesktopPairing />}
           {section === 'assistant' && <AssistantSettings />}
+          {section === 'language' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="font-display text-[16px] font-semibold text-[var(--text-primary)]">
+                  Language &amp; Region
+                </h2>
+                <p className="text-[12.5px] text-[var(--text-muted)] mt-0.5">
+                  Save your app language preference and configure Pip’s reply language and timezone.
+                </p>
+              </div>
+
+              {/* App Language */}
+              <div
+                className="pt-4 space-y-3"
+                style={{ borderTop: '1px solid var(--border-subtle)' }}
+              >
+                <div>
+                  <h3 className="text-[13.5px] font-semibold text-[var(--text-primary)]">
+                    App Language
+                  </h3>
+                  <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
+                    StudyFlow saves this preference for future interface translations.
+                  </p>
+                </div>
+                <div className="max-w-md space-y-1.5">
+                  <label
+                    htmlFor="settings-app-language"
+                    className="block text-[12px] font-medium text-[var(--text-secondary)]"
+                  >
+                    Interface language
+                  </label>
+                  <LanguageSelector
+                    id="settings-app-language"
+                    ariaLabel="Interface language"
+                    value={preferences.appLanguage ?? 'en'}
+                    options={APP_LANGUAGES.map((lang) => ({ ...lang, value: lang.code }))}
+                    onChange={(nextCode) => {
+                      updatePreferences({ appLanguage: nextCode });
+                      pushToast('App language preference saved');
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Assistant & Companion Language */}
+              <div
+                className="pt-5 space-y-3.5"
+                style={{ borderTop: '1px solid var(--border-subtle)' }}
+              >
+                <div>
+                  <h3 className="text-[13.5px] font-semibold text-[var(--text-primary)]">
+                    Assistant &amp; Companion Language
+                  </h3>
+                  <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
+                    Choose the language Pip uses across Study Chats and casual Companion messages. Detailed study questions still receive full explanations in the language you ask in.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="settings-assistant-language"
+                      className="block text-[12px] font-medium text-[var(--text-secondary)]"
+                    >
+                      Primary assistant language
+                    </label>
+                    <LanguageSelector
+                      id="settings-assistant-language"
+                      ariaLabel="Primary assistant language"
+                      value={assistantSettings.language ?? ''}
+                      options={ASSISTANT_LANGUAGE_OPTIONS}
+                      emptyOption={{
+                        label: 'Match my message',
+                        description: 'Automatic · replies in the language you write',
+                        countryCode: 'AUTO',
+                      }}
+                      onChange={(nextValue) => {
+                        const nextLang = nextValue || undefined;
+                        updateAssistantSettings({
+                          ...assistantSettings,
+                          language: nextLang,
+                          casualMixLanguage:
+                            assistantSettings.casualMixLanguage === nextLang
+                              ? undefined
+                              : assistantSettings.casualMixLanguage,
+                        });
+                      }}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="settings-mix-language"
+                      className="block text-[12px] font-medium text-[var(--text-secondary)]"
+                    >
+                      Casual bilingual mix (optional)
+                    </label>
+                    <LanguageSelector
+                      id="settings-mix-language"
+                      ariaLabel="Casual bilingual mix"
+                      value={assistantSettings.casualMixLanguage ?? ''}
+                      options={ASSISTANT_LANGUAGE_OPTIONS.filter(
+                        (lang) => lang.value !== assistantSettings.language,
+                      )}
+                      selectedPrefix="Mix with "
+                      emptyOption={{
+                        label: 'Single language only',
+                        description: 'Do not blend a second language in casual chat',
+                        countryCode: 'AUTO',
+                      }}
+                      onChange={(nextValue) =>
+                        updateAssistantSettings({
+                          ...assistantSettings,
+                          casualMixLanguage: nextValue || undefined,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Timezone */}
+              <div
+                className="pt-5 space-y-3"
+                style={{ borderTop: '1px solid var(--border-subtle)' }}
+              >
+                <div>
+                  <h3 className="text-[13.5px] font-semibold text-[var(--text-primary)]">
+                    Timezone
+                  </h3>
+                  <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
+                    Used for Pip study schedules, follow-up reminders, daily outreach limits, and quiet hours.
+                  </p>
+                </div>
+                <div className="max-w-lg space-y-1.5">
+                  <label
+                    htmlFor="settings-timezone-picker"
+                    className="block text-[12px] font-medium text-[var(--text-secondary)]"
+                  >
+                    Pip timezone
+                  </label>
+                  <TimezonePicker
+                    id="settings-timezone-picker"
+                    ariaLabel="Pip timezone"
+                    value={assistantSettings.timezone ?? ''}
+                    onChange={(nextZone) => {
+                      updateAssistantSettings({
+                        ...assistantSettings,
+                        timezone: nextZone || undefined,
+                      });
+                      pushToast(nextZone ? `Timezone set to ${nextZone}` : 'Using device timezone');
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
           {section === 'profile' && (
             <div className="space-y-4">
               <h2 className="font-display text-[16px] font-semibold text-[var(--text-primary)]">
@@ -555,17 +726,138 @@ export const SettingsView: React.FC = () => {
                   <Database className="w-3.5 h-3.5" /> Import
                 </button>}
               </div>
-              {wipeData && <div className="space-y-2 border-t border-[var(--border-subtle)] pt-4">
-                <button onClick={()=>{setSelected([]);resetDialog.current?.showModal();}}>Reset workspace data</button>
-                <dialog ref={resetDialog} className="m-auto max-w-md p-5 rounded-xl bg-[var(--bg-elevated)] text-[var(--text-primary)] backdrop:bg-black/60">
-                  <h3 className="font-semibold mb-3">Reset workspace data</h3>
-                  <label><input type="checkbox" checked={selected.length===categories.length} onChange={e=>setSelected(e.target.checked?categories:[])}/> Select all</label>
-                  {categories.map(key=><label key={key} className="block my-3"><input type="checkbox" checked={selected.includes(key)} onChange={e=>setSelected(e.target.checked?[...selected,key]:selected.filter(item=>item!==key))}/> {WIPE_OPTIONS[key].label} ({counts[key]})
-                    <small className="block">{WIPE_OPTIONS[key].detail}</small></label>)}
-                  <p className="text-xs">Deletion also applies to the saved pre-import snapshot and cannot be undone.</p>
-                  <div className="flex gap-4 mt-4"><button onClick={()=>resetDialog.current?.close()}>Cancel</button><button disabled={!selected.length} className="text-red-500" onClick={()=>void wipeData(selected)}>Delete selected data</button></div>
-                </dialog>
-              </div>}
+              {wipeData && (
+                <div className="space-y-3 border-t border-[var(--border-subtle)] pt-4">
+                  <div>
+                    <h3 className="text-[13.5px] font-semibold text-[var(--text-primary)]">
+                      Reset Workspace Data
+                    </h3>
+                    <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
+                      Selectively clear subjects, tasks, calendar schedules, or study items from this workspace.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelected([]);
+                      resetDialog.current?.showModal();
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                    style={{ border: '1px solid rgba(225, 29, 72, 0.35)' }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Reset workspace data
+                  </button>
+
+                  <dialog
+                    ref={resetDialog}
+                    className="m-auto w-[min(440px,calc(100vw-2rem))] rounded-xl p-0 bg-[var(--bg-elevated)] text-[var(--text-primary)] backdrop:bg-black/60 shadow-xl"
+                    style={{ border: '1px solid var(--border-subtle)' }}
+                  >
+                    <div
+                      className="flex items-center justify-between gap-3 px-5 py-4"
+                      style={{ borderBottom: '1px solid var(--border-subtle)' }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                        <h3 className="font-display text-[15px] font-semibold">
+                          Reset workspace data
+                        </h3>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Close reset dialog"
+                        onClick={() => resetDialog.current?.close()}
+                        className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="p-5 space-y-3">
+                      <label className="flex items-center gap-2.5 text-[13px] font-medium text-[var(--text-primary)] cursor-pointer pb-2 border-b border-[var(--border-subtle)]">
+                        <input
+                          type="checkbox"
+                          checked={selected.length === categories.length}
+                          onChange={(e) => setSelected(e.target.checked ? categories : [])}
+                          className="h-4 w-4 rounded accent-[var(--accent)]"
+                        />
+                        <span>Select all categories</span>
+                      </label>
+
+                      <div className="space-y-2">
+                        {categories.map((key) => (
+                          <label
+                            key={key}
+                            className="flex items-start gap-2.5 p-2.5 rounded-lg cursor-pointer transition-colors hover:bg-[var(--bg-surface-hover)]"
+                            style={{
+                              backgroundColor: selected.includes(key)
+                                ? 'var(--bg-surface-subtle)'
+                                : 'transparent',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selected.includes(key)}
+                              onChange={(e) =>
+                                setSelected(
+                                  e.target.checked
+                                    ? [...selected, key]
+                                    : selected.filter((item) => item !== key),
+                                )
+                              }
+                              className="mt-0.5 h-4 w-4 rounded accent-[var(--accent)] shrink-0"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center justify-between gap-2 text-[13px] font-medium text-[var(--text-primary)]">
+                                <span>{WIPE_OPTIONS[key].label}</span>
+                                <span className="font-mono-num tabular-nums text-[11.5px] text-[var(--text-muted)]">
+                                  {counts[key]}
+                                </span>
+                              </span>
+                              <small className="block text-[11.5px] text-[var(--text-muted)] mt-0.5">
+                                {WIPE_OPTIONS[key].detail}
+                              </small>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+
+                      <p className="text-[11.5px] text-[var(--text-muted)] pt-1 leading-relaxed">
+                        Deletion also applies to the saved pre-import snapshot and cannot be undone.
+                      </p>
+                    </div>
+
+                    <div
+                      className="flex items-center justify-end gap-2.5 px-5 py-3.5"
+                      style={{ borderTop: '1px solid var(--border-subtle)' }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => resetDialog.current?.close()}
+                        className="px-3.5 py-2 rounded-lg text-[12.5px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+                        style={{
+                          backgroundColor: 'var(--bg-surface-subtle)',
+                          border: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!selected.length}
+                        onClick={() => {
+                          resetDialog.current?.close();
+                          void wipeData(selected);
+                        }}
+                        className="px-3.5 py-2 rounded-lg text-[12.5px] font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-45 transition-colors"
+                      >
+                        Delete selected data
+                      </button>
+                    </div>
+                  </dialog>
+                </div>
+              )}
             </div>
           )}
 

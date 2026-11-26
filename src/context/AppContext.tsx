@@ -136,6 +136,7 @@ export interface UserPreferences {
   highContrastText: boolean;
   showFocusStreak: boolean;
   localBackupAuto: boolean;
+  appLanguage?: string;
   pipCheckIns?: import('../assistant/checkIns').CheckInSettings;
   pipMemory?: import('../assistant/studyPreferences').StudyPreferences;
   goalsPrefs?: GoalViewPreferences;

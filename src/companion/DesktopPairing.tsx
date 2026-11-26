@@ -130,32 +130,145 @@ export function DesktopPairing() {
   }
 
   return (
-    <section className="space-y-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
-      <h2 className="font-display text-base font-semibold">Mobile companion</h2>
-      {link?.pc && <p className="text-sm text-[var(--text-secondary)]">This PC: {link.pc}</p>}
+    <section className="space-y-5">
+      <div>
+        <h2 className="font-display text-[16px] font-semibold text-[var(--text-primary)]">
+          Mobile Companion
+        </h2>
+        <p className="text-[12.5px] text-[var(--text-muted)] mt-0.5">
+          Sync your desktop schedule and focus timer over local Wi-Fi with the StudyFlow mobile companion.
+        </p>
+      </div>
+
+      {link?.pc && (
+        <div
+          className="rounded-lg px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-[12.5px]"
+          style={{
+            backgroundColor: 'var(--bg-surface-subtle)',
+            border: '1px solid var(--border-subtle)',
+          }}
+        >
+          <span className="text-[var(--text-secondary)]">
+            This PC: <strong className="font-semibold text-[var(--text-primary)]">{link.pc}</strong>
+          </span>
+          {link.phone && link.lastSync && (
+            <span className="font-mono-num tabular-nums text-[11.5px] text-[var(--text-muted)]">
+              Last synced {new Date(link.lastSync * 1000).toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+      )}
+
       {link?.phone ? (
-        <div className="space-y-2 text-sm">
-          <p className="flex items-center gap-2"><Smartphone size={16} /> {link.phone}</p>
-          {link.lastSync && <p>Last synced {new Date(link.lastSync * 1000).toLocaleTimeString()}</p>}
-          <button type="button" disabled={busy} onClick={() => void run('invite')} className="mr-2 rounded border border-[var(--border-subtle)] px-4 py-2">Reconnect phone</button>
-          <button type="button" disabled={busy} onClick={() => void run('disconnect')} className="rounded border border-[var(--border-subtle)] px-4 py-2">Disconnect</button>
+        <div className="space-y-3 text-[13px]">
+          <p className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
+            <Smartphone size={16} style={{ color: 'var(--accent)' }} />
+            <span>{link.phone}</span>
+          </p>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void run('invite')}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors disabled:opacity-55"
+              style={{
+                backgroundColor: 'var(--bg-surface-subtle)',
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              Reconnect phone
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void run('disconnect')}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-55"
+              style={{ border: '1px solid rgba(225, 29, 72, 0.35)' }}
+            >
+              Disconnect
+            </button>
+          </div>
         </div>
       ) : (
-        <div className="space-y-3 text-sm">
-          <p>Connect both devices to the same Wi-Fi or hotspot.</p>
-          <button type="button" disabled={busy} onClick={() => void run('invite')} className="inline-flex items-center gap-2 rounded bg-[var(--accent)] px-4 py-2 text-[var(--accent-fg)]">
-            <QrCode size={16} /> {qr ? 'Show new code' : 'Pair phone'}
+        <div className="space-y-3 text-[13px]">
+          <p className="text-[var(--text-secondary)]">
+            Connect both devices to the same Wi-Fi network or hotspot, then scan the pairing code.
+          </p>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void run('invite')}
+              className="inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-[12.5px] font-semibold transition-opacity hover:opacity-95 disabled:opacity-55"
+              style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
+            >
+              <QrCode size={15} />
+              {qr ? 'Show new code' : 'Pair phone'}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void run('test')}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors disabled:opacity-55"
+              style={{
+                backgroundColor: 'var(--bg-surface-subtle)',
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              Test connection
+            </button>
+          </div>
+        </div>
+      )}
+
+      {link?.phone && (
+        <div className="pt-1">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void run('test')}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors disabled:opacity-55"
+            style={{
+              backgroundColor: 'var(--bg-surface-subtle)',
+              border: '1px solid var(--border-subtle)',
+            }}
+          >
+            Test connection
           </button>
         </div>
       )}
+
       {qr && (
-            <div className="space-y-2">
-              <img src={qr.qr} alt="StudyFlow phone pairing QR code" className="size-64 max-w-full rounded-lg bg-white [image-rendering:pixelated]" />
-              <p>On your phone, tap {link?.phone ? 'Reconnect' : 'Scan QR code'}. This code expires in two minutes.</p>
-            </div>
-          )}
-      <button type="button" disabled={busy} onClick={() => void run('test')} className="rounded border border-[var(--border-subtle)] px-4 py-2 text-sm">Test connection</button>
-      {status && <p role="status" className="text-sm text-[var(--text-secondary)]">{status}</p>}
+        <div
+          className="rounded-xl p-4 space-y-2.5 inline-block"
+          style={{
+            backgroundColor: 'var(--bg-surface-subtle)',
+            border: '1px solid var(--border-subtle)',
+          }}
+        >
+          <img
+            src={qr.qr}
+            alt="StudyFlow phone pairing QR code"
+            className="size-56 max-w-full rounded-lg bg-white p-2 [image-rendering:pixelated]"
+          />
+          <p className="text-[12px] text-[var(--text-secondary)] max-w-xs">
+            On your phone, tap {link?.phone ? 'Reconnect' : 'Scan QR code'}. This code expires in two minutes.
+          </p>
+        </div>
+      )}
+
+      {status && (
+        <p
+          role="status"
+          className="rounded-lg px-3 py-2 text-[12px] text-[var(--text-secondary)] font-mono-num"
+          style={{
+            backgroundColor: 'var(--bg-surface-subtle)',
+            border: '1px solid var(--border-subtle)',
+          }}
+        >
+          {status}
+        </p>
+      )}
     </section>
   );
 }

@@ -1174,15 +1174,8 @@
 
 .pip-send:hover:not(:disabled) { background: var(--accent-hover); }
 
-/* Settings Panel */
+/* Settings Panel (legacy fallback only) */
 .pip-settings { display: grid; gap: 12px; font-size: 13px; color: var(--text-primary); }
-.pip-settings h2 { display: flex; align-items: center; gap: 7px; }
-.pip-settings p, .pip-settings label, .pip-settings-actions { color: var(--text-secondary); }
-.pip-settings label { display: grid; gap: 4px; align-content: start; }
-.pip-settings-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 9px; }
-.pip-settings-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
-.pip-settings-actions button { border: 1px solid var(--border-subtle); border-radius: 8px; padding: 6px 12px; }
-.pip-settings-actions .pip-settings-primary { color: var(--accent-fg); background: var(--accent); border-color: transparent; }
 
 /* Action & Confirmation Cards */
 .pip-action-card,
