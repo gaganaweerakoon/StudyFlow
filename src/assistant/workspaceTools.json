@@ -1221,6 +1221,7 @@
               "name": {
                 "type": "string"
               },
+              "unitTitle": { "type": "string", "description": "Parent unit name; resolved within the selected subject during import." },
               "topics": {
                 "type": "array",
                 "items": {

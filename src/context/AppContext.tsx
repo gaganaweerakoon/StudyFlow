@@ -51,6 +51,7 @@ import { localDay } from '../assistant/workspaceContext';
 import { resolveOfflineFocus, validOfflineRecord, type OfflineFocusRecord, type OfflineReceipts } from '../companion/offlineFocus';
 import { scheduleFlashcardReview, type ReviewRating } from '../utils/studyLogic';
 import { removeLegacySubject, unassignSubject } from '../utils/subjectReferences';
+import { normalizeSyllabus, moveChapter, moveSyllabusItem, mergeImportedChapters, type IncomingChapter } from '../utils/syllabusHierarchy';
 import { calendarProjectionDates } from '../utils/calendarLayout';
 import {
   advanceFocusTimerState,
@@ -172,14 +173,18 @@ interface AppContextValue {
 
   // Core Data
   subjects: Subject[];
-  appendChapters: (id:string, chapters:Subject["chapters"]) => void;
+  appendChapters: (id: string, chapters: IncomingChapter[]) => void;
   addSubject: (s: Omit<Subject, 'id' | 'chapters'>) => void;
   updateSubject: (subjectId: string, patch: Partial<Omit<Subject, 'id' | 'chapters'>>) => void;
   deleteSubject: (subjectId: string) => void;
   toggleArchiveSubject: (subjectId: string) => void;
   toggleArchiveChapter: (subjectId: string, chapterId: string) => void;
-  addChapter: (subjectId: string, title: string, topicTitles?: string[]) => void;
-  updateChapter: (subjectId: string, chapterId: string, title: string) => void;
+  addUnit: (subjectId: string, title: string) => void;
+  updateUnit: (subjectId: string, unitId: string, patch: { title?: string; archived?: boolean }) => void;
+  reorderUnit: (subjectId: string, unitId: string, delta: -1 | 1) => void;
+  reorderChapter: (subjectId: string, chapterId: string, delta: -1 | 1) => void;
+  addChapter: (subjectId: string, title: string, topicTitles?: string[], unitId?: string) => void;
+  updateChapter: (subjectId: string, chapterId: string, title: string, unitId?: string) => void;
   deleteChapter: (subjectId: string, chapterId: string) => void;
   addTopic: (subjectId: string, chapterId: string, title: string, difficulty?: TopicItem['difficulty']) => void;
   deleteTopic: (subjectId: string, chapterId: string, topicId: string) => void;
@@ -341,7 +346,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [density, setDensity] = useState<DensityMode>(initial?.density ?? 'compact');
 
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetConfig[]>(initial?.dashboardWidgets ?? INITIAL_DASHBOARD_WIDGETS);
-  const [subjects, setSubjects] = useState<Subject[]>(initial?.subjects ?? (desktop ? [] : INITIAL_SUBJECTS));
+  const [subjects, setSubjects] = useState<Subject[]>(() => (initial?.subjects ?? (desktop ? [] : INITIAL_SUBJECTS)).map(normalizeSyllabus));
   const [tasks, setTasks] = useState<TaskItem[]>(initial?.tasks ?? (desktop ? [] : INITIAL_TASKS));
   const tasksRef = useRef<TaskItem[]>(tasks);
   tasksRef.current = tasks;
@@ -1052,7 +1057,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
           },
         ],
       };
-      setSubjects((prev) => [...prev, newSub]);
+      setSubjects((prev) => [...prev, normalizeSyllabus(newSub)]);
       pushToast(`Added ${s.code} — ${s.name}`);
     },
     [pushToast]
@@ -1139,8 +1144,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     [pushToast]
   );
 
+  const addUnit = useCallback((subjectId: string, title: string) => {
+    if (!title.trim()) return;
+    const unit = { id: `unit-${crypto.randomUUID()}`, title: title.trim() };
+    setSubjects(previous => previous.map(subject => {
+      if (subject.id !== subjectId) return subject;
+      const next = normalizeSyllabus(subject);
+      return { ...next, units: [...(next.units ?? []), unit] };
+    }));
+  }, []);
+  const updateUnit = useCallback((subjectId: string, unitId: string, patch: { title?: string; archived?: boolean }) => {
+    if (patch.title !== undefined && !patch.title.trim()) return;
+    setSubjects(previous => previous.map(subject => subject.id !== subjectId ? subject : {
+      ...subject, units: (normalizeSyllabus(subject).units ?? []).map(unit => unit.id !== unitId ? unit : { ...unit, ...patch, ...(patch.title !== undefined ? { title: patch.title.trim() } : {}) }),
+    }));
+  }, []);
+  const reorderUnit = useCallback((subjectId: string, unitId: string, delta: -1 | 1) => {
+    setSubjects(previous => previous.map(subject => subject.id !== subjectId ? subject : { ...subject, units: moveSyllabusItem(normalizeSyllabus(subject).units ?? [], unitId, delta) }));
+  }, []);
+  const reorderChapter = useCallback((subjectId: string, chapterId: string, delta: -1 | 1) => {
+    setSubjects(previous => previous.map(subject => subject.id === subjectId ? moveChapter(subject, chapterId, delta) : subject));
+  }, []);
   const addChapter = useCallback(
-    (subjectId: string, title: string, topicTitles: string[] = []) => {
+    (subjectId: string, title: string, topicTitles: string[] = [], unitId?: string) => {
       const cleanTitle = title.trim();
       if (!cleanTitle) return;
       const cleanTopics = topicTitles
@@ -1161,7 +1187,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       };
       setSubjects((prev) =>
         prev.map((sub) =>
-          sub.id === subjectId ? { ...sub, chapters: [...sub.chapters, newChapter] } : sub
+          sub.id === subjectId ? (() => {
+            const next = normalizeSyllabus(sub);
+            const selected = next.units?.find(unit => unit.id === unitId && !unit.archived) ?? next.units?.find(unit => !unit.archived);
+            return selected ? { ...next, chapters: [...next.chapters, { ...newChapter, unitId: selected.id }] } : mergeImportedChapters(next, [newChapter]);
+          })() : sub
         )
       );
       pushToast(`Added chapter "${cleanTitle}"`);
@@ -1248,7 +1278,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   );
 
   const updateChapter = useCallback(
-    (subjectId: string, chapterId: string, title: string) => {
+    (subjectId: string, chapterId: string, title: string, unitId?: string) => {
       const cleanTitle = title.trim();
       if (!cleanTitle) return;
       setSubjects((prev) =>
@@ -1257,7 +1287,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
           return {
             ...sub,
             chapters: sub.chapters.map((ch) =>
-              ch.id === chapterId ? { ...ch, title: cleanTitle } : ch
+              ch.id === chapterId ? { ...ch, title: cleanTitle, ...(unitId && sub.units?.some(unit => unit.id === unitId && !unit.archived) ? { unitId } : {}) } : ch
             ),
           };
         })
@@ -1693,7 +1723,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       }
       if (!window.confirm('Load sample data into this empty workspace? Sample records will be saved locally.')) return;
     }
-    setSubjects(INITIAL_SUBJECTS);
+    setSubjects(INITIAL_SUBJECTS.map(normalizeSyllabus));
     setTasks(INITIAL_TASKS);
     setSessions(INITIAL_SESSIONS);
     setRemovedOccurrences([]);
@@ -1753,28 +1783,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         moveDashboardWidget,
         resetDashboardWidgets,
         subjects,
-        appendChapters: (id, chapters) => setSubjects(prev => prev.map(s => {
-          if (s.id !== id) return s;
-          const key = (title: string) => title.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
-          const merged = [...s.chapters];
-          for (const incoming of chapters) {
-            const i = merged.findIndex(ch => key(ch.title) === key(incoming.title));
-            if (i < 0) { merged.push(incoming); continue; }
-            const existing = merged[i];
-            const titles = new Set(existing.topics.map(t => key(t.title)));
-            const topics = [...existing.topics];
-            for (const t of incoming.topics) {
-              if (!titles.has(key(t.title))) { topics.push(t); titles.add(key(t.title)); }
-            }
-            merged[i] = { ...existing, topics };
-          }
-          return { ...s, chapters: merged };
-        })),
+        appendChapters: (id, chapters) => setSubjects(prev => prev.map(subject => subject.id === id ? mergeImportedChapters(subject, chapters) : subject)),
         addSubject,
         updateSubject,
         deleteSubject,
         toggleArchiveSubject,
         toggleArchiveChapter,
+        addUnit,
+        updateUnit,
+        reorderUnit,
+        reorderChapter,
         addChapter,
         updateChapter,
         deleteChapter,

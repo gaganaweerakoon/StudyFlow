@@ -35,6 +35,7 @@ import { useApp } from '../../context/AppContext';
 import { markdownToPlainPreview } from '../../assistant/markdownNormalize';
 import type { ChapterItem, Subject, TopicItem } from '../../types/studyflow';
 import { calculateSubjectProgress } from '../../utils/studyLogic';
+import { chapterNumber, groupedChapters, isChapterArchived, syllabusUnits } from '../../utils/syllabusHierarchy';
 
 type DetailTab = 'chapters' | 'overview' | 'tasks' | 'notes' | 'flashcards' | 'performance';
 type RootSectionTab = 'subjects' | 'chapters';
@@ -73,6 +74,7 @@ export const SubjectsView: React.FC = () => {
     deleteSubject,
     toggleArchiveSubject,
     toggleArchiveChapter,
+    addUnit, updateUnit, reorderUnit, reorderChapter,
     addChapter,
     updateChapter,
     deleteChapter,
@@ -100,6 +102,10 @@ export const SubjectsView: React.FC = () => {
   // Add Chapter popup state
   const [chapterModalOpen, setChapterModalOpen] = useState(false);
   const [newChapterSubjectId, setNewChapterSubjectId] = useState<string>('');
+  const [newChapterUnitId, setNewChapterUnitId] = useState('');
+  const [editChapterUnitId, setEditChapterUnitId] = useState('');
+  const [unitDraft, setUnitDraft] = useState<{ subjectId: string; unitId?: string; title: string } | null>(null);
+  const [collapsedUnits, setCollapsedUnits] = useState<Set<string>>(() => new Set());
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [newChapterTopics, setNewChapterTopics] = useState('');
 
@@ -180,7 +186,7 @@ export const SubjectsView: React.FC = () => {
     };
   }
 
-  const openAddChapterModal = (preferredSubjectId?: string) => {
+  const openAddChapterModal = (preferredSubjectId?: string, preferredUnitId?: string) => {
     const fallbackId =
       preferredSubjectId ??
       activeSubject?.id ??
@@ -188,6 +194,7 @@ export const SubjectsView: React.FC = () => {
       subjects[0]?.id ??
       '';
     setNewChapterSubjectId(fallbackId);
+    setNewChapterUnitId(preferredUnitId ?? subjects.filter(subject => subject.id === fallbackId).flatMap(syllabusUnits).find(unit => !unit.archived)?.id ?? '');
     setNewChapterTitle('');
     setNewChapterTopics('');
     setChapterModalOpen(true);
@@ -195,12 +202,12 @@ export const SubjectsView: React.FC = () => {
 
   const handleCreateChapterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newChapterSubjectId || !newChapterTitle.trim()) return;
+    if (!newChapterSubjectId || !newChapterTitle.trim() || !newChapterUnitId) return;
     const topics = newChapterTopics
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean);
-    addChapter(newChapterSubjectId, newChapterTitle.trim(), topics);
+    addChapter(newChapterSubjectId, newChapterTitle.trim(), topics, newChapterUnitId || undefined);
     setChapterModalOpen(false);
     setNewChapterTitle('');
     setNewChapterTopics('');
@@ -233,12 +240,13 @@ export const SubjectsView: React.FC = () => {
   const openEditChapterModal = (subjectId: string, chapter: ChapterItem) => {
     setEditingChapter({ subjectId, chapter });
     setEditChapterTitle(chapter.title);
+    setEditChapterUnitId(chapter.unitId ?? '');
   };
 
   const handleEditChapterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingChapter || !editChapterTitle.trim()) return;
-    updateChapter(editingChapter.subjectId, editingChapter.chapter.id, editChapterTitle.trim());
+    updateChapter(editingChapter.subjectId, editingChapter.chapter.id, editChapterTitle.trim(), editChapterUnitId || undefined);
     setEditingChapter(null);
   };
 
@@ -279,7 +287,7 @@ export const SubjectsView: React.FC = () => {
   const renderChapterCard = (
     sub: Subject,
     ch: ChapterItem,
-    chapterNumber: number,
+    _chapterNumber: number,
     showSubjectName = false,
   ) => {
     const stats = getChapterStats(ch);
@@ -319,8 +327,8 @@ export const SubjectsView: React.FC = () => {
             </div>
             <div className="min-w-0">
               <div className="text-[11.5px] font-medium text-[var(--text-muted)] truncate">
-                {showSubjectName ? `${sub.code} · ${sub.name}` : `${sub.code} · Chapter ${chapterNumber}`}
-                {isArchived ? ' · Archived' : ''}
+                {showSubjectName ? `${sub.code} · ${sub.name} · ` : `${sub.code} · `}Chapter {chapterNumber(sub, ch.id)}
+                {isChapterArchived(sub, ch) ? ' · Archived' : ''}
               </div>
               <h2 className="font-display text-[15px] font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors truncate">
                 {ch.title}
@@ -460,7 +468,7 @@ export const SubjectsView: React.FC = () => {
             </label>
             <select
               value={newChapterSubjectId}
-              onChange={(e) => setNewChapterSubjectId(e.target.value)}
+              onChange={(e) => { const id = e.target.value; setNewChapterSubjectId(id); setNewChapterUnitId(subjects.filter(subject => subject.id === id).flatMap(syllabusUnits).find(unit => !unit.archived)?.id ?? ''); }}
               className="w-full px-2.5 py-2 rounded-lg text-[13px]"
               style={inputStyle}
               required
@@ -471,6 +479,13 @@ export const SubjectsView: React.FC = () => {
                   {s.archived ? ' (Archived)' : ''}
                 </option>
               ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">Unit</label>
+            <select aria-label="Chapter unit" value={newChapterUnitId} onChange={e => setNewChapterUnitId(e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-[13px]" style={inputStyle} required>
+              <option value="" disabled>Select an active unit</option>
+              {subjects.filter(subject => subject.id === newChapterSubjectId).flatMap(subject => syllabusUnits(subject)).filter(unit => !unit.archived).map(unit => <option key={unit.id} value={unit.id}>{unit.title}</option>)}
             </select>
           </div>
           <div>
@@ -511,7 +526,7 @@ export const SubjectsView: React.FC = () => {
             </button>
             <button
               type="submit"
-              disabled={!newChapterTitle.trim() || !newChapterSubjectId}
+              disabled={!newChapterTitle.trim() || !newChapterSubjectId || !newChapterUnitId}
               className="px-4 py-1.5 rounded-lg text-[13px] font-medium disabled:opacity-40"
               style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
             >
@@ -716,6 +731,11 @@ export const SubjectsView: React.FC = () => {
         </div>
 
         <form onSubmit={handleEditChapterSubmit} className="p-5 space-y-3.5">
+          <label className="block text-[12px] font-medium text-[var(--text-secondary)]">Unit
+            <select aria-label="Move chapter to unit" value={editChapterUnitId} onChange={e => setEditChapterUnitId(e.target.value)} className="w-full px-2.5 py-2 rounded-lg text-[13px]" style={inputStyle}>
+              {subjects.filter(subject => subject.id === editingChapter.subjectId).flatMap(subject => syllabusUnits(subject)).filter(unit => !unit.archived || unit.id === editingChapter.chapter.unitId).map(unit => <option key={unit.id} value={unit.id}>{unit.title}</option>)}
+            </select>
+          </label>
           <div>
             <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
               Chapter Title
@@ -861,7 +881,7 @@ export const SubjectsView: React.FC = () => {
                 >
                   {activeSubject.code}
                 </button>
-                {activeChapter.archived && (
+                {isChapterArchived(activeSubject, activeChapter) && (
                   <>
                     <span aria-hidden="true">·</span>
                     <span>Archived</span>
@@ -869,7 +889,7 @@ export const SubjectsView: React.FC = () => {
                 )}
               </div>
               <h1 className="font-display text-[19px] font-semibold text-[var(--text-primary)] truncate">
-                {activeChapter.title}
+                {chapterNumber(activeSubject, activeChapter.id)} · {activeChapter.title}
               </h1>
             </div>
           </div>
@@ -1112,10 +1132,8 @@ export const SubjectsView: React.FC = () => {
   // =========================================================================
   if (activeSubject) {
     const Icon = SUBJECT_ICONS[activeSubject.icon] ?? Code2;
-    const activeChapters = activeSubject.chapters.filter((ch) => !ch.archived);
-    const archivedChapters = activeSubject.chapters.filter((ch) => ch.archived);
-    const visibleChapters =
-      chapterArchiveFilter === 'active' ? activeChapters : archivedChapters;
+    const activeChapters = activeSubject.chapters.filter((ch) => !isChapterArchived(activeSubject, ch));
+    const archivedChapters = activeSubject.chapters.filter((ch) => isChapterArchived(activeSubject, ch));
     const prog = calculateSubjectProgress(activeChapters);
     const subTasks = tasks.filter((t) => t.subjectId === activeSubject.id);
     const subNotes = notes.filter((n) => n.subjectId === activeSubject.id);
@@ -1234,7 +1252,7 @@ export const SubjectsView: React.FC = () => {
         >
           {(
             [
-              { id: 'chapters', label: `Chapters (${activeChapters.length})` },
+              { id: 'chapters', label: `Syllabus (${activeChapters.length})` },
               { id: 'overview', label: 'Overview' },
               { id: 'tasks', label: `Tasks (${subTasks.length})` },
               { id: 'notes', label: `Notes (${subNotes.length})` },
@@ -1346,41 +1364,37 @@ export const SubjectsView: React.FC = () => {
               </div>
             </div>
 
-            {visibleChapters.length === 0 ? (
-              <div className="rounded-xl p-8 text-center space-y-2" style={surfaceStyle}>
-                <p className="text-[13.5px] font-medium text-[var(--text-primary)]">
-                  {chapterArchiveFilter === 'archived'
-                    ? 'No archived chapters in this subject'
-                    : 'No active chapters yet'}
-                </p>
-                <p className="text-[12px] text-[var(--text-muted)]">
-                  {chapterArchiveFilter === 'archived'
-                    ? 'Archived chapters will appear here and can be restored at any time.'
-                    : 'Add a chapter or import a syllabus outline to start tracking topics.'}
-                </p>
-                {chapterArchiveFilter === 'active' && (
-                  <button
-                    type="button"
-                    onClick={() => openAddChapterModal(activeSubject.id)}
-                    className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-medium"
-                    style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add Chapter
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">Units & chapters</h3>
+              <button type="button" onClick={() => setUnitDraft({subjectId: activeSubject.id, title: ''})} className="rounded-lg px-3 py-1.5 border border-[var(--border-subtle)] text-xs">+ Add Unit</button>
+            </div>
+            {unitDraft?.subjectId === activeSubject.id && (
+              <form className="flex gap-2 items-center p-3 rounded-xl" style={surfaceStyle} onSubmit={e => { e.preventDefault(); if (!unitDraft.title.trim()) return; if (unitDraft.unitId) updateUnit(activeSubject.id, unitDraft.unitId, {title: unitDraft.title}); else addUnit(activeSubject.id, unitDraft.title); setUnitDraft(null); }}>
+                <input aria-label="Unit title" autoFocus required value={unitDraft.title} onChange={e => setUnitDraft({...unitDraft, title: e.target.value})} placeholder="Unit title" className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm" style={inputStyle}/>
+                <button type="submit" className="text-xs font-semibold text-[var(--accent)]">Save</button>
+                <button type="button" onClick={() => setUnitDraft(null)} className="text-xs">Cancel</button>
+              </form>
+            )}
+            {groupedChapters(activeSubject).filter(({unit, chapters}) => chapterArchiveFilter === 'active' ? !unit.archived : Boolean(unit.archived) || chapters.some(ch => ch.archived)).map(({unit, number, chapters}) => {
+              const groupChapters = chapters.filter(ch => chapterArchiveFilter === 'active' ? !isChapterArchived(activeSubject, ch) : isChapterArchived(activeSubject, ch));
+              const key = `${activeSubject.id}:${unit.id}`;
+              const expanded = !collapsedUnits.has(key);
+              return <section key={unit.id} className="rounded-xl p-3 space-y-3" style={surfaceStyle}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" aria-expanded={expanded} onClick={() => setCollapsedUnits(previous => { const next = new Set(previous); if (next.has(key)) next.delete(key); else next.add(key); return next; })} className="flex flex-1 items-center gap-2 min-w-0 text-left">
+                    <ChevronRight className={`w-4 h-4 shrink-0 ${expanded ? 'rotate-90' : ''}`} />
+                    <span className="font-semibold text-sm truncate">{number}. {unit.title}</span><span className="text-xs text-[var(--text-muted)]">{groupChapters.length} chapters{unit.archived ? ' · Archived' : ''}</span>
                   </button>
-                )}
-              </div>
-            ) : viewMode === 'grid' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {visibleChapters.map((ch, idx) =>
-                  renderChapterCard(activeSubject, ch, idx + 1, false),
-                )}
-              </div>
-            ) : (
-              <div
-                className="rounded-xl divide-y divide-[var(--border-subtle)]"
-                style={surfaceStyle}
-              >
-                {visibleChapters.map((ch) => {
+                  <button type="button" aria-label="Move unit up" onClick={() => reorderUnit(activeSubject.id, unit.id, -1)} className="px-1.5 text-xs">↑</button>
+                  <button type="button" aria-label="Move unit down" onClick={() => reorderUnit(activeSubject.id, unit.id, 1)} className="px-1.5 text-xs">↓</button>
+                  <button type="button" onClick={() => setUnitDraft({subjectId: activeSubject.id, unitId: unit.id, title: unit.title})} className="px-1.5 text-xs">Rename</button>
+                  <button type="button" onClick={() => updateUnit(activeSubject.id, unit.id, {archived: !unit.archived})} className="px-1.5 text-xs">{unit.archived ? 'Restore' : 'Archive'}</button>
+                  {!unit.archived && <button type="button" onClick={() => openAddChapterModal(activeSubject.id, unit.id)} className="px-1.5 text-xs text-[var(--accent)]">+ Chapter</button>}
+                </div>
+                {expanded && (groupChapters.length === 0 ? <p className="text-xs text-[var(--text-muted)] pl-6">No chapters in this view.</p> : viewMode === 'grid' ? <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {groupChapters.map((ch, idx) => <div key={ch.id} className="space-y-1">{renderChapterCard(activeSubject, ch, idx + 1, false)}<div className="flex justify-end gap-2 text-xs text-[var(--text-muted)]"><button type="button" aria-label={`Move chapter ${ch.title} up`} onClick={() => reorderChapter(activeSubject.id, ch.id, -1)}>↑ Move</button><button type="button" aria-label={`Move chapter ${ch.title} down`} onClick={() => reorderChapter(activeSubject.id, ch.id, 1)}>↓ Move</button></div></div>)}
+                </div> : <div className="rounded-xl divide-y divide-[var(--border-subtle)]">
+                {groupChapters.map((ch) => {
                   const stats = getChapterStats(ch);
                   const isArchived = Boolean(ch.archived);
                   return (
@@ -1404,7 +1418,7 @@ export const SubjectsView: React.FC = () => {
                         />
                         <div className="min-w-0">
                           <div className="text-[13.5px] font-semibold text-[var(--text-primary)] truncate">
-                            {ch.title}
+                            {chapterNumber(activeSubject, ch.id)} · {ch.title}
                           </div>
                           <div className="text-[11.5px] text-[var(--text-muted)] tabular-nums">
                             {stats.completed}/{stats.total} topics completed · Confidence{' '}
@@ -1413,6 +1427,8 @@ export const SubjectsView: React.FC = () => {
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
+                        <button type="button" aria-label={`Move ${ch.title} up`} onClick={e => {e.stopPropagation(); reorderChapter(activeSubject.id, ch.id, -1);}}>↑</button>
+                        <button type="button" aria-label={`Move ${ch.title} down`} onClick={e => {e.stopPropagation(); reorderChapter(activeSubject.id, ch.id, 1);}}>↓</button>
                         <span className="font-mono-num text-[12px] font-semibold text-[var(--text-primary)] tabular-nums mr-1.5">
                           {stats.percent}%
                         </span>
@@ -1464,8 +1480,9 @@ export const SubjectsView: React.FC = () => {
                     </div>
                   );
                 })}
-              </div>
-            )}
+                </div>)}
+              </section>;
+            })}
           </div>
         )}
 
@@ -1780,10 +1797,10 @@ export const SubjectsView: React.FC = () => {
     archiveFilter === 'active' ? activeSubjectsList : archivedSubjectsList;
 
   const activeChaptersAll = allChaptersList.filter(
-    ({ subject, chapter }) => !subject.archived && !chapter.archived,
+    ({ subject, chapter }) => !subject.archived && !isChapterArchived(subject, chapter),
   );
   const archivedChaptersAll = allChaptersList.filter(
-    ({ subject, chapter }) => Boolean(chapter.archived) || Boolean(subject.archived),
+    ({ subject, chapter }) => isChapterArchived(subject, chapter) || Boolean(subject.archived),
   );
   const visibleAllChapters =
     archiveFilter === 'active' ? activeChaptersAll : archivedChaptersAll;
@@ -1975,7 +1992,7 @@ export const SubjectsView: React.FC = () => {
               const openTasks = tasks.filter(
                 (t) => t.subjectId === sub.id && t.status !== 'done',
               ).length;
-              const activeChCount = sub.chapters.filter((c) => !c.archived).length;
+              const activeChCount = sub.chapters.filter((c) => !isChapterArchived(sub, c)).length;
               const daysToExam = Math.max(
                 1,
                 Math.round((new Date(sub.nextExamDate).getTime() - Date.now()) / 86400000),
@@ -2109,7 +2126,7 @@ export const SubjectsView: React.FC = () => {
           <div className="rounded-xl divide-y divide-[var(--border-subtle)]" style={surfaceStyle}>
             {visibleSubjects.map((sub) => {
               const prog = weeklyProgress(sub.id);
-              const activeChCount = sub.chapters.filter((c) => !c.archived).length;
+              const activeChCount = sub.chapters.filter((c) => !isChapterArchived(sub, c)).length;
               const isArchived = Boolean(sub.archived);
               return (
                 <div
@@ -2260,7 +2277,7 @@ export const SubjectsView: React.FC = () => {
                     />
                     <div className="min-w-0">
                       <div className="text-[13.5px] font-semibold text-[var(--text-primary)] truncate">
-                        {chapter.title}
+                        {chapterNumber(subject, chapter.id)} · {chapter.title}
                       </div>
                       <div className="text-[11.5px] text-[var(--text-muted)] tabular-nums">
                         {subject.code} · {subject.name} · {stats.completed}/{stats.total} topics

@@ -1,3 +1,4 @@
+import { isChapterArchived } from '../utils/syllabusHierarchy';
 import { plannedStudyHours } from '../utils/workspaceMetrics';
 import { layoutCalendarDay } from '../utils/calendarLayout';
 import type {
@@ -234,7 +235,7 @@ export function computeWorkspaceDiagnostics(
   }));
 
   const subjectsSummary: SubjectDiagnostic[] = activeSubjects.map((s) => {
-    const visibleChapters = s.chapters.filter((c) => !c.archived);
+    const visibleChapters = s.chapters.filter((c) => !isChapterArchived(s, c));
     const topics = visibleChapters.flatMap((c) => c.topics);
     const done = topics.filter((t) => t.completed).length;
     return {

@@ -49,7 +49,14 @@ export interface TopicItem {
   revisionStatus: 'not_started' | 'in_review' | 'mastered';
 }
 
+export interface UnitItem {
+  id: string;
+  title: string;
+  archived?: boolean;
+}
+
 export interface ChapterItem {
+  unitId?: string;
   id: string;
   title: string;
   topics: TopicItem[];
@@ -70,6 +77,7 @@ export interface Subject {
   nextExamTitle: string;
   currentGrade: string;
   targetGrade: string;
+  units?: UnitItem[];
   chapters: ChapterItem[];
   archived?: boolean;
 }
@@ -213,6 +221,7 @@ export interface SyllabusExtractedTask {
 }
 
 export interface SyllabusExtractedChapter {
+  unitTitle?: string;
   title: string;
   topics: string[];
 }

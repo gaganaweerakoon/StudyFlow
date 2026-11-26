@@ -181,6 +181,7 @@
           "required": ["title", "topics"],
           "properties": {
             "title": { "type": "string" },
+            "unitTitle": { "type": "string", "description": "Parent unit heading from the source; omit when unknown." },
             "topics": { "type": "array", "items": { "type": "string" } }
           }
         }

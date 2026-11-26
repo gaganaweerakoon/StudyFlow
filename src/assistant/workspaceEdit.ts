@@ -472,7 +472,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       type BundleEntry =
         | { id: string; kind: 'exam'; label: string; meta: string; data: Omit<ExamItem, 'id' | 'mockHistory'> }
         | { id: string; kind: 'task'; label: string; meta: string; data: Omit<TaskItem, 'id'> }
-        | { id: string; kind: 'chapter'; label: string; meta: string; name: string; topics: string[] }
+        | { id: string; kind: 'chapter'; label: string; meta: string; name: string; topics: string[]; unitTitle?: string }
         | { id: string; kind: 'goal'; label: string; meta: string; data: Omit<GoalItem, 'id'> };
 
       const entries: BundleEntry[] = [];
@@ -544,12 +544,14 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
         const topics = Array.isArray(r.topics)
           ? r.topics.filter((t): t is string => typeof t === 'string' && Boolean(t.trim())).map((t) => t.trim().slice(0, 140))
           : [];
+        const unitTitle = typeof r.unitTitle === 'string' ? r.unitTitle.trim().slice(0, 140) : undefined;
         entries.push({
           id: `syl-chap-${entries.length}`,
           kind: 'chapter',
-          label: `Unit: ${chName}`,
+          label: `Chapter: ${unitTitle ? `${unitTitle} / ` : ''}${chName}`,
           meta: `${topics.length} ${topics.length === 1 ? 'topic' : 'topics'}`,
           name: chName,
+          unitTitle,
           topics,
         });
       }
@@ -602,14 +604,10 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
           } else if (entry.kind === 'goal') {
             current.addGoal({ ...entry.data, subjectId: entry.data.subjectId || targetSubId || undefined });
           } else if (entry.kind === 'chapter' && targetSubId) {
-            current.addChapter(targetSubId, entry.name);
-            const updatedSub = current.subjects.find((s) => s.id === targetSubId);
-            const newestChapter = updatedSub?.chapters[updatedSub.chapters.length - 1];
-            if (newestChapter) {
-              for (const topic of entry.topics) {
-                current.addTopic(targetSubId, newestChapter.id, topic);
-              }
-            }
+            current.appendChapters(targetSubId, [{
+              id: `ch-${crypto.randomUUID()}`, title: entry.name, unitTitle: entry.unitTitle,
+              topics: entry.topics.map(title => ({ id: `tp-${crypto.randomUUID()}`, title, completed: false, confidence: 3, difficulty: 'medium', revisionStatus: 'not_started' })),
+            }]);
           }
         }
         return true;

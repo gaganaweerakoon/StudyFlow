@@ -1,3 +1,4 @@
+import { mergeImportedChapters, type IncomingChapter } from '../utils/syllabusHierarchy';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseWorkspaceEdit, splitWorkspaceResponse, type Workspace } from './workspaceEdit';
@@ -268,6 +269,10 @@ function createMockWorkspace(): Workspace {
         count++;
       }
       return count;
+    },
+    appendChapters(subjectId: string, chapters: IncomingChapter[]) {
+      const index = subjects.findIndex(s => s.id === subjectId);
+      if (index >= 0) subjects[index] = mergeImportedChapters(subjects[index], chapters);
     },
     addChapter(subjectId: string, title: string) {
       const target = subjects.find((s) => s.id === subjectId);

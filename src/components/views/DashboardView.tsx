@@ -1,3 +1,4 @@
+import { isChapterArchived } from '../../utils/syllabusHierarchy';
 import React, { useState } from 'react';
 import {
   ResponsiveContainer,
@@ -569,7 +570,7 @@ export const DashboardView: React.FC = () => {
             </div>
             <div className="space-y-3">
               {subjects.map((sub) => {
-                const prog = calculateSubjectProgress(sub.chapters);
+                const prog = calculateSubjectProgress(sub.chapters.filter(chapter => !isChapterArchived(sub, chapter)));
                 return (
                   <button
                     key={sub.id}

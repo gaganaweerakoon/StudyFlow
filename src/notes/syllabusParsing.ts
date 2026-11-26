@@ -21,7 +21,7 @@ export function parseNumberedSyllabusMarkdown(text: string): SyllabusExtractionB
     if (/^##\s+/.test(line)) { group = ''; current = undefined; continue; }
     const chapter = /^###\s+([FPA]\d+)\.\s+(.+)$/.exec(line);
     if (chapter && group) {
-      current = { title: group + ' · ' + chapter[2].trim(), topics: [] };
+      current = { title: group + ' · ' + chapter[2].trim(), unitTitle: group, topics: [] };
       result.chapters.push(current);
       continue;
     }
@@ -62,8 +62,9 @@ export function mergeSyllabus(target: SyllabusExtractionBundle, next: SyllabusEx
     if (typeof chapter.title !== 'string' || !chapter.title.trim() || !Array.isArray(chapter.topics) || chapter.topics.some(t => typeof t !== 'string')) {
       throw new Error('Pip returned an invalid syllabus chapter.');
     }
-    const existing = target.chapters.find(c => key(c.title) === key(chapter.title));
-    if (!existing) target.chapters.push({ title: chapter.title, topics: [...new Set(chapter.topics)] });
+    const unitTitle = typeof chapter.unitTitle === 'string' ? chapter.unitTitle.trim() : undefined;
+    const existing = target.chapters.find(c => key(c.title) === key(chapter.title) && key(c.unitTitle ?? '') === key(unitTitle ?? ''));
+    if (!existing) target.chapters.push({ title: chapter.title, ...(unitTitle ? {unitTitle} : {}), topics: [...new Set(chapter.topics)] });
     else {
       const known = new Set(existing.topics.map(key));
       for (const t of chapter.topics) if (!known.has(key(t))) { existing.topics.push(t); known.add(key(t)); }
