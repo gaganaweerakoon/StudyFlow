@@ -52,10 +52,10 @@ export const AchievementsView: React.FC = () => {
     <div className="space-y-4 pb-8">
       <div>
         <h1 className="font-display text-[19px] font-semibold text-[var(--text-primary)]">
-          Achievements & Motivation
+          Achievements & Motivation <span className="ml-2 inline-flex align-middle rounded border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-muted)]">Beta</span>
         </h1>
         <p className="text-[12.5px] text-[var(--text-muted)]">
-          Consistent study milestones, weekly challenges, and personal records
+          Consistent study milestones, weekly challenges, and personal records. Achievement criteria and XP calculations may change during beta.
         </p>
       </div>
 

@@ -117,7 +117,7 @@ Track every upcoming midterm and final on the **Exams** roadmap with live countd
 
 Inspect daily, weekly, and monthly study telemetry across **Total Study Hours**, **Schedule Adherence**, **Average Focus Quality**, **Planned vs Actual Study Time**, **Study Time by Subject**, **Productivity Trends**, **Focus Duration Distribution**, a 14-week **Study Consistency Heatmap**, and **Peak Productivity Hours**.
 
-Customize the look and ergonomics of your workspace across **6 themes** (`Light`, `Dark`, `Midnight`, `Ocean Blue`, `Forest Green`, `Warm Neutral`), **8 accent presets + custom color picker**, **Compact / Comfortable** density, `Ctrl+K` Command Palette, and **Achievements** XP tracking.
+Customize the look and ergonomics of your workspace across **6 themes** (`Light`, `Dark`, `Midnight`, `Ocean Blue`, `Forest Green`, `Warm Neutral`), **8 accent presets + custom color picker**, **Compact / Comfortable** density, `Ctrl+K` Command Palette, and **Achievements (Beta)** XP tracking.
 
 ![StudyFlow Analytics and Insights showing Planned vs Actual study charts, subject breakdown donut, focus duration distribution, and consistency heatmap](docs/screenshots/analytics.jpg)
 

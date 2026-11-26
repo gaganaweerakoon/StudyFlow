@@ -185,9 +185,9 @@ export const Sidebar: React.FC = () => {
                       key={item.id}
                       type="button"
                       onClick={() => handleNavigate(item.id)}
-                      aria-label={compact ? item.label : undefined}
+                      aria-label={item.id === 'achievements' ? 'Achievements (Beta)' : compact ? item.label : undefined}
                       aria-current={active ? 'page' : undefined}
-                      title={compact ? item.label : undefined}
+                      title={item.id === 'achievements' ? 'Achievements (Beta)' : compact ? item.label : undefined}
                       className={`group relative w-full flex items-center rounded-lg text-[13px] font-medium transition-colors duration-150 ${
                         compact ? 'justify-center px-0 py-2' : 'justify-between px-2.5 py-1.5'
                       }`}
@@ -213,6 +213,10 @@ export const Sidebar: React.FC = () => {
                           </span>
                         )}
                       </span>
+
+                      {!compact && item.id === 'achievements' && (
+                        <span className="shrink-0 rounded border border-[var(--border-subtle)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">Beta</span>
+                      )}
 
                       {!compact && showTimerRunning && (
                         <span className="text-[11px] font-mono-num text-[var(--accent)]">
