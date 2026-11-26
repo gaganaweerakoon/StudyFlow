@@ -1,3 +1,4 @@
+import { validToolArguments } from './toolArguments';
 import {chooseCheckIn, type CheckIn} from './checkIns';
 import { noteDestination } from './noteDestination';
 import { allowedTurnTools } from './turnPermissions';
@@ -66,6 +67,7 @@ export interface ChatMessage extends ChatTurn {
   appliedActions?: string[];
   actionLinks?: AppliedActionLink[];
   id: string;
+  savePending?: boolean;
   suggestedTask?: CheckIn['task'];
   writeLocked?: boolean;
   attachment?: string;
@@ -178,6 +180,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   const [includeContext, setIncludeContext] = useState(true);
   const [draft, setDraft] = useState('');
   const [attachments, setAttachments] = useState<PipAttachment[]>([]);
+  const unsavedResults = useRef(new Map<string, {summaries: string[]; links: AppliedActionLink[]}>());
   const turnFiles = useRef(new Map<string, PipAttachment[]>());
   const [previousAttachments, setPreviousAttachments] = useState<PipAttachment[]>([]);
   const [detail, setDetail] = useState<'standard' | 'high'>('standard');
@@ -321,6 +324,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         messages: stripFailedTurns(chat.messages).map(
           ({ edit: _edit, pendingEdits: _pending, generatedImage: _image, ...message }) => ({
             ...message,
+            savePending: undefined,
             state: message.state === 'streaming' ? ('stopped' as const) : message.state,
           }),
         ),
@@ -489,6 +493,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
 
   async function applyWorkspaceEdits(
     edits: WorkspaceEdit[],
+    messageId: string,
     selection?: Record<number, string[] | boolean>,
   ) {
     const appliedSummaries: string[] = [];
@@ -521,12 +526,14 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           failedSummaries.push(`Could not apply: ${edit.title}`);
         }
       }
-      if (appliedSummaries.length > 0) {
+      if (appliedSummaries.length > 0 && currentApp.current.durableWorkspace) {
+        unsavedResults.current.set(messageId, { summaries: appliedSummaries, links });
         await currentApp.current.saveWorkspace();
+        unsavedResults.current.delete(messageId);
       }
       return {
         temporary: !currentApp.current.durableWorkspace,
-        saved: currentApp.current.durableWorkspace && appliedSummaries.length > 0 && failedSummaries.length === 0,
+        saved: currentApp.current.durableWorkspace && appliedSummaries.length > 0,
         appliedSummaries,
         failedSummaries,
         links,
@@ -539,7 +546,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         failedSummaries: [
           ...failedSummaries,
           appliedSummaries.length > 0
-            ? 'Changes are visible in StudyFlow, but saving failed. Use Retry save before closing.'
+            ? 'Changes are visible in StudyFlow, but saving failed. Retry saving to keep the changes.'
             : 'StudyFlow could not apply the requested changes.',
         ],
         links: [],
@@ -700,6 +707,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     let responseText = '';
     let finalAssistantText = '';
     const actionCalls: string[] = [];
+    let invalidAction = false;
     const seenActions = new Set<string>();
     let proposedEdits: WorkspaceEdit[] | undefined;
     let appliedActions: string[] | undefined;
@@ -715,6 +723,10 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           updateMessage((message) => ({ ...message, text: splitWorkspaceResponse(responseText).text }));
         }
         if (event.type === 'action' && allowedTools.includes(event.action)) {
+          if (!validToolArguments(event.action, event.arguments)) {
+            invalidAction = true;
+            continue;
+          }
           const args = destination?.subjectId && event.action === 'create_note'
             ? { ...event.arguments, subjectId: destination.subjectId, syllabusLinks: { unitIds: destination.unitId ? [destination.unitId] : [] } }
             : event.arguments;
@@ -745,7 +757,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           const { text } = splitWorkspaceResponse(responseText, true);
           const allRawCommands = actionCalls;
 
-          if (!allRawCommands.length) {
+          if (invalidAction || !allRawCommands.length) {
             finalAssistantText = allowedTools.length && !text.trim().endsWith('?')
               ? 'No change was saved. Which item and destination should I use?'
               : text;
@@ -757,7 +769,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
               if (parsed && allowedTools.includes(parsed.action)) parsedEdits.push(parsed);
             }
 
-            if (!parsedEdits.length) {
+            if (parsedEdits.length !== allRawCommands.length) {
               finalAssistantText =
                 'No change was saved. Which item and destination should I use?';
               updateMessage((message) => ({
@@ -773,7 +785,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
               let finalText = '';
               if (immediate.length > 0) {
                 updateChat(chat => ({ ...chat, messages: chat.messages.map(item => item.id === userTurnId ? { ...item, writeLocked: true } : item) }));
-                const result = await applyWorkspaceEdits(immediate);
+                const result = await applyWorkspaceEdits(immediate, assistantId);
                 if (result.saved && result.appliedSummaries.length > 0) {
                   appliedActions = result.appliedSummaries;
                   actionLinks = result.links;
@@ -854,6 +866,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           state: status,
           edit: proposedEdits?.[0],
           pendingEdits: proposedEdits,
+          savePending: unsavedResults.current.has(assistantId),
           appliedActions,
           actionLinks,
         }));
@@ -917,7 +930,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const original = currentChat.messages[idx];
     const files = turnFiles.current.get(original.id) ?? [];
     if (original.attachment && !files.length) { setDraft(clean); setNotice('Attach the original file again to edit this request.'); return; }
-    const completed = Boolean(original.writeLocked || currentChat.messages[idx + 1]?.appliedActions?.length);
+    const completed = Boolean(original.writeLocked || currentChat.messages[idx + 1]?.savePending || currentChat.messages[idx + 1]?.appliedActions?.length);
     void send(false, clean, { baseMessages, overrideAttachments: files, readOnly: completed });
   }
 
@@ -1488,13 +1501,28 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   }
 
   return {
+    async retryWorkspaceSave(id: string) {
+      const pending = unsavedResults.current.get(id);
+      if (!pending || busy || activeRequest.current) return;
+      setBusy(true);
+      try {
+        await currentApp.current.saveWorkspace();
+        unsavedResults.current.delete(id);
+        setNotice('');
+        setConversations(items => items.map(chat => ({ ...chat, messages: chat.messages.map(message =>
+          message.id === id ? { ...message, text: pending.summaries.join('\n'), appliedActions: pending.summaries,
+            actionLinks: pending.links, savePending: false } : message) })));
+      } catch {
+        setNotice('StudyFlow still couldn’t save these changes.');
+      } finally { setBusy(false); }
+    },
     async applyEdit(message: ChatMessage, selection?: Record<number, string[] | boolean>) {
       const edits = message.pendingEdits?.length ? message.pendingEdits : message.edit ? [message.edit] : [];
       if (!edits.length || busy || activeRequest.current) return;
       setBusy(true);
       setNotice('');
       try {
-        const result = await applyWorkspaceEdits(edits, selection);
+        const result = await applyWorkspaceEdits(edits, message.id, selection);
         if (result.failedSummaries.length > 0) {
           setNotice(result.failedSummaries.join(' '));
         }
@@ -1514,6 +1542,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
                 text: result.temporary ? 'Applied in this temporary preview.' : [...result.appliedSummaries, ...result.failedSummaries].join('\n') || 'No changes selected.',
                 appliedActions: [...(item.appliedActions ?? []), ...(result.saved ? result.appliedSummaries : [])],
                 actionLinks: mergedLinks,
+                savePending: unsavedResults.current.has(message.id),
                 edit: undefined,
                 pendingEdits: undefined,
                 state: 'complete' as const,

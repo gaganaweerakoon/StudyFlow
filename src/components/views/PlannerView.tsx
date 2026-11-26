@@ -120,6 +120,8 @@ export const PlannerView: React.FC = () => {
     subjects,
     tasks,
     addSession,
+    calendarEventToOpen,
+    clearCalendarEventToOpen,
     updateSession,
     updateRecurringSeries,
     recurringSeries,
@@ -152,6 +154,14 @@ export const PlannerView: React.FC = () => {
   const [agendaScope, setAgendaScope] = useState<'week' | 'all'>('all');
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!calendarEventToOpen) return;
+    setAnchorDate(calendarEventToOpen.date);
+    setSelectedSessionId(calendarEventToOpen.id);
+    setSubjectFilter('all');
+    setStudyOnly(false);
+    clearCalendarEventToOpen();
+  }, [calendarEventToOpen, clearCalendarEventToOpen]);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editScope, setEditScope] = useState<{ id: string | null; series: boolean }>({
     id: null,

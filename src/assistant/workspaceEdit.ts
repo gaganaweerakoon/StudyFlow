@@ -93,10 +93,10 @@ function resolveSubjectId(raw: unknown, app: Workspace): string {
   const needle = raw.trim().toLowerCase();
   const byId = app.subjects.find((s) => s.id === raw.trim());
   if (byId) return byId.id;
-  const byCodeOrName = app.subjects.find(
-    (s) => s.code.toLowerCase() === needle || s.name.toLowerCase() === needle || s.name.toLowerCase().includes(needle),
-  );
-  return byCodeOrName?.id ?? '';
+  const direct = app.subjects.filter(s => s.code.toLowerCase() === needle || s.name.toLowerCase() === needle);
+  if (direct.length) return direct.length === 1 ? direct[0].id : '';
+  const partial = app.subjects.filter(s => s.name.toLowerCase().includes(needle));
+  return partial.length === 1 ? partial[0].id : '';
 }
 
 function resolveNote(raw: unknown, app: Workspace) {
@@ -1610,6 +1610,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace, resolvedNoteDest
         : edit.subjectId !== undefined
           ? resolveSubjectId(edit.subjectId, app)
           : existing?.subjectId ?? '';
+    if (blockType === 'study' && typeof edit.subjectId === 'string' && edit.subjectId.trim() && !subjectId) return;
     const location = typeof edit.location === 'string' ? edit.location.trim().slice(0, 120) : existing?.location;
     const notes = typeof edit.notes === 'string' ? edit.notes.trim().slice(0, 400) : existing?.notes;
 
@@ -1624,12 +1625,14 @@ export function parseWorkspaceEdit(raw: string, app: Workspace, resolvedNoteDest
       ...(notes !== undefined ? { notes } : {}),
     };
     const time = formatHour(startHour);
+    let eventId = existing?.id;
     return {
       action,
+      itemId: () => eventId,
       success: `${existing ? 'Updated' : 'Scheduled'} “${name}”${weekdays.length === 7 ? ' every day' : weekdays.length ? ' on the selected weekdays' : ''} on ${date} at ${time} for ${durationHours}h.`,
       title: `${existing ? 'Update' : 'Add'} “${name}” · ${date}, ${time} for ${durationHours}h${existing?.recurring ? ' · this occurrence only' : ''}`,
       route: 'planner',
-      routeLabel: 'Open Planner',
+      routeLabel: weekdays.length ? 'Open Planner' : 'Open event',
       apply: (current) => {
         if (existing) {
           if (!current.sessions.some((item) => item.id === existing.id)) return false;
@@ -1646,21 +1649,17 @@ export function parseWorkspaceEdit(raw: string, app: Workspace, resolvedNoteDest
             countsTowardStudy: blockType === 'study',
           };
           const minute = (hour: number) => Math.round(hour * 60);
-          if (
-            !weekdays.length &&
-            current.sessions.some(
+          const matching = !weekdays.length && current.sessions.find(
               (item) =>
                 !item.recurring &&
                 item.title === event.title &&
+                item.subjectId === event.subjectId &&
                 item.date === event.date &&
                 minute(item.startHour) === minute(event.startHour) &&
                 minute(item.durationHours) === minute(event.durationHours) &&
                 (item.blockType ?? 'study') === event.blockType,
-            )
-          ) {
-            return true;
-          }
-          current.addSession(event, weekdays);
+            );
+          eventId = matching ? matching.id : current.addSession(event, weekdays);
         }
         return true;
       },

@@ -211,7 +211,9 @@ function createMockWorkspace(): Workspace {
       state.selectedNoteId = id;
     },
     addSession(s: Omit<(typeof sessions)[number], 'id'>) {
-      sessions.push({ ...s, id: `ses-${sessions.length + 1}` });
+      const id = `ses-${sessions.length + 1}`;
+      sessions.push({ ...s, id });
+      return id;
     },
     updateSession(id: string, patch: Partial<(typeof sessions)[number]>) {
       const target = sessions.find((x) => x.id === id);

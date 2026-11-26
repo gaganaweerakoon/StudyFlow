@@ -206,7 +206,10 @@ interface AppContextValue {
   toggleSubtask: (taskId: string, subtaskId: string) => void;
 
   sessions: StudySession[];
-  addSession: (s: Omit<StudySession, 'id'>, weekdays?: number[]) => void;
+  addSession: (s: Omit<StudySession, 'id'>, weekdays?: number[]) => string | undefined;
+  calendarEventToOpen: { id: string; date: string } | null;
+  openCalendarEvent: (id: string, date: string) => void;
+  clearCalendarEventToOpen: () => void;
   updateSession: (id: string, patch: Partial<StudySession>) => void;
   deleteSession: (id: string) => void;
 
@@ -346,6 +349,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const initial = workspace?.initial;
   const desktop = !!workspace;
   const [route, setRoute] = useState<NavRoute>('dashboard');
+  const [calendarEventToOpen, setCalendarEventToOpen] = useState<{ id: string; date: string } | null>(null);
+  const clearCalendarEventToOpen = useCallback(() => setCalendarEventToOpen(null), []);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string>(() => (initial?.notes ?? (desktop ? [] : INITIAL_NOTES))[0]?.id ?? '');
   const [notesSyllabusScope, setNotesSyllabusScope] = useState<SyllabusScope>({subjectId: ''});
@@ -1440,6 +1445,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         `Scheduled "${session.title}" · ${durationText} · ${loadText} daily load`,
         'session-activity',
       );
+      return weekdays.length ? undefined : createdId;
     },
     [pushToast, sessions],
   );
@@ -1898,6 +1904,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         toggleSubtask,
         sessions,
         addSession,
+        calendarEventToOpen,
+        clearCalendarEventToOpen,
+        openCalendarEvent: (id, date) => { setCalendarEventToOpen({ id, date }); setRoute('planner'); },
         updateSession,
         deleteSession,
         goals,

@@ -1196,6 +1196,8 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                         </a>
                       )}
 
+                      {message.savePending && <button type="button" className="pip-action-link" disabled={assistant.busy}
+                        onClick={() => void assistant.retryWorkspaceSave(message.id)}>Retry saving</button>}
                       {message.suggestedTask && <button className="pip-action-link" disabled={app.focusTimer.running} onClick={() => {
                         const task = message.suggestedTask!;
                         if (app.focusTimer.running || !app.tasks.some(t => t.title === task.title && t.subjectId === task.subjectId && t.status !== 'done')) return;
@@ -1221,6 +1223,13 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                                   type="button"
                                   className="pip-action-link"
                                   onClick={() => {
+                                    if (link.route === 'planner' && link.itemId) {
+                                      const event = app.sessions.find(item => item.id === link.itemId);
+                                      if (!event) { app.pushToast('This event is no longer available.'); return; }
+                                      app.openCalendarEvent(event.id, event.date);
+                                      if (onClose) onClose();
+                                      return;
+                                    }
                                     if (link.route === 'notes' && link.itemId) {
                                       const note = app.notes.find(item => item.id === link.itemId);
                                       if (!note) { app.pushToast('This note is no longer available.'); return; }

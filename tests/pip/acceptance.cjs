@@ -56,7 +56,16 @@ async function main() {
     await page.getByText('redox.pdf',{exact:true}).first().waitFor();
     await box.fill(notePrompt);
     await box.press('Enter');
-    if (!native) await page.getByRole('button',{name:'Retry',exact:true}).click();
+    if (!native) {
+      await page.evaluate(() => sessionStorage.setItem('failSave', 'yes'));
+      await page.getByRole('button',{name:'Retry',exact:true}).click();
+      const retrySave = page.getByRole('button',{name:'Retry saving',exact:true});
+      await retrySave.waitFor();
+      assert.equal((await read()).notes.length, 0);
+      assert.equal(await page.getByRole('button',{name:'Open note',exact:true}).count(), 0);
+      await page.evaluate(() => sessionStorage.removeItem('failSave'));
+      await retrySave.click();
+    }
     const saved = await until(read,s=>s?.notes?.length === 1,'durable note');
     assert.deepEqual(saved.sessions,scheduled.sessions);
     const note = saved.notes[0];
@@ -80,6 +89,12 @@ async function main() {
     const reopened = await read();
     assert.equal(reopened.notes.length,1);
     assert.deepEqual(reopened.sessions,scheduled.sessions);
+    if (!native) {
+      await page.getByRole('button',{name:/Redox review/}).first().click();
+      await page.getByRole('button',{name:'Regenerate reply'}).last().click();
+      await page.getByText('Attach the original file again to regenerate this reply.',{exact:true}).waitFor();
+      assert.equal((await read()).notes.length, 1);
+    }
     console.log('PASS: single Sinhala note, verified subject/unit and exact-item link, unchanged calendar after reopen.');
   } finally { await browser.close(); }
 }
