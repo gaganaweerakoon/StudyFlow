@@ -592,13 +592,11 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
         return {
           ...prev,
           secondsLeft: prev.secondsLeft - step,
-          elapsedActiveSeconds:
-            prev.phase === 'focus' ? prev.elapsedActiveSeconds + step : prev.elapsedActiveSeconds,
         };
       });
     }, 1000);
     return () => window.clearInterval(interval);
-  }, [focus.phase, settings.breaksEnabled]);
+  }, [focus.phase]);
 
   const setActiveTab = useCallback((tab: MobileTabId) => {
     setActiveTabState(tab);
