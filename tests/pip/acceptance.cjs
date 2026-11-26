@@ -22,6 +22,13 @@ async function main() {
   try {
     const page = native ? browser.contexts()[0].pages()[0] : await browser.newPage();
     page.setDefaultTimeout(120000);
+    const simulatorPrompt = 'Show a mass simulator';
+    const simulator = {
+      title: 'Mass simulator',
+      controls: [{ id:'m', type:'stepper', label:'Mass', default:2, min:0, max:20, step:1 }],
+      readouts: [{ label:'Double mass', expr:'2*m' }],
+      visual: { type:'svg', template:'<svg viewBox="0 0 100 80"><style>.disc {fill: #168aad}</style><circle class="disc" cx="50" cy="40" r="{{m + 4}}"/></svg>' },
+    };
     const notePrompt = 'Save a Sinhala note from the attached PDF in Chemistry Unit 1. Explain oxidation and reduction in Sinhala.';
     let attempts = 0;
     if (!native) {
@@ -29,6 +36,9 @@ async function main() {
       await page.route('**/api/study-assistant/chat', route => {
         const req = route.request().postDataJSON();
         let events = [{type:'text',text:'Redox review'}];
+        if (req.prompt === simulatorPrompt) {
+          events = [{type:'text',text:'```pip-interactive\n' + JSON.stringify(simulator) + '\n```'}];
+        }
         if (req.prompt === notePrompt && !req.workspaceActions) {
           events = [{type:'text',text:'Redox review\n\n' + '```pip-edit\n' +
             JSON.stringify({action:'create_event',title:'Untrusted text action',date:'2027-01-11',startHour:9,durationHours:1}) + '\n```'}];
@@ -103,6 +113,19 @@ async function main() {
       await page.getByText('Which subject should I save the note in?', {exact:true}).waitFor();
       assert.deepEqual((await read()).sessions, scheduled.sessions);
       assert.equal((await read()).notes.length, 1);
+
+      await box.fill(simulatorPrompt);
+      await box.press('Enter');
+      const widget = page.getByRole('region', { name:'Mass simulator' });
+      const stepper = widget.getByRole('spinbutton', { name:'Mass' });
+      await stepper.press('Shift+ArrowUp');
+      await widget.locator('circle[r="16"][fill="#168aad"]').waitFor();
+      await box.fill('A draft that re-renders the chat');
+      assert.equal(await stepper.inputValue(), '12');
+      await stepper.press('ArrowDown');
+      await widget.locator('circle[r="15"]').waitFor();
+      assert.equal(await stepper.evaluate(input => input === document.activeElement), true);
+      console.log('PASS: the interactive stepper keeps its value through chat renders and supports keyboard controls.');
     }
     console.log('PASS: single Sinhala note, verified subject/unit and exact-item link, unchanged calendar after reopen.');
   } finally { await browser.close(); }
