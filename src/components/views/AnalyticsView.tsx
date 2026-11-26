@@ -18,7 +18,6 @@ import {
 import { Search, ArrowUpRight, Sparkles } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
-  DASHBOARD_CHART_DATA,
   ANALYTICS_PRODUCTIVITY_TREND,
   ANALYTICS_FOCUS_DURATION,
   ANALYTICS_GOAL_COMPARISON,
@@ -112,11 +111,7 @@ export const AnalyticsView: React.FC = () => {
     focusHistory.filter(item => subjectFilter === 'all' || item.subjectId === subjectFilter));
   const total = liveChart.reduce((sum, row) => sum + row.actual, 0);
   const planned = liveChart.reduce((sum, row) => sum + row.planned, 0);
-  const totalStatsByRange = legacyCalendar ? { total: `${total.toFixed(1)}h`, delta: '', sub: 'Completed focus sessions' } : {
-    daily: { total: '3.4h', delta: '+18%', sub: 'vs 2.9h daily avg' },
-    weekly: { total: '28.6h', delta: '+9.2%', sub: 'vs 26.2h prior week' },
-    monthly: { total: '117.6h', delta: '+14.5%', sub: 'vs 102.7h October' },
-  }[dateRange];
+  const totalStatsByRange = { total: total.toFixed(1) + 'h', delta: '', sub: 'Logged focus and completed study blocks' };
 
   return (
     <div className="space-y-4 pb-8">
@@ -189,7 +184,7 @@ export const AnalyticsView: React.FC = () => {
         <div className="rounded-xl p-4" style={surfaceStyle}>
           <div className="text-[12px] text-[var(--text-muted)]">Schedule adherence</div>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="font-mono-num text-[22px] font-semibold text-[var(--text-primary)]">{legacyCalendar ? (planned ? `${(100 * total / planned).toFixed(1)}%` : '—') : '94.2%'}</span>
+            <span className="font-mono-num text-[22px] font-semibold text-[var(--text-primary)]">{planned ? `${(100 * total / planned).toFixed(1)}%` : '—'}</span>
             <span className="text-[12px] text-emerald-600 dark:text-emerald-400 font-medium">{legacyCalendar ? '' : '+4.1%'}</span>
           </div>
           <div className="text-[11.5px] text-[var(--text-muted)] mt-0.5">Actual vs planned sessions</div>
@@ -235,7 +230,7 @@ export const AnalyticsView: React.FC = () => {
           </div>
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={legacyCalendar ? liveChart : DASHBOARD_CHART_DATA[dateRange]} margin={{ top: 6, right: 10, left: -18, bottom: 0 }}>
+              <LineChart data={liveChart} margin={{ top: 6, right: 10, left: -18, bottom: 0 }}>
                 <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} unit="h" />

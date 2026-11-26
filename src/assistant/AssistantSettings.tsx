@@ -1,3 +1,5 @@
+import { useApp } from '../context/AppContext';
+import { memoryFields } from './studyPreferences';
 import { useMemo, useState, type FormEvent } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { BarChart3, Gauge, KeyRound, Table2 } from 'lucide-react';
@@ -125,6 +127,7 @@ function ProviderSettings() {
 }
 
 export function AssistantSettings() {
+  const {preferences, updatePreferences} = useApp();
   const assistant = useAssistant();
   const { settings, usage } = assistant;
   const desktop = isTauri();
@@ -210,6 +213,18 @@ export function AssistantSettings() {
 
       <ProviderSettings key={`${settings.provider}-${assistant.model}`} />
 
+      <details className="pip-settings-form">
+        <summary>What Pip remembers</summary>
+        {memoryFields.map(field => <label key={field.key}>{field.label}
+          <input maxLength={300} placeholder={field.example} value={preferences.pipMemory?.[field.key] ?? ''}
+            onChange={event => updatePreferences({pipMemory:{...preferences.pipMemory, [field.key]:event.target.value}})} />
+          {preferences.pipMemory?.[field.key] && <button type="button" onClick={() => {
+            const memory = {...preferences.pipMemory};
+            delete memory[field.key];
+            updatePreferences({pipMemory:memory});
+          }}>Forget {field.label.toLowerCase()}</button>}
+        </label>)}
+      </details>
       {/* Usage & Rate Limits Options */}
       <div
         className="pt-4 mt-1 space-y-3"
@@ -282,6 +297,7 @@ export function AssistantSettings() {
                 color: 'var(--text-primary)',
               }}
             >
+              <option value={0}>Model default</option>
               <option value={300}>300 tokens (Concise)</option>
               <option value={650}>650 tokens (Balanced)</option>
               <option value={1200}>1,200 tokens (Standard)</option>

@@ -129,6 +129,7 @@ export interface UserPreferences {
   highContrastText: boolean;
   showFocusStreak: boolean;
   localBackupAuto: boolean;
+  pipMemory?: import('../assistant/studyPreferences').StudyPreferences;
   goalsPrefs?: GoalViewPreferences;
 }
 

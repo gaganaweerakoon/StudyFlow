@@ -1518,6 +1518,7 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                       </select>
                     )}
 
+                    <span role="status" className="pip-muted">{configured ? 'Gemini configured' : assistant.keyStorage === 'loading' || assistant.serverStatus === 'checking' ? 'Checking Gemini…' : 'Gemini needs setup'}</span>
                     {assistant.includeContext && !floating && (
                       <details className="pip-context-popover">
                         <summary title="Inspect StudyFlow context sent with your message">

@@ -1,5 +1,5 @@
 import { isChapterArchived } from '../utils/syllabusHierarchy';
-import { plannedStudyHours } from '../utils/workspaceMetrics';
+import { plannedStudyHours, studyChart } from '../utils/workspaceMetrics';
 import { layoutCalendarDay } from '../utils/calendarLayout';
 import type {
   ExamItem,
@@ -49,6 +49,7 @@ export interface WorkspaceDiagnostics {
   today: string;
   todaySessionsCount: number;
   todayPlannedHours: number;
+  recordedStudyHoursToday: number;
   upcomingSessionsCount: number;
   openTasksCount: number;
   overdueTasksCount: number;
@@ -292,6 +293,7 @@ export function computeWorkspaceDiagnostics(
     today: todayIso,
     todaySessionsCount: todaySessions.length,
     todayPlannedHours,
+    recordedStudyHoursToday: studyChart('daily', input.sessions, input.focusHistory, { date: planDate })[0].actual,
     upcomingSessionsCount,
     openTasksCount: openTasks.length,
     overdueTasksCount,
@@ -323,6 +325,7 @@ export function buildOverviewPayloadText(diag: WorkspaceDiagnostics): string {
     {
       today: diag.today,
       todayPlannedHours: diag.todayPlannedHours,
+      recordedStudyHoursToday: diag.recordedStudyHoursToday,
       dailyGoalHours: diag.dailyGoalHours,
       weeklyGoalHours: diag.weeklyGoalHours,
       upcomingSessions7d: diag.upcomingSessionsCount,

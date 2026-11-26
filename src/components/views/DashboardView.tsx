@@ -36,7 +36,6 @@ import {
   formatHoursMinutesCompact,
 } from '../../utils/focusTimerLogic';
 import { plannedProgress, plannedStudyHours, studyChart } from '../../utils/workspaceMetrics';
-import { DASHBOARD_CHART_DATA } from '../../data/mockData';
 import {
   calculateStudyAdherence,
   calculateSubjectProgress,
@@ -75,7 +74,7 @@ export const DashboardView: React.FC = () => {
   const [chartRange, setChartRange] = useState<RangeKey>('weekly');
   const [customizeOpen, setCustomizeOpen] = useState(false);
 
-  const chartData = legacyCalendar ? studyChart(chartRange, sessions, focusHistory) : DASHBOARD_CHART_DATA[chartRange];
+  const chartData = studyChart(chartRange, sessions, focusHistory);
   const adherence = calculateStudyAdherence(chartData);
 
   const completedTasks = tasks.filter((t) => t.status === 'done').length;

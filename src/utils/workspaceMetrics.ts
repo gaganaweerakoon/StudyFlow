@@ -53,7 +53,7 @@ function loggedHoursByBlock(sessions: StudySession[], history: FocusHistoryItem[
 
 export function studyChart(range: StudyRange, sessions: StudySession[], history: FocusHistoryItem[], options: { creditCompletedBlocks?: boolean; date?: Date } = {}) {
   const today = new Date(options.date ?? new Date());
-  const logged = options.creditCompletedBlocks ? loggedHoursByBlock(sessions, history) : undefined;
+  const logged = options.creditCompletedBlocks !== false ? loggedHoursByBlock(sessions, history) : undefined;
   today.setHours(12, 0, 0, 0);
   if (range === 'weekly') today.setDate(today.getDate() - (today.getDay() + 6) % 7);
   if (range === 'monthly') today.setDate(1);

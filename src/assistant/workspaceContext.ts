@@ -1,3 +1,4 @@
+import { relevantPreferences } from './studyPreferences';
 import { isChapterArchived, chapterNumber, groupedChapters, stripSyllabusNumberPrefix } from '../utils/syllabusHierarchy';
 import type { useApp } from '../context/AppContext';
 import { computeWorkspaceDiagnostics, findOpenSlotsForDay } from './workspaceDiagnostics';
@@ -101,6 +102,8 @@ export function workspaceContext(
     if (rows.length) sections.push({ name, rows });
   };
 
+  const memory = relevantPreferences(prompt, app.preferences?.pipMemory);
+  if (Object.keys(memory).length) add('Preferences set by the student', [memory]);
   const asksAnalysisOrAdvice =
     /\b(analy[sz]e|advice|overview|summary|summarize|how am i doing|progress|workload|priorit|rebalance|recommend|suggest|what should i|study next|plan my|plan this|coach|weak|behind|overdue|ready|review my|check my|my work|my week|my day|today|this week|improve)\b/i.test(
       lower,
@@ -186,6 +189,7 @@ export function workspaceContext(
       {
         today: diag.today,
         todayPlannedHours: diag.todayPlannedHours,
+        recordedStudyHoursToday: diag.recordedStudyHoursToday,
         dailyGoalHours: diag.dailyGoalHours,
         weeklyGoalHours: diag.weeklyGoalHours,
         openSlotsToday: diag.openSlotsToday.map((s) => s.label),
