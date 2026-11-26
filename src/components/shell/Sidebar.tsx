@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAssistant } from '../../assistant/AssistantContext';
 import type { NavRoute } from '../../types/studyflow';
 
 interface NavItemDef {
@@ -45,6 +46,7 @@ export const Sidebar: React.FC = () => {
     sessions,
   } = useApp();
 
+  const { companionUnreadCount } = useAssistant();
   const weeklyHours = studyChart('weekly', sessions, focusHistory).reduce((sum, day) => sum + day.actual, 0);
   const weeklyPlan = plannedStudyHours(sessions, 'weekly');
   const pendingTasksCount = tasks.filter((t) => t.status !== 'done').length;
@@ -75,7 +77,7 @@ export const Sidebar: React.FC = () => {
       title: 'Intelligence',
       items: [
         { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-        { id: 'assistant', label: 'AI Assistant', icon: Bot },
+        { id: 'assistant', label: 'AI Assistant', icon: Bot, count: companionUnreadCount },
       ],
     },
     {
@@ -224,9 +226,26 @@ export const Sidebar: React.FC = () => {
                       )}
 
                       {!compact && !showTimerRunning && item.count !== undefined && item.count > 0 && (
-                        <span className="text-[11px] font-mono-num text-[var(--text-muted)]">
-                          {item.count}
-                        </span>
+                        item.id === 'assistant' ? (
+                          <span
+                            aria-label={`${item.count} unread Companion messages`}
+                            className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded text-[10.5px] font-mono-num font-semibold"
+                            style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
+                          >
+                            {item.count > 9 ? '9+' : item.count}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-mono-num text-[var(--text-muted)]">
+                            {item.count}
+                          </span>
+                        )
+                      )}
+                      {compact && item.id === 'assistant' && item.count !== undefined && item.count > 0 && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute top-1 right-1.5 w-2 h-2 rounded-full"
+                          style={{ backgroundColor: 'var(--accent)' }}
+                        />
                       )}
                     </button>
                   );

@@ -1,4 +1,5 @@
 import { CHAT_LIMITS, isModelId, type Provider, type ReplyLimit, type TokenUsage } from './protocol';
+import { isValidAssistantLanguage } from './companion';
 import { localDay, validTimeZone } from './workspaceContext';
 
 export interface AssistantSettings {
@@ -9,6 +10,7 @@ export interface AssistantSettings {
   showUsageInChat: boolean;
   showRateLimits: boolean;
   language?: string;
+  casualMixLanguage?: string;
   timezone?: string;
 }
 
@@ -57,7 +59,8 @@ export function readSettings(): AssistantSettings {
     showUsageInChat: typeof saved.showUsageInChat === 'boolean' ? saved.showUsageInChat : defaults.showUsageInChat,
     showRateLimits: typeof saved.showRateLimits === 'boolean' ? saved.showRateLimits : defaults.showRateLimits,
     models,
-    language: ['English', 'Sinhala', 'Tamil'].includes(saved.language) ? saved.language : undefined,
+    language: isValidAssistantLanguage(saved.language) ? saved.language : undefined,
+    casualMixLanguage: isValidAssistantLanguage(saved.casualMixLanguage) ? saved.casualMixLanguage : undefined,
     timezone: validTimeZone(saved.timezone) ? saved.timezone : undefined,
   };
 }

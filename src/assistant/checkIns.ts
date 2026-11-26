@@ -3,6 +3,9 @@ import type { FocusHistoryItem, GoalItem, NotificationItem, StudySession, TaskIt
 export interface CheckInSettings {
   enabled?: boolean;
   phoneDelivery?: boolean;
+  casual?: boolean;
+  studyMilestones?: boolean;
+  suggestions?: boolean;
   recovery?: boolean;
   milestone?: boolean;
   evening?: boolean;
@@ -25,8 +28,8 @@ export function chooseCheckIn(input: {
   const from = settings.quietFrom ?? '21:30', until = settings.quietUntil ?? '07:00';
   const quiet = from > until ? time >= from || time < until : time >= from && time < until;
   if (!settings.enabled || input.running || quiet || (settings.snoozeUntil ?? 0) > input.now ||
-      notifications.some(n => n.id.startsWith('pip/' + date + '/'))) return;
-  const unseen = (key: string) => !notifications.some(n => n.id.startsWith('pip/') && n.id.endsWith('/' + key));
+      notifications.some(n => n.id.startsWith('pip/' + date + '/') || n.id.startsWith('companion/' + date + '/'))) return;
+  const unseen = (key: string) => !notifications.some(n => (n.id.startsWith('pip/') || n.id.startsWith('companion/')) && n.id.endsWith('/' + key));
   if (settings.milestone !== false) {
     for (const goal of input.goals) for (const step of goal.milestones) {
       const key = 'milestone/' + goal.id + '/' + step.id;

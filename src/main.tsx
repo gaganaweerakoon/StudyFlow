@@ -2,10 +2,16 @@ import { createRoot } from 'react-dom/client';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import App from './App.tsx';
 import type { Conversation } from './assistant/AssistantContext';
+import type { CompanionThreadState } from './assistant/companion';
 import type { UsageEntry } from './assistant/usage';
 import type { WorkspaceSnapshot } from './context/AppContext';
 import { isTauri, loadSnapshot, snapshotWriter } from './desktop/storage';
 import './index.css';
+
+type AssistantHistoryDocument = {
+  conversations: Conversation[];
+  companion?: CompanionThreadState;
+};
 
 const root = createRoot(document.getElementById('root')!);
 
@@ -27,10 +33,10 @@ async function start() {
     const [saved, usage, history] = await Promise.all([
       loadSnapshot<WorkspaceSnapshot>('workspace'),
       loadSnapshot<{ records: UsageEntry[] }>('assistant_usage'),
-      loadSnapshot<{ conversations: Conversation[] }>('assistant_history'),
+      loadSnapshot<AssistantHistoryDocument>('assistant_history'),
     ]);
     const usageWriter = snapshotWriter<{ records: UsageEntry[] }>('assistant_usage', usage?.revision ?? 0);
-    const historyWriter = snapshotWriter<{ conversations: Conversation[] }>('assistant_history', history?.revision ?? 0);
+    const historyWriter = snapshotWriter<AssistantHistoryDocument>('assistant_history', history?.revision ?? 0);
     const writer = snapshotWriter<WorkspaceSnapshot>('workspace', saved?.revision ?? 0);
     await getCurrentWindow().onCloseRequested(async event => {
       try {
@@ -43,7 +49,11 @@ async function start() {
     });
     root.render(<App
       workspace={{ initial: saved?.data, writer }}
-      desktopHistory={{ conversations: history?.data.conversations ?? [], save: conversations => historyWriter.save({ conversations }) }}
+      desktopHistory={{
+        conversations: history?.data.conversations ?? [],
+        companion: history?.data.companion,
+        save: (conversations, companion) => historyWriter.save({ conversations, companion }),
+      }}
       desktopUsage={{ records: usage?.data.records ?? [], save: records => usageWriter.save({ records }) }}
     />);
   } catch (error) {

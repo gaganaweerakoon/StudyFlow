@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../firebase/AuthContext';
+import { useAssistant } from '../../assistant/AssistantContext';
 import { THEME_OPTIONS, ACCENT_PRESETS, USER_AVATAR_URL } from '../../data/mockData';
 import type { NavRoute } from '../../types/studyflow';
 
@@ -64,6 +65,7 @@ export const TopBar: React.FC = () => {
     legacyCalendar,
   } = useApp();
   const { user, authReady, signingIn, signInWithGoogle } = useAuth();
+  const { openCompanionMessage } = useAssistant();
 
   const [openMenu, setOpenMenu] = useState<'create' | 'notifications' | 'theme' | 'profile' | null>(null);
   const menuContainerRef = useRef<HTMLDivElement>(null);
@@ -382,7 +384,11 @@ export const TopBar: React.FC = () => {
                     type="button"
                     onClick={() => {
                       markNotificationRead(n.id);
-                      setRoute(n.route);
+                      if (n.companionMessageId) {
+                        openCompanionMessage(n.companionMessageId);
+                      } else {
+                        setRoute(n.route);
+                      }
                       setOpenMenu(null);
                     }}
                     className="w-full text-left px-3.5 py-2.5 hover:bg-[var(--bg-surface-hover)] transition-colors"

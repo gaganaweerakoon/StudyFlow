@@ -1,6 +1,6 @@
 import { relevantPreferences } from './studyPreferences';
 import { validToolArguments } from './toolArguments';
-import {chooseCheckIn, type CheckIn} from './checkIns';
+import type { CheckIn } from './checkIns';
 import { noteDestination } from './noteDestination';
 import { allowedTurnTools } from './turnPermissions';
 import { normalizeReviewEdits, selectedReviewAction } from './reviewPolicy';
@@ -50,6 +50,32 @@ import {
   type AssistantSettings,
   type UsageEntry,
 } from './usage';
+import {
+  buildCompanionContext,
+  buildCompanionSystemInstructions,
+  countUnreadCompanion,
+  createEmptyCompanionThread,
+  getEffectiveClock,
+  isDetailedStudyRequest,
+  markCompanionRead,
+  normalizeCompanionThread,
+  resolveContextualReference,
+  splitCompanionBubbles,
+  type CompanionFailedReply,
+  type CompanionMessage,
+  type CompanionThreadState,
+} from './companion';
+import {
+  buildOutreachSystemInstructions,
+  evaluateCompanionOutreach,
+  findDueFollowUp,
+} from './companionOutreach';
+import {
+  buildRescheduledFollowUp,
+  detectUserFollowUpRequest,
+  parseFollowUpOfferFromReply,
+} from './companionFollowUps';
+import type { CompanionSuggestion } from './companion';
 
 export interface DesktopUsage {
   records: UsageEntry[];
@@ -100,12 +126,24 @@ export interface FailedAttempt {
 
 export interface DesktopHistory {
   conversations: Conversation[];
-  save: (conversations: Conversation[]) => Promise<void>;
+  companion?: CompanionThreadState;
+  save: (conversations: Conversation[], companion?: CompanionThreadState) => Promise<void>;
 }
 
 const historyKey = 'studyflow.assistant.conversations.v1';
+const companionKey = 'studyflow.assistant.companion.v1';
 const overviewCacheKey = 'studyflow.assistant.dashboardOverview.v1';
 const historyLimit = 20;
+
+function browserCompanionHistory(): CompanionThreadState {
+  try {
+    const raw = localStorage.getItem(companionKey);
+    if (!raw) return createEmptyCompanionThread();
+    return normalizeCompanionThread(JSON.parse(raw));
+  } catch {
+    return createEmptyCompanionThread();
+  }
+}
 
 function stripFailedTurns(messages: ChatMessage[]): ChatMessage[] {
   const cleaned: ChatMessage[] = [];
@@ -188,6 +226,19 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     return [{ ...initial, id: createId() }, ...loaded].slice(0, historyLimit + 1);
   });
   const [activeId, setActiveId] = useState(conversations[0].id);
+  const [pipTab, setPipTab] = useState<'study' | 'companion'>('study');
+  const [companionThread, setCompanionThread] = useState<CompanionThreadState>(() =>
+    normalizeCompanionThread(desktopHistory?.companion ?? browserCompanionHistory()),
+  );
+  const companionThreadRef = useRef(companionThread);
+  companionThreadRef.current = companionThread;
+  const [companionDraft, setCompanionDraft] = useState('');
+  const [companionBusy, setCompanionBusy] = useState(false);
+  const [companionNotice, setCompanionNotice] = useState('');
+  const [companionFailedReply, setCompanionFailedReply] = useState<CompanionFailedReply | null>(null);
+  const [highlightedCompanionMessageId, setHighlightedCompanionMessageId] = useState<string | null>(null);
+  const companionRequest = useRef<AbortController | null>(null);
+  const companionUnreadCount = countUnreadCompanion(companionThread);
   const [failedAttempts, setFailedAttempts] = useState<FailedAttempt[]>([]);
   const [petOpen, setPetOpen] = useState(false);
   const [settingsRequested, setSettingsRequested] = useState(false);
@@ -205,7 +256,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   const [dashboardOverviewLoading, setDashboardOverviewLoading] = useState(false);
   const [dashboardOverviewError, setDashboardOverviewError] = useState('');
   const pastMilestones = useRef<Set<string> | undefined>(undefined);
-  const delivered = useRef('');
+  const outreachInFlight = useRef(false);
+  const outreachRetryAfter = useRef(0);
   const relayWork = useRef(Promise.resolve());
   useEffect(() => {
     if (isTauri() && app.preferences.pipCheckIns?.phoneDelivery) {
@@ -215,58 +267,6 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       }).catch(() => {});
     }
   }, [app.focusTimer.running, app.tasks, app.sessions, app.goals, app.focusHistory, app.preferences.pipCheckIns]);
-  useEffect(() => {
-    async function check() {
-      const state = currentApp.current;
-      const completed = new Set(state.goals.flatMap(g => g.milestones.filter(m => m.done).map(m => 'milestone/' + g.id + '/' + m.id)));
-      const previous = pastMilestones.current ?? completed;
-      pastMilestones.current = completed;
-      const clock = requestClock(settings.timezone);
-      if (busy || delivered.current === clock.date) return;
-      const candidate = chooseCheckIn({settings:state.preferences.pipCheckIns ?? {}, date:clock.date, time:clock.time, now:Date.now(),
-        running:state.focusTimer.running, notifications:state.notifications, sessions:state.sessions, focusHistory:state.focusHistory,
-        goals:state.goals, newMilestones:new Set([...completed].filter(key => !previous.has(key))), tasks:state.tasks});
-      if (!candidate) return;
-      delivered.current = clock.date;
-      const id = 'pip/' + clock.date + '/' + candidate.key;
-      const phone = isTauri() && state.preferences.pipCheckIns?.phoneDelivery;
-      flushSync(() => state.addPipNotification({id,title:'Pip',detail:candidate.text,time:clock.time,read:Boolean(phone),route:'assistant'}));
-      setConversations(items => items.map(chat => chat.id !== activeId ? chat : {
-        ...chat, title:chat.messages.length ? chat.title : 'Study check-in',
-        messages:[...chat.messages,{id,role:'assistant',state:'complete',text:candidate.text,suggestedTask:candidate.task,suggestedSession:candidate.session}],
-      }));
-      if (phone) {
-        const queued = () => publishPhoneCheckIn(candidate, clock, state);
-        relayWork.current = relayWork.current.then(queued).catch(() => {
-          setNotice('Pip could not queue this check-in. Check the relay pairing in AI Settings.');
-        });
-      }
-    }
-
-    async function publishPhoneCheckIn(candidate: CheckIn, clock: ReturnType<typeof requestClock>, state: typeof app) {
-      await currentApp.current.saveWorkspace();
-      const latest = currentApp.current;
-      if (latest.focusTimer.running || latest.tasks !== state.tasks || latest.sessions !== state.sessions ||
-          latest.goals !== state.goals || latest.focusHistory !== state.focusHistory ||
-          latest.preferences.pipCheckIns !== state.preferences.pipCheckIns) return;
-      const observedAt = Date.now();
-      const time = requestClock(settings.timezone, new Date(observedAt));
-      if (time.date !== clock.date || time.time !== clock.time) return;
-      const toMinute = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
-      const nowMinute = toMinute(time.time);
-      const quietStart = toMinute(state.preferences.pipCheckIns?.quietFrom ?? '21:30');
-      const remaining = Math.min(20, 1440 - nowMinute, (1440 + quietStart - nowMinute) % 1440 || 1440);
-      const fingerprint = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(candidate.key))),
-        byte => byte.toString(16).padStart(2, '0')).join('');
-      await invoke('pip_relay', { action: 'enqueue', body: {
-        day: clock.date, fingerprint, kind: candidate.key.split('/')[0],
-        observedAt, expiresAt: Math.floor(observedAt / 60000) * 60000 + remaining * 60000,
-      } });
-    }
-    const first = window.setTimeout(check, 0);
-    const timer = window.setInterval(check, 30000);
-    return () => { window.clearTimeout(first); window.clearInterval(timer); };
-  }, [activeId, busy, app.goals, app.preferences.pipCheckIns, settings.timezone]);
   const keys = useRef<Partial<Record<Provider, string>>>({});
   const activeRequest = useRef<AbortController | null>(null);
   const pendingAskPrompt = useRef<string | null>(null);
@@ -326,12 +326,12 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     return () => {
       window.removeEventListener('storage', syncUsage);
       activeRequest.current?.abort();
+      companionRequest.current?.abort();
     };
   }, [desktopUsage]);
 
-  useEffect(() => {
-    if (busy) return;
-    const saved = conversations
+  const serializeConversations = useCallback((items: Conversation[]) => {
+    return items
       .map((chat) => ({
         ...chat,
         // Workspace edit callbacks, images, and failed turns are never persisted to history.
@@ -345,16 +345,37 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       }))
       .filter((chat) => chat.messages.length > 0)
       .slice(0, historyLimit);
+  }, []);
+
+  const persistCompanionSnapshot = useCallback(
+    async (thread: CompanionThreadState) => {
+      const normalized = normalizeCompanionThread(thread);
+      if (desktopHistory) {
+        await desktopHistory.save(serializeConversations(conversationsRef.current), normalized);
+      } else {
+        localStorage.setItem(companionKey, JSON.stringify(normalized));
+      }
+    },
+    [desktopHistory, serializeConversations],
+  );
+
+  useEffect(() => {
+    if (busy || companionBusy) return;
+    const saved = serializeConversations(conversations);
+    const savedCompanion = normalizeCompanionThread(companionThread);
     async function save() {
       try {
-        if (desktopHistory) await desktopHistory.save(saved);
-        else localStorage.setItem(historyKey, JSON.stringify(saved));
+        if (desktopHistory) await desktopHistory.save(saved, savedCompanion);
+        else {
+          localStorage.setItem(historyKey, JSON.stringify(saved));
+          localStorage.setItem(companionKey, JSON.stringify(savedCompanion));
+        }
       } catch {
         setNotice('Pip could not save the conversation history on this device.');
       }
     }
     void save();
-  }, [busy, conversations, desktopHistory]);
+  }, [busy, companionBusy, conversations, companionThread, desktopHistory, serializeConversations]);
 
   const active = conversations.find((chat) => chat.id === activeId) ?? conversations[0];
   const cooldownUntil = cooldowns.current[settings.provider] ?? 0;
@@ -998,6 +1019,774 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     void send(false, userMsg.text, { baseMessages, overrideAttachments: files, readOnly: true,
       regenerating: { message: currentChat.messages[idx], user: userMsg } });
   }
+
+  const markCompanionThreadRead = useCallback(() => {
+    const { now } = getEffectiveClock(settings.timezone);
+    setCompanionThread((prev) => markCompanionRead(prev, now));
+  }, [settings.timezone]);
+
+  const openCompanionMessage = useCallback(
+    (messageId?: string, options?: { inFloating?: boolean }) => {
+      setPipTab('companion');
+      if (options?.inFloating && currentApp.current.route !== 'assistant') {
+        setPetOpen(true);
+      } else {
+        setPetOpen(false);
+        currentApp.current.setRoute('assistant');
+      }
+      if (messageId) {
+        setHighlightedCompanionMessageId(messageId);
+      }
+      const { now } = getEffectiveClock(settings.timezone);
+      setCompanionThread((prev) => markCompanionRead(prev, now));
+    },
+    [settings.timezone],
+  );
+
+  // Mark Companion read automatically when the user is actively viewing the Companion tab
+  useEffect(() => {
+    const viewingCompanion =
+      pipTab === 'companion' && (app.route === 'assistant' || petOpen);
+    if (viewingCompanion && companionUnreadCount > 0) {
+      markCompanionThreadRead();
+    }
+  }, [pipTab, app.route, petOpen, companionUnreadCount, markCompanionThreadRead]);
+
+  // Clear highlight ring after a short visual focus window
+  useEffect(() => {
+    if (!highlightedCompanionMessageId) return;
+    const timer = window.setTimeout(() => setHighlightedCompanionMessageId(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [highlightedCompanionMessageId]);
+
+  async function sendCompanionMessage(overrideText?: string) {
+    const typed = (overrideText ?? companionDraft).trim();
+    if (!typed || companionBusy || companionRequest.current || !available) return;
+    if (cooldownUntil > Date.now()) {
+      setCompanionNotice(`Pip is cooling down. Try again in ${Math.ceil((cooldownUntil - Date.now()) / 1000)}s.`);
+      return;
+    }
+
+    const { provider } = settings;
+    const key = keys.current[provider];
+    const failRecoverably = (message: string) => {
+      setCompanionFailedReply({
+        id: createId(),
+        text: typed,
+        errorMessage: message,
+        createdAt: getEffectiveClock(settings.timezone).now,
+      });
+      setCompanionNotice('');
+    };
+
+    if (keyStorage === 'loading') {
+      setCompanionNotice('Pip is checking for saved API keys. Try again in a moment.');
+      return;
+    }
+
+    let isProviderConfigured = configured.includes(provider);
+    if (!isProviderConfigured && !isTauri() && provider === 'gemini') {
+      const liveStatus = await fetchAssistantStatus();
+      if (liveStatus.geminiConfigured) {
+        isProviderConfigured = true;
+        setServerStatus('connected');
+        setConfigured((prev) => (prev.includes('gemini') ? prev : [...prev, 'gemini']));
+      } else {
+        setServerStatus('unconfigured');
+      }
+    }
+
+    if (!isProviderConfigured && !keyStorageError) {
+      if (overrideText === undefined) setCompanionDraft('');
+      failRecoverably(
+        isTauri()
+          ? `Add a ${PROVIDERS[provider].label} API key in AI Settings to chat with Pip.`
+          : 'Add your Gemini API key in AI Settings, or configure the local server key.',
+      );
+      return;
+    }
+
+    const { now, clock } = getEffectiveClock(settings.timezone);
+    const priorMessages = companionThreadRef.current.messages.filter((m) => m.state !== 'error');
+    const detailRequested = isDetailedStudyRequest(typed);
+    const reference = resolveContextualReference(typed, priorMessages);
+    const workspace = currentApp.current;
+
+    const systemInstructions = buildCompanionSystemInstructions({
+      clock,
+      language: settings.language,
+      casualMixLanguage: settings.casualMixLanguage,
+      detailRequested,
+      memory: workspace.preferences.pipMemory,
+      reference,
+    });
+
+    const scopedContext = buildCompanionContext(
+      {
+        subjects: workspace.subjects,
+        tasks: workspace.tasks,
+        sessions: workspace.sessions,
+        goals: workspace.goals,
+        notes: workspace.notes,
+        focusHistory: workspace.focusHistory,
+        pipMemory: workspace.preferences.pipMemory,
+      },
+      priorMessages,
+      typed,
+      clock,
+    );
+
+    const historyTurns = priorMessages
+      .filter((m) => m.text.trim().length > 0 && (m.role === 'user' || m.state === 'complete'))
+      .slice(-8)
+      .map(({ role, text }) => ({ role, text }));
+
+    const request: ChatRequest = {
+      prompt: typed,
+      provider,
+      model,
+      maxOutput: settings.maxOutput,
+      workspaceActions: false,
+      allowedTools: [],
+      context: scopedContext,
+      clientContext: systemInstructions,
+      history: historyTurns,
+    };
+
+    const userMsgId = `cmp-user-${createId()}`;
+    const replyBatchId = `cmp-reply-${createId()}`;
+    const streamingId = `${replyBatchId}:0`;
+
+    const userMessage: CompanionMessage = {
+      id: userMsgId,
+      role: 'user',
+      text: typed,
+      createdAt: now,
+      timeLabel: clock.time,
+      date: clock.date,
+      kind: 'chat',
+      read: true,
+      state: 'complete',
+    };
+    const streamingPlaceholder: CompanionMessage = {
+      id: streamingId,
+      batchId: replyBatchId,
+      role: 'assistant',
+      text: '',
+      createdAt: now + 1,
+      timeLabel: clock.time,
+      date: clock.date,
+      kind: 'chat',
+      read: true,
+      state: 'streaming',
+    };
+
+    const control = new AbortController();
+    companionRequest.current = control;
+    setCompanionBusy(true);
+    setCompanionNotice('');
+    setCompanionFailedReply(null);
+    if (overrideText === undefined) setCompanionDraft('');
+
+    // Mark any prior unsolicited outreach as answered now that the user replied
+    if (workspace.companionOutreachLedger.lastUnsolicitedBatchId && !workspace.companionOutreachLedger.lastUnsolicitedAnswered) {
+      workspace.updateCompanionOutreachLedger((prev) => ({
+        ...prev,
+        lastUnsolicitedAnswered: true,
+      }));
+    }
+
+    // Detect if the user agreed to a pending follow-up offer or directly asked Pip to check in later
+    const userFollowUp = detectUserFollowUpRequest({
+      userText: typed,
+      recentMessages: priorMessages,
+      clock,
+      now,
+      sessions: workspace.sessions,
+      subjects: workspace.subjects,
+      timezone: settings.timezone,
+    });
+    if (userFollowUp.followUp) {
+      workspace.addCompanionFollowUp(userFollowUp.followUp);
+    }
+
+    setCompanionThread((prev) => {
+      const readPrev = markCompanionRead(prev, now);
+      const updatedMessages = userFollowUp.acceptedOfferMessageId
+        ? readPrev.messages.map((m) =>
+            m.id === userFollowUp.acceptedOfferMessageId && m.followUpOffer
+              ? { ...m, followUpOffer: { ...m.followUpOffer, accepted: true } }
+              : m,
+          )
+        : readPrev.messages;
+      return {
+        ...readPrev,
+        updatedAt: now,
+        messages: [...updatedMessages, userMessage, streamingPlaceholder],
+      };
+    });
+
+    const records = mergeUsage(usage, desktopUsage ? [] : readUsage());
+    const started = new Date(now);
+    let responseText = '';
+    let tokens: TokenUsage | undefined;
+    let errorMessage: string | undefined;
+    let errorStatus: number | undefined;
+    let status: UsageEntryStatus = 'error';
+
+    try {
+      for await (const event of sendChat(request, key, control.signal)) {
+        if (event.type === 'text') {
+          responseText += event.text;
+          setCompanionThread((prev) => ({
+            ...prev,
+            messages: prev.messages.map((m) => (m.id === streamingId ? { ...m, text: responseText } : m)),
+          }));
+        }
+        if (event.type === 'usage') tokens = event.usage;
+        if (event.type === 'retry') setCompanionNotice(`Provider unavailable. Retrying in ${event.seconds}s…`);
+        if (event.type === 'error') {
+          errorStatus = event.status;
+          throw providerFailure(provider, event);
+        }
+        if (event.type === 'done') {
+          status = 'complete';
+          setCompanionNotice('');
+          break;
+        }
+      }
+      if (status !== 'complete') {
+        errorMessage = 'The connection ended before Pip finished replying.';
+      }
+    } catch (error) {
+      if (control.signal.aborted) {
+        status = 'stopped';
+        setCompanionNotice('Reply stopped.');
+      } else {
+        errorMessage =
+          error instanceof Error && !(error instanceof TypeError)
+            ? error.message
+            : 'Could not reach Gemini. Your message is saved below so you can retry.';
+      }
+    } finally {
+      if (status === 'complete' || status === 'error') {
+        setGeminiHealth(status === 'complete' ? 'responded' : 'failed');
+      }
+
+      if (status === 'error') {
+        setCompanionThread((prev) => ({
+          ...prev,
+          messages: prev.messages.filter((m) => m.id !== userMsgId && m.id !== streamingId),
+        }));
+        failRecoverably(errorMessage || 'Could not send right now. Retry when Gemini is available.');
+      } else {
+        const doneClock = getEffectiveClock(settings.timezone);
+        const parsedOffer = parseFollowUpOfferFromReply(
+          responseText,
+          doneClock.clock,
+          doneClock.now,
+          currentApp.current.sessions,
+          currentApp.current.subjects,
+          settings.timezone,
+        );
+        const bubbles = splitCompanionBubbles(parsedOffer.cleanedText);
+        const finalBubbles: CompanionMessage[] = (bubbles.length ? bubbles : [parsedOffer.cleanedText.trim() || 'Got it.']).map(
+          (bubbleText, index, arr) => ({
+            id: `${replyBatchId}:${index}`,
+            batchId: replyBatchId,
+            role: 'assistant',
+            text: bubbleText,
+            createdAt: doneClock.now + index,
+            timeLabel: doneClock.clock.time,
+            date: doneClock.clock.date,
+            kind: 'chat',
+            read: true,
+            followUpOffer: index === arr.length - 1 ? parsedOffer.offer : undefined,
+            tokens: index === 0 ? tokens : undefined,
+            state: status === 'stopped' ? 'stopped' : 'complete',
+          }),
+        );
+
+        setCompanionThread((prev) => ({
+          ...prev,
+          updatedAt: doneClock.now,
+          lastReadAt: Math.max(prev.lastReadAt, doneClock.now),
+          messages: [...prev.messages.filter((m) => m.id !== streamingId), ...finalBubbles],
+        }));
+      }
+
+      const updated = mergeUsage([
+        ...records,
+        {
+          id: streamingId,
+          at: started.getTime(),
+          day: localDay(started),
+          provider,
+          model,
+          tokens,
+          status,
+          ...(errorStatus !== undefined ? { errorStatus } : {}),
+        },
+      ]);
+      if (desktopUsage) {
+        setUsage(updated);
+        void desktopUsage.save(updated).catch((error) => setNotice(`Could not save AI usage. ${String(error)}`));
+      } else {
+        setUsage(writeUsage(updated));
+      }
+
+      companionRequest.current = null;
+      setCompanionBusy(false);
+    }
+  }
+
+  function dismissCompanionFailedReply() {
+    setCompanionFailedReply(null);
+  }
+
+  function retryCompanionFailedReply() {
+    if (!companionFailedReply || companionBusy || companionRequest.current) return;
+    const text = companionFailedReply.text;
+    setCompanionFailedReply(null);
+    void sendCompanionMessage(text);
+  }
+
+  function editCompanionFailedReply() {
+    if (!companionFailedReply) return;
+    const text = companionFailedReply.text;
+    setCompanionFailedReply(null);
+    setCompanionDraft(text);
+  }
+
+  function acceptCompanionSuggestion(
+    message: CompanionMessage,
+    suggestion: CompanionSuggestion,
+    actionOverride?: 'focus' | 'note',
+  ) {
+    const state = currentApp.current;
+    const targetKind = actionOverride ?? suggestion.kind;
+    if (targetKind === 'note' && suggestion.noteId) {
+      state.setSelectedNoteId(suggestion.noteId);
+      state.setRoute('notes');
+      setPetOpen(false);
+    } else if (targetKind === 'focus') {
+      const minutes = Math.max(5, Math.min(90, suggestion.minutes ?? 10));
+      state.setFocusContext(suggestion.subjectId ?? state.subjects[0]?.id ?? '', suggestion.taskTitle ?? suggestion.label);
+      state.setFocusDuration(0, minutes, 'Custom');
+      if (!state.focusTimer.running) {
+        state.toggleFocusRunning();
+      }
+      state.setRoute('focus');
+      setPetOpen(false);
+    } else if (targetKind === 'practice') {
+      state.setRoute('practice');
+      setPetOpen(false);
+    } else if (targetKind === 'flashcards') {
+      state.setRoute('flashcards');
+      setPetOpen(false);
+    } else if (targetKind === 'task') {
+      state.setRoute('tasks');
+      setPetOpen(false);
+    }
+
+    setCompanionThread((prev) => ({
+      ...prev,
+      messages: prev.messages.map((m) =>
+        m.id === message.id && m.suggestion
+          ? { ...m, suggestion: { ...m.suggestion, accepted: true } }
+          : m,
+      ),
+    }));
+  }
+
+  function dismissCompanionSuggestion(message: CompanionMessage) {
+    setCompanionThread((prev) => ({
+      ...prev,
+      messages: prev.messages.map((m) =>
+        m.id === message.id && m.suggestion
+          ? { ...m, suggestion: { ...m.suggestion, dismissed: true } }
+          : m,
+      ),
+    }));
+  }
+
+  function acceptCompanionFollowUpOffer(message: CompanionMessage) {
+    const offer = message.followUpOffer;
+    if (!offer || offer.accepted) return;
+    const { now } = getEffectiveClock(settings.timezone);
+    currentApp.current.addCompanionFollowUp({
+      id: `fu-${offer.dueDate}-${offer.dueTime}-${offer.topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 24)}`,
+      topic: offer.topic,
+      dueAt: offer.dueAt,
+      dueDate: offer.dueDate,
+      dueTime: offer.dueTime,
+      status: 'scheduled',
+      createdAt: now,
+      sourceMessageId: message.id,
+    });
+    setCompanionThread((prev) => ({
+      ...prev,
+      messages: prev.messages.map((m) =>
+        m.id === message.id && m.followUpOffer
+          ? { ...m, followUpOffer: { ...m.followUpOffer, accepted: true } }
+          : m,
+      ),
+    }));
+  }
+
+  function dismissCompanionFollowUpOffer(message: CompanionMessage) {
+    setCompanionThread((prev) => ({
+      ...prev,
+      messages: prev.messages.map((m) =>
+        m.id === message.id && m.followUpOffer
+          ? { ...m, followUpOffer: { ...m.followUpOffer, dismissed: true } }
+          : m,
+      ),
+    }));
+  }
+
+  function rescheduleCompanionFollowUp(id: string, dueDate: string, dueTime: string) {
+    const existing = currentApp.current.companionFollowUps.find((f) => f.id === id);
+    if (!existing) return;
+    const { now } = getEffectiveClock(settings.timezone);
+    const updated = buildRescheduledFollowUp(existing, dueDate, dueTime, now, settings.timezone);
+    currentApp.current.updateCompanionFollowUp(id, {
+      dueAt: updated.dueAt,
+      dueDate: updated.dueDate,
+      dueTime: updated.dueTime,
+      status: 'scheduled',
+    });
+  }
+
+  function cancelCompanionFollowUp(id: string) {
+    currentApp.current.cancelCompanionFollowUp(id);
+  }
+
+  // Unified local Companion outreach & scheduled follow-up delivery loop (persist-before-notify)
+  const draftOutreachWithGemini = useCallback(
+    async (draftPrompt: string, verifiedFacts: Record<string, unknown>, clock: ReturnType<typeof requestClock>): Promise<string | null> => {
+      if (!available) return null;
+      const provider = settings.provider;
+      const key = keys.current[provider];
+      if (keyStorage === 'loading') return null;
+
+      let isProviderConfigured = configured.includes(provider);
+      if (!isProviderConfigured && !isTauri() && provider === 'gemini') {
+        const liveStatus = await fetchAssistantStatus().catch(() => ({ geminiConfigured: false }));
+        if (liveStatus.geminiConfigured) {
+          isProviderConfigured = true;
+          setServerStatus('connected');
+          setConfigured((prev) => (prev.includes('gemini') ? prev : [...prev, 'gemini']));
+        }
+      }
+      if (!isProviderConfigured) return null;
+
+      const request: ChatRequest = {
+        provider,
+        model,
+        maxOutput: 300,
+        workspaceActions: false,
+        allowedTools: [],
+        context: JSON.stringify(verifiedFacts),
+        clientContext: buildOutreachSystemInstructions({
+          clock,
+          language: settings.language,
+          casualMixLanguage: settings.casualMixLanguage,
+          memory: currentApp.current.preferences.pipMemory,
+        }),
+        history: [],
+        prompt: draftPrompt,
+      };
+
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 15_000);
+      let drafted = '';
+      try {
+        for await (const event of sendChat(request, key, controller.signal)) {
+          if (event.type === 'text') drafted += event.text;
+          if (event.type === 'error') return null;
+        }
+        const cleaned = drafted.trim().replace(/^["“]|["”]$/g, '').trim();
+        return cleaned.length >= 2 ? cleaned : null;
+      } catch {
+        return null;
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    },
+    [available, configured, keyStorage, model, settings.casualMixLanguage, settings.language, settings.maxOutput, settings.provider],
+  );
+
+  const runCompanionOutreachCheck = useCallback(async () => {
+    if (outreachInFlight.current || busy || companionBusy || Date.now() < outreachRetryAfter.current) return;
+    const state = currentApp.current;
+    const { now, clock } = getEffectiveClock(settings.timezone);
+
+    const completed = new Set(
+      state.goals.flatMap((g) => g.milestones.filter((m) => m.done).map((m) => `milestone/${g.id}/${m.id}`)),
+    );
+    const previous = pastMilestones.current ?? completed;
+    pastMilestones.current = completed;
+    const newMilestones = new Set([...completed].filter((key) => !previous.has(key)));
+
+    outreachInFlight.current = true;
+    try {
+      // 1. Check user-agreed one-time follow-ups first (marks stale ones skipped instead of bursting)
+      const evaluateFollowUps = (workspace: typeof state, timestamp: number, time: string) => findDueFollowUp({
+        followUps: workspace.companionFollowUps,
+        now: timestamp,
+        time,
+        running: workspace.focusTimer.running,
+        settings: workspace.preferences.pipCheckIns ?? {},
+        pipMemory: workspace.preferences.pipMemory,
+      });
+      const { due: dueFollowUp, staleIds } = evaluateFollowUps(state, now, clock.time);
+
+      if (staleIds.length > 0) {
+        for (const staleId of staleIds) {
+          state.updateCompanionFollowUp(staleId, { status: 'skipped' });
+        }
+      }
+
+      if (dueFollowUp) {
+        const batchId = `companion/followup/${dueFollowUp.id}`;
+        const firstId = `${batchId}:0`;
+        const alreadySent =
+          companionThreadRef.current.messages.some((m) => m.batchId === batchId || m.id === firstId) ||
+          state.notifications.some((n) => n.id === batchId);
+
+        if (alreadySent) {
+          state.updateCompanionFollowUp(dueFollowUp.id, { status: 'delivered' });
+        } else {
+          const drafted = await draftOutreachWithGemini(
+            `Draft one short, warm follow-up checking in on "${dueFollowUp.topic}" as the student asked you to earlier. One short sentence, casual and friendly.`,
+            { type: 'agreed_followup', topic: dueFollowUp.topic, scheduledFor: `${dueFollowUp.dueDate} ${dueFollowUp.dueTime}` },
+            clock,
+          );
+          if (!drafted) {
+            outreachRetryAfter.current = Date.now() + 5 * 60_000;
+            return;
+          }
+          const current = getEffectiveClock(settings.timezone);
+          const stillDue = evaluateFollowUps(currentApp.current, current.now, current.clock.time).due;
+          if (companionRequest.current || stillDue?.id !== dueFollowUp.id || stillDue.dueAt !== dueFollowUp.dueAt) {
+            return;
+          }
+          const bubbles = splitCompanionBubbles(drafted);
+          if (!bubbles.length) return;
+          const viewingCompanionNow = pipTab === 'companion' && (currentApp.current.route === 'assistant' || petOpen);
+          const newMessages: CompanionMessage[] = bubbles.map((text, index) => ({
+            id: `${batchId}:${index}`,
+            batchId,
+            role: 'assistant',
+            text,
+            createdAt: now + index,
+            timeLabel: clock.time,
+            date: clock.date,
+            kind: 'followup',
+            read: viewingCompanionNow,
+            triggerKey: `followup/${dueFollowUp.id}`,
+            state: 'complete',
+          }));
+
+          // Persist BEFORE notifying
+          const nextThread: CompanionThreadState = {
+            ...companionThreadRef.current,
+            updatedAt: now,
+            messages: [...companionThreadRef.current.messages, ...newMessages],
+          };
+          await persistCompanionSnapshot(nextThread);
+          flushSync(() => {
+            setCompanionThread(prev => ({
+              ...prev,
+              updatedAt: Math.max(prev.updatedAt, now),
+              messages: [...prev.messages, ...newMessages],
+            }));
+            currentApp.current.updateCompanionFollowUp(dueFollowUp.id, { status: 'delivered' });
+          });
+          await currentApp.current.saveWorkspace();
+
+          // Send at most ONE notification for the batch, deep-linked to the first bubble
+          const firstBubble = newMessages[0];
+          if (firstBubble) {
+            currentApp.current.addPipNotification({
+              id: batchId,
+              title: 'Pip',
+              detail: firstBubble.text,
+              time: clock.time,
+              read: viewingCompanionNow,
+              route: 'assistant',
+              companionMessageId: firstBubble.id,
+            });
+          }
+          return;
+        }
+      }
+
+      // 2. Evaluate unsolicited Companion outreach under the shared 1/day local cap
+      const evaluation = evaluateCompanionOutreach({
+        settings: state.preferences.pipCheckIns ?? {},
+        date: clock.date,
+        time: clock.time,
+        now,
+        running: state.focusTimer.running,
+        notifications: state.notifications,
+        ledger: state.companionOutreachLedger,
+        companionMessages: companionThreadRef.current.messages,
+        subjects: state.subjects,
+        sessions: state.sessions,
+        focusHistory: state.focusHistory,
+        goals: state.goals,
+        newMilestones,
+        tasks: state.tasks,
+        notes: state.notes,
+        pipMemory: state.preferences.pipMemory,
+      });
+
+      const candidate = evaluation.candidate;
+      if (!candidate) return;
+      const drafted = await draftOutreachWithGemini(candidate.draftPrompt, candidate.verifiedFacts, clock);
+      if (!drafted) {
+        outreachRetryAfter.current = Date.now() + 5 * 60_000;
+        return;
+      }
+
+      // Re-verify idempotency & eligibility right before persisting
+      const latest = currentApp.current;
+      const current = getEffectiveClock(settings.timezone);
+      const refreshed = evaluateCompanionOutreach({
+        settings: latest.preferences.pipCheckIns ?? {},
+        date: current.clock.date,
+        time: current.clock.time,
+        now: current.now,
+        running: latest.focusTimer.running,
+        notifications: latest.notifications,
+        ledger: latest.companionOutreachLedger,
+        companionMessages: companionThreadRef.current.messages,
+        subjects: latest.subjects,
+        sessions: latest.sessions,
+        focusHistory: latest.focusHistory,
+        goals: latest.goals,
+        newMilestones,
+        tasks: latest.tasks,
+        notes: latest.notes,
+        pipMemory: latest.preferences.pipMemory,
+      });
+      if (companionRequest.current || refreshed.candidate?.batchId !== candidate.batchId) return;
+
+      const bubbles = splitCompanionBubbles(drafted);
+      if (!bubbles.length) return;
+      const viewingCompanionNow = pipTab === 'companion' && (latest.route === 'assistant' || petOpen);
+      const newMessages: CompanionMessage[] = bubbles.map((text, index) => ({
+        id: `${candidate.batchId}:${index}`,
+        batchId: candidate.batchId,
+        role: 'assistant',
+        text,
+        createdAt: now + index,
+        timeLabel: clock.time,
+        date: clock.date,
+        kind: candidate.kind,
+        read: viewingCompanionNow,
+        triggerKey: candidate.triggerKey,
+        suggestion: index === bubbles.length - 1 ? candidate.suggestion : undefined,
+        state: 'complete',
+      }));
+
+      // Persist Companion thread + ledger BEFORE notifying
+      const nextThread: CompanionThreadState = {
+        ...companionThreadRef.current,
+        updatedAt: now,
+        messages: [...companionThreadRef.current.messages, ...newMessages],
+      };
+      await persistCompanionSnapshot(nextThread);
+
+      const phone = isTauri() && Boolean(latest.preferences.pipCheckIns?.phoneDelivery);
+      flushSync(() => {
+        setCompanionThread(prev => ({
+          ...prev,
+          updatedAt: Math.max(prev.updatedAt, now),
+          messages: [...prev.messages, ...newMessages],
+        }));
+        latest.updateCompanionOutreachLedger((prev) => ({
+          ...prev,
+          lastUnsolicitedDate: clock.date,
+          lastUnsolicitedBatchId: candidate.batchId,
+          lastUnsolicitedAt: now,
+          lastUnsolicitedAnswered: false,
+          deliveredKeys: [...prev.deliveredKeys, candidate.triggerKey],
+          deliveredBatchIds: [...prev.deliveredBatchIds, candidate.batchId],
+        }));
+      });
+      await currentApp.current.saveWorkspace();
+
+      // Emit at most ONE notification for the whole batch, pointing to the exact first bubble
+      const firstBubble = newMessages[0];
+      if (firstBubble) {
+        flushSync(() => {
+          currentApp.current.addPipNotification({
+            id: candidate.batchId,
+            title: 'Pip',
+            detail: firstBubble.text,
+            time: clock.time,
+            read: Boolean(phone || viewingCompanionNow),
+            route: 'assistant',
+            companionMessageId: firstBubble.id,
+          });
+        });
+      }
+
+      if (phone) {
+        const legacyShape: CheckIn = { key: candidate.triggerKey, text: firstBubble?.text ?? drafted };
+        relayWork.current = relayWork.current
+          .then(async () => {
+            const state = currentApp.current;
+            if (state.focusTimer.running || !state.preferences.pipCheckIns?.enabled || !state.preferences.pipCheckIns.phoneDelivery) return;
+            const observedAt = getEffectiveClock(settings.timezone).now;
+            const timeNow = requestClock(settings.timezone, new Date(observedAt));
+            if (timeNow.date !== clock.date || timeNow.time !== clock.time) return;
+            const toMinute = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+            const nowMinute = toMinute(timeNow.time);
+            const quietStart = toMinute(currentApp.current.preferences.pipCheckIns?.quietFrom ?? '21:30');
+            const remaining = Math.min(20, 1440 - nowMinute, (1440 + quietStart - nowMinute) % 1440 || 1440);
+            const fingerprint = Array.from(
+              new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(legacyShape.key))),
+              (byte) => byte.toString(16).padStart(2, '0'),
+            ).join('');
+            await invoke('pip_relay', {
+              action: 'enqueue',
+              body: {
+                day: clock.date,
+                fingerprint,
+                kind: legacyShape.key.split('/')[0],
+                observedAt,
+                expiresAt: Math.floor(observedAt / 60000) * 60000 + remaining * 60000,
+              },
+            });
+          })
+          .catch(() => {
+            setNotice('Pip could not queue this check-in. Check the relay pairing in AI Settings.');
+          });
+      }
+    } catch {
+      outreachRetryAfter.current = Date.now() + 5 * 60_000;
+      setCompanionNotice('Pip could not save the Companion update on this device.');
+    } finally {
+      outreachInFlight.current = false;
+    }
+  }, [busy, companionBusy, draftOutreachWithGemini, persistCompanionSnapshot, petOpen, pipTab, settings.timezone]);
+
+  useEffect(() => {
+    const first = window.setTimeout(() => {
+      void runCompanionOutreachCheck();
+    }, 0);
+    const timer = window.setInterval(() => {
+      void runCompanionOutreachCheck();
+    }, 30_000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(timer);
+    };
+  }, [runCompanionOutreachCheck, app.goals, app.preferences.pipCheckIns, app.companionFollowUps]);
 
   // Handle queued askPip triggers cleanly once UI switches
   useEffect(() => {
@@ -1655,6 +2444,31 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     active,
     activeId,
     conversations,
+    pipTab,
+    setPipTab,
+    companionThread,
+    companionUnreadCount,
+    companionDraft,
+    setCompanionDraft,
+    companionBusy,
+    companionNotice,
+    setCompanionNotice,
+    companionFailedReply,
+    sendCompanionMessage,
+    stopCompanion: () => companionRequest.current?.abort(),
+    retryCompanionFailedReply,
+    editCompanionFailedReply,
+    dismissCompanionFailedReply,
+    markCompanionThreadRead,
+    openCompanionMessage,
+    highlightedCompanionMessageId,
+    runCompanionOutreachCheck,
+    acceptCompanionSuggestion,
+    dismissCompanionSuggestion,
+    acceptCompanionFollowUpOffer,
+    dismissCompanionFollowUpOffer,
+    rescheduleCompanionFollowUp,
+    cancelCompanionFollowUp,
     switchChat,
     newChat,
     renameChat,

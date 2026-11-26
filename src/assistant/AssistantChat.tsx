@@ -58,6 +58,7 @@ import {
   type PipAttachment,
 } from './documentAttachments';
 import { CHAT_LIMITS, GEMINI_CHAT_MODELS, isModelId } from './protocol';
+import { CompanionInbox } from './CompanionInbox';
 import './assistant.css';
 
 export function PetFace({ mood = 'ready' }: { mood?: 'ready' | 'working' | 'focus' | 'break' }) {
@@ -712,17 +713,19 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
       ? assistant.active.title
       : 'Pip';
 
+  const isCompanionTab = assistant.pipTab === 'companion';
+
   return (
     <section
       className={`pip-chat ${floating ? 'pip-chat-floating' : 'pip-chat-page'}`}
       aria-label="StudyFlow Assistant"
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      onDragEnter={isCompanionTab ? undefined : handleDragEnter}
+      onDragOver={isCompanionTab ? undefined : handleDragOver}
+      onDragLeave={isCompanionTab ? undefined : handleDragLeave}
+      onDrop={isCompanionTab ? undefined : handleDrop}
     >
       {/* Drag-and-Drop Overlay */}
-      {dragging && (
+      {!isCompanionTab && dragging && (
         <div className="pip-dropzone" aria-live="polite">
           <div className="pip-dropzone-inner">
             <Upload className="w-6 h-6" style={{ color: 'var(--accent)' }} />
@@ -739,55 +742,115 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
       {/* Minimal Airy Studio Header */}
       <header className="pip-header">
         <div className="pip-header-id">
-          <button
-            type="button"
-            className={`pip-icon ${historyOpen ? 'pip-icon-active' : ''}`}
-            aria-expanded={historyOpen}
-            onClick={() => setHistoryOpen((open) => !open)}
-            aria-label="Toggle chat history"
-            title="Chat history"
-          >
-            <PanelLeft size={16} />
-          </button>
+          {!isCompanionTab && (
+            <button
+              type="button"
+              className={`pip-icon ${historyOpen ? 'pip-icon-active' : ''}`}
+              aria-expanded={historyOpen}
+              onClick={() => setHistoryOpen((open) => !open)}
+              aria-label="Toggle chat history"
+              title="Chat history"
+            >
+              <PanelLeft size={16} />
+            </button>
+          )}
           <div className="min-w-0 flex items-center gap-2.5">
-            <PetFace mood={assistant.busy ? 'working' : 'ready'} />
+            <PetFace mood={assistant.busy || assistant.companionBusy ? 'working' : 'ready'} />
             <div className="min-w-0">
-              <h2 className="truncate" title={headerTitle}>
-                {headerTitle}
+              <h2 className="truncate" title={isCompanionTab ? 'Pip Companion' : headerTitle}>
+                {isCompanionTab ? 'Pip Companion' : headerTitle}
               </h2>
-              {!floating && assistant.active.messages.length === 0 && (
-                <p>Study coach &amp; workspace assistant</p>
+              {!floating && (isCompanionTab || assistant.active.messages.length === 0) && (
+                <p>
+                  {isCompanionTab
+                    ? 'Casual check-ins & ongoing companion thread'
+                    : 'Study coach & workspace assistant'}
+                </p>
               )}
             </div>
           </div>
         </div>
 
         <div className="pip-actions">
-          <button
-            type="button"
-            aria-pressed={assistant.includeContext}
-            onClick={() => assistant.setIncludeContext(!assistant.includeContext)}
-            title={
-              assistant.includeContext
-                ? 'Workspace access enabled — Pip can read your schedule, notes, and run actions'
-                : 'Workspace access paused — Pip only reads this conversation and attached files'
-            }
-            className={`pip-toggle-btn ${assistant.includeContext ? 'pip-toggle-active' : ''}`}
+          {/* Study Chats | Companion Segmented Tab Switcher */}
+          <div
+            role="tablist"
+            aria-label="Pip inbox mode"
+            className="inline-flex items-center p-0.5 rounded-lg shrink-0"
+            style={{
+              backgroundColor: 'var(--bg-surface-subtle)',
+              border: '1px solid var(--border-subtle)',
+            }}
           >
-            <Layers size={14} className="shrink-0" />
-            {!floating && <span>Workspace</span>}
-          </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!isCompanionTab}
+              onClick={() => assistant.setPipTab('study')}
+              className="px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors whitespace-nowrap"
+              style={{
+                backgroundColor: !isCompanionTab ? 'var(--bg-surface)' : 'transparent',
+                color: !isCompanionTab ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}
+            >
+              {floating ? 'Study' : 'Study Chats'}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isCompanionTab}
+              onClick={() => {
+                assistant.setPipTab('companion');
+                assistant.markCompanionThreadRead();
+              }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors whitespace-nowrap"
+              style={{
+                backgroundColor: isCompanionTab ? 'var(--bg-surface)' : 'transparent',
+                color: isCompanionTab ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}
+            >
+              <span>Companion</span>
+              {assistant.companionUnreadCount > 0 && (
+                <span
+                  aria-label={`${assistant.companionUnreadCount} unread Companion messages`}
+                  className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded text-[10.5px] font-mono-num font-semibold"
+                  style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}
+                >
+                  {assistant.companionUnreadCount}
+                </span>
+              )}
+            </button>
+          </div>
 
-          <button
-            type="button"
-            className="pip-icon"
-            onClick={assistant.newChat}
-            disabled={assistant.busy || !assistant.active.messages.length}
-            aria-label="New chat"
-            title="New chat"
-          >
-            <Plus size={16} />
-          </button>
+          {!isCompanionTab && (
+            <>
+              <button
+                type="button"
+                aria-pressed={assistant.includeContext}
+                onClick={() => assistant.setIncludeContext(!assistant.includeContext)}
+                title={
+                  assistant.includeContext
+                    ? 'Workspace access enabled — Pip can read your schedule, notes, and run actions'
+                    : 'Workspace access paused — Pip only reads this conversation and attached files'
+                }
+                className={`pip-toggle-btn ${assistant.includeContext ? 'pip-toggle-active' : ''}`}
+              >
+                <Layers size={14} className="shrink-0" />
+                {!floating && <span>Workspace</span>}
+              </button>
+
+              <button
+                type="button"
+                className="pip-icon"
+                onClick={assistant.newChat}
+                disabled={assistant.busy || !assistant.active.messages.length}
+                aria-label="New chat"
+                title="New chat"
+              >
+                <Plus size={16} />
+              </button>
+            </>
+          )}
 
           <button
             type="button"
@@ -827,6 +890,18 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
         </div>
       </header>
 
+      {isCompanionTab ? (
+        <CompanionInbox
+          floating={floating}
+          upcomingFollowUps={app.companionFollowUps}
+          onAcceptSuggestion={assistant.acceptCompanionSuggestion}
+          onDismissSuggestion={assistant.dismissCompanionSuggestion}
+          onAcceptFollowUpOffer={assistant.acceptCompanionFollowUpOffer}
+          onDismissFollowUpOffer={assistant.dismissCompanionFollowUpOffer}
+          onRescheduleFollowUp={assistant.rescheduleCompanionFollowUp}
+          onCancelFollowUp={assistant.cancelCompanionFollowUp}
+        />
+      ) : (
       <div className={`pip-chat-body${historyOpen ? ' pip-history-open' : ''}`}>
         {/* Threads Sidebar */}
         {historyOpen && (
@@ -1656,6 +1731,7 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
           </form>
         </div>
       </div>
+      )}
     </section>
   );
 }

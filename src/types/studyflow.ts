@@ -357,6 +357,7 @@ export interface NotificationItem {
   time: string;
   read: boolean;
   route: NavRoute;
+  companionMessageId?: string;
 }
 
 export interface DashboardWidgetConfig {

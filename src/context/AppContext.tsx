@@ -70,6 +70,13 @@ import {
   type PendingSessionPrompt,
 } from '../utils/focusTimerLogic';
 import { playSessionStartChime, showBrowserSessionNotification } from '../utils/soundAlert';
+import {
+  createEmptyOutreachLedger,
+  normalizeCompanionFollowUps,
+  normalizeOutreachLedger,
+  type CompanionFollowUp,
+  type CompanionOutreachLedger,
+} from '../assistant/companion';
 
 export interface ToastMessage {
   id: string;
@@ -288,6 +295,15 @@ interface AppContextValue {
   markAllNotificationsRead: () => void;
   markNotificationRead: (id: string) => void;
 
+  companionOutreachLedger: CompanionOutreachLedger;
+  updateCompanionOutreachLedger: (
+    updater: (prev: CompanionOutreachLedger) => CompanionOutreachLedger,
+  ) => void;
+  companionFollowUps: CompanionFollowUp[];
+  addCompanionFollowUp: (item: CompanionFollowUp) => void;
+  updateCompanionFollowUp: (id: string, patch: Partial<CompanionFollowUp>) => void;
+  cancelCompanionFollowUp: (id: string) => void;
+
   preferences: UserPreferences;
   updatePreferences: (patch: Partial<UserPreferences>) => void;
 
@@ -333,6 +349,8 @@ export interface WorkspaceSnapshot {
   challenges: ChallengeItem[];
   xpPoints: number;
   notifications: NotificationItem[];
+  companionOutreachLedger?: CompanionOutreachLedger;
+  companionFollowUps?: CompanionFollowUp[];
   preferences: UserPreferences;
 }
 
@@ -383,7 +401,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [challenges, setChallenges] = useState<ChallengeItem[]>(initial?.challenges ?? (desktop ? [] : INITIAL_CHALLENGES));
   const [xpPoints, setXpPoints] = useState<number>(initial?.xpPoints ?? (desktop ? 0 : 4280));
   const [notifications, setNotifications] = useState<NotificationItem[]>(initial?.notifications ?? (desktop ? [] : INITIAL_NOTIFICATIONS));
+  const [companionOutreachLedger, setCompanionOutreachLedger] = useState<CompanionOutreachLedger>(() => {
+    if (initial?.companionOutreachLedger) return normalizeOutreachLedger(initial.companionOutreachLedger);
+    if (!desktop) {
+      try {
+        const raw = localStorage.getItem('studyflow.companion.ledger.v1');
+        if (raw) return normalizeOutreachLedger(JSON.parse(raw));
+      } catch { /* ignore */ }
+    }
+    return createEmptyOutreachLedger();
+  });
+  const [companionFollowUps, setCompanionFollowUps] = useState<CompanionFollowUp[]>(() => {
+    if (initial?.companionFollowUps) return normalizeCompanionFollowUps(initial.companionFollowUps);
+    if (!desktop) {
+      try {
+        const raw = localStorage.getItem('studyflow.companion.followups.v1');
+        if (raw) return normalizeCompanionFollowUps(JSON.parse(raw));
+      } catch { /* ignore */ }
+    }
+    return [];
+  });
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  useEffect(() => {
+    if (desktop) return;
+    try {
+      localStorage.setItem('studyflow.companion.ledger.v1', JSON.stringify(companionOutreachLedger));
+    } catch { /* ignore */ }
+  }, [desktop, companionOutreachLedger]);
+
+  useEffect(() => {
+    if (desktop) return;
+    try {
+      localStorage.setItem('studyflow.companion.followups.v1', JSON.stringify(companionFollowUps));
+    } catch { /* ignore */ }
+  }, [desktop, companionFollowUps]);
+
+  const updateCompanionOutreachLedger = useCallback(
+    (updater: (prev: CompanionOutreachLedger) => CompanionOutreachLedger) => {
+      setCompanionOutreachLedger((prev) => normalizeOutreachLedger(updater(prev)));
+    },
+    [],
+  );
+
+  const addCompanionFollowUp = useCallback((item: CompanionFollowUp) => {
+    setCompanionFollowUps((prev) =>
+      normalizeCompanionFollowUps([...prev.filter((existing) => existing.id !== item.id), item]),
+    );
+  }, []);
+
+  const updateCompanionFollowUp = useCallback((id: string, patch: Partial<CompanionFollowUp>) => {
+    setCompanionFollowUps((prev) =>
+      normalizeCompanionFollowUps(prev.map((item) => (item.id === id ? { ...item, ...patch } : item))),
+    );
+  }, []);
+
+  const cancelCompanionFollowUp = useCallback((id: string) => {
+    setCompanionFollowUps((prev) =>
+      normalizeCompanionFollowUps(
+        prev.map((item) => (item.id === id ? { ...item, status: 'cancelled' as const } : item)),
+      ),
+    );
+  }, []);
 
   const [preferences, setPreferences] = useState<UserPreferences>(initial?.preferences ?? {
     onboarding: desktop ? 'open' : undefined,
@@ -457,8 +536,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   }, [desktop, tasks, focusHistory, goals, cardReviews]);
   const snapshot = useMemo<WorkspaceSnapshot>(() => ({
     focusClock, legacyArchive: archive, previousWorkspace: initial?.previousWorkspace, removedOccurrences,
-    theme, accentColor, density, dashboardWidgets, subjects, tasks, sessions: savedSessions, goals, folders, notes, decks, flashcards: storedFlashcards, cardReviews, rewardLedger, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences,
-  }), [focusClock, archive, initial?.previousWorkspace, removedOccurrences, theme, accentColor, density, dashboardWidgets, subjects, tasks, savedSessions, goals, folders, notes, decks, storedFlashcards, cardReviews, rewardLedger, exams, quizzes, focusHistory, challenges, xpPoints, notifications, preferences]);
+    theme, accentColor, density, dashboardWidgets, subjects, tasks, sessions: savedSessions, goals, folders, notes, decks, flashcards: storedFlashcards, cardReviews, rewardLedger, exams, quizzes, focusHistory, challenges, xpPoints, notifications, companionOutreachLedger, companionFollowUps, preferences,
+  }), [focusClock, archive, initial?.previousWorkspace, removedOccurrences, theme, accentColor, density, dashboardWidgets, subjects, tasks, savedSessions, goals, folders, notes, decks, storedFlashcards, cardReviews, rewardLedger, exams, quizzes, focusHistory, challenges, xpPoints, notifications, companionOutreachLedger, companionFollowUps, preferences]);
   const [saveError, setSaveError] = useState('');
   const savedSnapshot = useRef(initial?.focusClock?.timer.running && !focusTimer.running ? undefined : snapshot);
 
@@ -1979,6 +2058,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         addPipNotification: item => setNotifications(prev => prev.some(n => n.id === item.id) ? prev : [item, ...prev]),
         markAllNotificationsRead,
         markNotificationRead,
+        companionOutreachLedger,
+        updateCompanionOutreachLedger,
+        companionFollowUps,
+        addCompanionFollowUp,
+        updateCompanionFollowUp,
+        cancelCompanionFollowUp,
         preferences,
         updatePreferences,
         toasts,

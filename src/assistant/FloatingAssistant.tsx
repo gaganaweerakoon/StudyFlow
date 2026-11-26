@@ -10,7 +10,7 @@ const VIEWPORT_MARGIN = 12;
 
 export function FloatingAssistant() {
   const { route, focusTimer, activeModal, commandPaletteOpen } = useApp();
-  const { petOpen, setPetOpen, busy } = useAssistant();
+  const { petOpen, setPetOpen, busy, companionBusy, companionUnreadCount, setPipTab } = useAssistant();
   const panel = useRef<HTMLDivElement>(null);
 
   const {
@@ -91,15 +91,17 @@ export function FloatingAssistant() {
   }, [position, mini, viewport.width, viewport.height]);
 
   if (route === 'assistant' || activeModal || commandPaletteOpen) return null;
-  const mood = busy ? 'working' : focusTimer.running ? focusTimer.phase : 'ready';
+  const mood = busy || companionBusy ? 'working' : focusTimer.running ? focusTimer.phase : 'ready';
   const stateLabel =
-    mood === 'focus'
-      ? 'Focus session running'
-      : mood === 'break'
-        ? 'Break running'
-        : mood === 'working'
-          ? 'Preparing reply'
-          : 'Study assistant';
+    companionUnreadCount > 0
+      ? `${companionUnreadCount} unread Companion ${companionUnreadCount === 1 ? 'message' : 'messages'}`
+      : mood === 'focus'
+        ? 'Focus session running'
+        : mood === 'break'
+          ? 'Break running'
+          : mood === 'working'
+            ? 'Preparing reply'
+            : 'Study assistant';
 
   function close() {
     launcher.current?.focus();
@@ -133,7 +135,13 @@ export function FloatingAssistant() {
             ? { left: position.x, top: position.y, right: 'auto', bottom: 'auto' }
             : undefined
         }
-        aria-label={petOpen ? 'Close Pip chat' : 'Open Pip chat'}
+        aria-label={
+          petOpen
+            ? 'Close Pip chat'
+            : companionUnreadCount > 0
+              ? `Open Pip chat (${companionUnreadCount} unread Companion messages)`
+              : 'Open Pip chat'
+        }
         aria-expanded={petOpen}
         title={`Pip · ${stateLabel} · Drag to move`}
         onPointerDown={handlePointerDown}
@@ -145,10 +153,26 @@ export function FloatingAssistant() {
             wasDraggedRef.current = false;
             return;
           }
+          if (!petOpen && companionUnreadCount > 0) {
+            setPipTab('companion');
+          }
           setPetOpen(!petOpen);
         }}
       >
         <PetFace mood={mood} />
+        {companionUnreadCount > 0 && (
+          <span
+            aria-hidden="true"
+            className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-md flex items-center justify-center text-[10.5px] font-mono-num font-semibold shadow-sm"
+            style={{
+              backgroundColor: 'var(--accent)',
+              color: 'var(--accent-fg)',
+              border: '2px solid var(--bg-canvas)',
+            }}
+          >
+            {companionUnreadCount > 9 ? '9+' : companionUnreadCount}
+          </span>
+        )}
       </button>
     </>
   );

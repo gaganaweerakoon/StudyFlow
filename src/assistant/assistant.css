@@ -1358,3 +1358,15 @@
   .pip-model-select { max-width: 132px !important; }
   .pip-failed-card { flex-wrap: wrap; }
 }
+
+.pip-companion-markdown p {
+  margin: 0;
+}
+.pip-companion-markdown p + p {
+  margin-top: 0.55em;
+}
+.pip-companion-markdown ul,
+.pip-companion-markdown ol {
+  margin: 0.4em 0;
+  padding-left: 1.25em;
+}
