@@ -74,12 +74,17 @@ export const AnalyticsView: React.FC = () => {
 
   const subjectDonutData = useMemo(
     () =>
-      subjects.map((s) => ({
-        name: s.code,
-        fullName: s.name,
-        hours: legacyCalendar ? focusHistory.filter(item => item.subjectId === s.id).reduce((sum, item) => sum + item.durationMinutes / 60, 0) : s.totalHours,
-        color: s.color,
-      })),
+      subjects.map((s) => {
+        const loggedHours = focusHistory
+          .filter((item) => item.subjectId === s.id)
+          .reduce((sum, item) => sum + item.durationMinutes / 60, 0);
+        return {
+          name: s.code,
+          fullName: s.name,
+          hours: legacyCalendar ? loggedHours : (s.totalHours > 0 ? s.totalHours : loggedHours),
+          color: s.color,
+        };
+      }),
     [subjects, legacyCalendar, focusHistory]
   );
 
@@ -502,9 +507,9 @@ export const AnalyticsView: React.FC = () => {
                 <XAxis dataKey="exam" tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} />
                 <YAxis domain={[70, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 11.5 }} axisLine={false} tickLine={false} unit="%" />
                 <Tooltip contentStyle={tooltipStyle} />
-                <Line type="monotone" dataKey="cs340" name="CS 340" stroke="#4F46E5" strokeWidth={2} isAnimationActive={false} />
-                <Line type="monotone" dataKey="math241" name="MATH 241" stroke="#0D9488" strokeWidth={2} isAnimationActive={false} />
-                <Line type="monotone" dataKey="chem210" name="CHEM 210" stroke="#D97706" strokeWidth={2} isAnimationActive={false} />
+                <Line type="monotone" dataKey="chem" name="CHEM" stroke="#16A34A" strokeWidth={2} isAnimationActive={false} />
+                <Line type="monotone" dataKey="phy" name="PHY" stroke="#3B82F6" strokeWidth={2} isAnimationActive={false} />
+                <Line type="monotone" dataKey="cm" name="CM" stroke="#A855F7" strokeWidth={2} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>

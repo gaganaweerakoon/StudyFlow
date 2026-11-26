@@ -29,6 +29,7 @@ import type {
 } from '../types/studyflow';
 import {
   INITIAL_ACHIEVEMENTS,
+  INITIAL_CARD_REVIEWS,
   INITIAL_CHALLENGES,
   INITIAL_DASHBOARD_WIDGETS,
   INITIAL_DECKS,
@@ -40,9 +41,11 @@ import {
   INITIAL_NOTES,
   INITIAL_NOTIFICATIONS,
   INITIAL_QUIZZES,
+  INITIAL_REWARD_LEDGER,
   INITIAL_SESSIONS,
   INITIAL_SUBJECTS,
   INITIAL_TASKS,
+  INITIAL_XP_POINTS,
   THEME_OPTIONS,
 } from '../data/mockData';
 import type { snapshotWriter } from '../desktop/storage';
@@ -398,9 +401,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [exams, setExams] = useState<ExamItem[]>(initial?.exams ?? (desktop ? [] : INITIAL_EXAMS));
   const [quizzes, setQuizzes] = useState<PracticeQuiz[]>(initial?.quizzes ?? (desktop ? [] : INITIAL_QUIZZES));
   const [focusHistory, setFocusHistory] = useState<FocusHistoryItem[]>(initial?.focusHistory ?? (desktop ? [] : INITIAL_FOCUS_HISTORY));
-  const [rewardLedger, setRewardLedger] = useState<RewardLedger>(initial?.rewardLedger ?? {});
+  const [rewardLedger, setRewardLedger] = useState<RewardLedger>(initial?.rewardLedger ?? (desktop ? {} : INITIAL_REWARD_LEDGER));
   const [challenges, setChallenges] = useState<ChallengeItem[]>(initial?.challenges ?? (desktop ? [] : INITIAL_CHALLENGES));
-  const [xpPoints, setXpPoints] = useState<number>(initial?.xpPoints ?? (desktop ? 0 : 4280));
+  const [xpPoints, setXpPoints] = useState<number>(initial?.xpPoints ?? (desktop ? 0 : INITIAL_XP_POINTS));
   const [notifications, setNotifications] = useState<NotificationItem[]>(initial?.notifications ?? (desktop ? [] : INITIAL_NOTIFICATIONS));
   const [companionOutreachLedger, setCompanionOutreachLedger] = useState<CompanionOutreachLedger>(() => {
     if (initial?.companionOutreachLedger) return normalizeOutreachLedger(initial.companionOutreachLedger);
@@ -495,9 +498,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     totalSeconds: 25 * 60,
     elapsedSeconds: 0,
     running: false,
-    subjectId: desktop ? subjects[0]?.id ?? '' : 'cs340',
-    taskTitle: desktop ? '' : 'Complete Problem Set 8: NP-Completeness Reductions',
-    cycleCount: desktop ? 0 : 2,
+    subjectId: subjects[0]?.id ?? '',
+    taskTitle: desktop ? '' : (INITIAL_TASKS[0]?.title ?? ''),
+    cycleCount: desktop ? 0 : 1,
     miniVisible: false,
     completionModalOpen: false,
     lastCompletedMinutes: 25,
@@ -527,7 +530,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     focusTimer.running ? undefined : focusTimer.secondsLeft,
     focusTimer.running ? undefined : focusTimer.elapsedSeconds,
   ]);
-  const [cardReviews, setCardReviews] = useState(initial?.cardReviews ?? {});
+  const [cardReviews, setCardReviews] = useState(initial?.cardReviews ?? (desktop ? {} : INITIAL_CARD_REVIEWS));
   const flashcards = useMemo(() => storedFlashcards.map(card => card.nextReviewDate
     ? { ...card, dueToday: card.nextReviewDate <= calendarDay } : card), [storedFlashcards, calendarDay]);
   const summary = useMemo(() => rewardSummary(rewardLedger), [rewardLedger]);
@@ -1913,9 +1916,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     setFocusHistory(INITIAL_FOCUS_HISTORY);
     setChallenges(INITIAL_CHALLENGES);
     setNotifications(INITIAL_NOTIFICATIONS);
-    setXpPoints(4280);
-    setRewardLedger({});
-    setCardReviews({});
+    setXpPoints(INITIAL_XP_POINTS);
+    setRewardLedger(INITIAL_REWARD_LEDGER);
+    setCardReviews(INITIAL_CARD_REVIEWS);
     pushToast('Loaded sample study workspace data');
   };
 
