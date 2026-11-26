@@ -28,5 +28,6 @@ async function start() {
   createRoot(document.getElementById('root')!).render(<AppProvider workspace={{initial, writer}}>
     <AuthProvider><AssistantProvider><Surface /></AssistantProvider></AuthProvider>
   </AppProvider>);
+  if (native) void import('./nativeAcceptance').then(({runNativeAcceptance}) => runNativeAcceptance());
 }
 void start();

@@ -16,7 +16,6 @@ jobs:
         with:
           bun-version: '1.4.5'
       - run: bun install --frozen-lockfile
-      - run: npm install --prefix "$env:RUNNER_TEMP/driver" playwright-core@1.55.0 --no-audit --no-fund
       - name: Check the production native crates
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml -p studyflow-storage -p studyflow-assistant
       - name: Compile the disposable WebView fixture without bundling
@@ -37,16 +36,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           if (-not $env:GEMINI_API_KEY) { throw 'Missing repository test credential' }
-          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=9222 --remote-debugging-address=127.0.0.1'
           Start-Process src-tauri/target/release/studyflow.exe
-      - name: Test two chat turns and reopen the SQLite workspace
+      - name: Read verification result from the disposable SQLite database
         run: |
-          $env:PIP_DRIVER="$env:RUNNER_TEMP/driver/node_modules/playwright-core"
-          $env:PIP_NATIVE_DB="$env:LOCALAPPDATA/io.studyflow.pip-acceptance/studyflow.sqlite"
-          $ready = $false
-          foreach ($i in 1..60) {
-            try { $ready = (Invoke-RestMethod http://127.0.0.1:9222/json/list).Count -gt 0 } catch {}
-            if ($ready) { break }
-            Start-Sleep -Seconds 1
-          }
-          node tests/pip/acceptance.cjs
+          node tests/pip/windowsResult.cjs "$env:LOCALAPPDATA/io.studyflow.pip-acceptance/studyflow.sqlite"
