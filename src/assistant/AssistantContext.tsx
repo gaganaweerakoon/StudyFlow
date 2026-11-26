@@ -1,3 +1,4 @@
+import { noteDestination } from './noteDestination';
 import { allowedTurnTools } from './turnPermissions';
 import { normalizeReviewEdits, selectedReviewAction } from './reviewPolicy';
 import { flushSync } from 'react-dom';
@@ -53,6 +54,7 @@ export interface DesktopUsage {
 }
 
 export interface AppliedActionLink {
+  itemId?: string;
   route: NavRoute;
   label: string;
 }
@@ -63,6 +65,7 @@ export interface ChatMessage extends ChatTurn {
   appliedActions?: string[];
   actionLinks?: AppliedActionLink[];
   id: string;
+  writeLocked?: boolean;
   attachment?: string;
   attachments?: ChatMessageAttachmentBadge[];
   generatedImage?: { mime: string; base64: string };
@@ -172,6 +175,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   const [includeContext, setIncludeContext] = useState(true);
   const [draft, setDraft] = useState('');
   const [attachments, setAttachments] = useState<PipAttachment[]>([]);
+  const turnFiles = useRef(new Map<string, PipAttachment[]>());
   const [previousAttachments, setPreviousAttachments] = useState<PipAttachment[]>([]);
   const [detail, setDetail] = useState<'standard' | 'high'>('standard');
   const [busy, setBusy] = useState(false);
@@ -423,7 +427,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   ) {
     const appliedSummaries: string[] = [];
     const failedSummaries: string[] = [];
-    const linksMap = new Map<NavRoute, string>();
+    const links: AppliedActionLink[] = [];
     try {
       for (let i = 0; i < edits.length; i++) {
         const edit = edits[i];
@@ -444,8 +448,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
               ? ` (${chosen.length} of ${edit.reviewItems.length} selected)`
               : '';
           appliedSummaries.push(`${edit.success ?? `Done. ${edit.title}.`}${countLabel}`);
-          if (edit.route && edit.routeLabel && !linksMap.has(edit.route)) {
-            linksMap.set(edit.route, edit.routeLabel);
+          if (edit.route && edit.routeLabel) {
+            links.push({ route: edit.route, label: edit.routeLabel, itemId: edit.itemId?.() });
           }
         } else {
           failedSummaries.push(`Could not apply: ${edit.title}`);
@@ -455,22 +459,24 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         await currentApp.current.saveWorkspace();
       }
       return {
-        saved: appliedSummaries.length > 0 && failedSummaries.length === 0,
+        temporary: !currentApp.current.durableWorkspace,
+        saved: currentApp.current.durableWorkspace && appliedSummaries.length > 0 && failedSummaries.length === 0,
         appliedSummaries,
         failedSummaries,
-        links: Array.from(linksMap.entries()).map(([route, label]) => ({ route, label })),
+        links,
       };
     } catch {
       return {
+        temporary: false,
         saved: false,
-        appliedSummaries,
+        appliedSummaries: [],
         failedSummaries: [
           ...failedSummaries,
           appliedSummaries.length > 0
             ? 'Changes are visible in StudyFlow, but saving failed. Use Retry save before closing.'
             : 'StudyFlow could not apply the requested changes.',
         ],
-        links: Array.from(linksMap.entries()).map(([route, label]) => ({ route, label })),
+        links: [],
       };
     }
   }
@@ -540,6 +546,12 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const clock = requestClock(settings.timezone);
     const toolsAllowed = includeContext && !generateImage;
     const allowedTools = toolsAllowed && !options?.readOnly ? allowedTurnTools(typed) : [];
+    const destination = allowedTools.includes('create_note') ? noteDestination(typed, currentApp.current.subjects) : undefined;
+    if (destination?.question) {
+      setConversations(items => items.map(chat => chat.id !== targetChatId ? chat : { ...chat, messages: [...chat.messages,
+        { id: createId(), role: 'user', text: typed }, { id: createId(), role: 'assistant', state: 'complete', text: destination.question! }] }));
+      return;
+    }
     const attachedImage = currentAttachments.find((item) => item.image)?.image;
     const attachedDocuments: ChatDocument[] = currentAttachments
       .filter((item): item is PipAttachment & { document: ChatDocument } => Boolean(item.document))
@@ -549,7 +561,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       prompt,
       provider,
       model,
-      maxOutput: 0,
+      maxOutput: settings.maxOutput,
       generateImage,
       allowedTools,
       workspaceActions: allowedTools.length > 0 && provider === 'gemini',
@@ -559,17 +571,19 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         : `Current local date and time: ${clock.label}. Resolve relative dates and times using this clock. Default response language: ${settings.language ?? 'match the user’s message'}.`,
       image: attachedImage,
       documents: attachedDocuments.length ? attachedDocuments : undefined,
-      history: generateImage
+      history: generateImage || !/\b(same|previous|before|that one|it again|continue)\b/i.test(typed)
         ? []
         : baseMsgs
             .filter((message) => message.text && (message.role === 'user' || message.state === 'complete'))
             .slice(-CHAT_LIMITS.history)
             .map(({ role, text }) => ({ role, text })),
     };
+    if (activeRequest.current) return;
     const records = mergeUsage(usage, desktopUsage ? [] : readUsage());
     const control = new AbortController();
     activeRequest.current = control;
     const userTurnId = createId();
+    if (currentAttachments.length) turnFiles.current.set(userTurnId, currentAttachments);
     const assistantId = createId();
     const messageAttachments: ChatMessageAttachmentBadge[] | undefined = currentAttachments.length
       ? currentAttachments.map((item) => ({
@@ -582,6 +596,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       id: userTurnId,
       role: 'user',
       text: prompt,
+      writeLocked: options?.readOnly,
       attachment: currentAttachments[0]?.name,
       attachments: messageAttachments,
     };
@@ -633,7 +648,10 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           updateMessage((message) => ({ ...message, text: splitWorkspaceResponse(responseText).text }));
         }
         if (event.type === 'action' && allowedTools.includes(event.action)) {
-          const serialized = JSON.stringify({ ...event.arguments, action: event.action });
+          const args = destination?.subjectId && event.action === 'create_note'
+            ? { ...event.arguments, subjectId: destination.subjectId, syllabusLinks: { unitIds: destination.unitId ? [destination.unitId] : [] } }
+            : event.arguments;
+          const serialized = JSON.stringify({ ...args, action: event.action });
           if (!seenActions.has(serialized)) {
             seenActions.add(serialized);
             actionCalls.push(serialized);
@@ -668,7 +686,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           } else if (!event.truncated && toolsAllowed) {
             const parsedEdits: WorkspaceEdit[] = [];
             for (const rawCmd of allRawCommands) {
-              const parsed = parseWorkspaceEdit(rawCmd, currentApp.current);
+              const parsed = parseWorkspaceEdit(rawCmd, currentApp.current, Boolean(destination?.subjectId));
               if (parsed && allowedTools.includes(parsed.action)) parsedEdits.push(parsed);
             }
 
@@ -687,6 +705,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
 
               let finalText = '';
               if (immediate.length > 0) {
+                updateChat(chat => ({ ...chat, messages: chat.messages.map(item => item.id === userTurnId ? { ...item, writeLocked: true } : item) }));
                 const result = await applyWorkspaceEdits(immediate);
                 if (result.saved && result.appliedSummaries.length > 0) {
                   appliedActions = result.appliedSummaries;
@@ -694,7 +713,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
                 }
                 if (!finalText) {
                   finalText =
-                    !result.saved ? result.failedSummaries.join('\n') : result.appliedSummaries.length === 1
+                    result.temporary ? 'Applied in this temporary preview. Changes last for this visit.' : !result.saved ? result.failedSummaries.join('\n') : result.appliedSummaries.length === 1
                       ? result.appliedSummaries[0]
                       : result.appliedSummaries.length > 1
                         ? `Applied ${result.appliedSummaries.length} updates to your StudyFlow workspace.`
@@ -829,7 +848,11 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const idx = currentChat.messages.findIndex((m) => m.id === messageId && m.role === 'user');
     if (idx < 0) return;
     const baseMessages = currentChat.messages.slice(0, idx);
-    void send(false, clean, { baseMessages });
+    const original = currentChat.messages[idx];
+    const files = turnFiles.current.get(original.id) ?? [];
+    if (original.attachment && !files.length) { setDraft(clean); setNotice('Attach the original file again to edit this request.'); return; }
+    const completed = Boolean(original.writeLocked || currentChat.messages[idx + 1]?.appliedActions?.length);
+    void send(false, clean, { baseMessages, overrideAttachments: files, readOnly: completed });
   }
 
   function regenerateMessage(messageId: string) {
@@ -845,7 +868,9 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     if (userIdx < 0) return;
     const userMsg = currentChat.messages[userIdx];
     const baseMessages = currentChat.messages.slice(0, userIdx);
-    void send(false, userMsg.text, { baseMessages });
+    const files = turnFiles.current.get(userMsg.id) ?? [];
+    if (userMsg.attachment && !files.length) { setNotice('Attach the original file again to regenerate this reply.'); return; }
+    void send(false, userMsg.text, { baseMessages, overrideAttachments: files, readOnly: true });
   }
 
   // Handle queued askPip triggers cleanly once UI switches
@@ -1420,8 +1445,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
               }
               return {
                 ...item,
-                text: item.text || result.appliedSummaries.join('\n') || result.failedSummaries.join('\n'),
-                appliedActions: [...(item.appliedActions ?? []), ...result.appliedSummaries],
+                text: result.temporary ? 'Applied in this temporary preview.' : [...result.appliedSummaries, ...result.failedSummaries].join('\n') || 'No changes selected.',
+                appliedActions: [...(item.appliedActions ?? []), ...(result.saved ? result.appliedSummaries : [])],
                 actionLinks: mergedLinks,
                 edit: undefined,
                 pendingEdits: undefined,

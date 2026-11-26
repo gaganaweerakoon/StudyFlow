@@ -968,3 +968,20 @@ test('Pip resource generation inherits source links, rejects unknown chapters an
   assert.ok(testEdit);assert.ok(testEdit.title.includes('1.1.1'));assert.equal(testEdit.apply(ws),true);
   assert.deepEqual(ws.quizzes.at(-1)?.syllabusLinks?.chapterIds,['ch1']);
 });
+
+test('a locally resolved unit accepts a single direct note and supplies its exact ID', async () => {
+  const {noteDestination} = await import('./noteDestination');
+  const ws = createMockWorkspace();
+  ws.subjects[0].units = [{id:'redox',title:'Redox'}];
+  const prompt = 'Save a Sinhala note from this PDF in Organic Chemistry II Unit 1';
+  assert.deepEqual(noteDestination(prompt, ws.subjects), {subjectId:'chem210',unitId:'redox'});
+  assert.ok(noteDestination(prompt.replace('Unit 1','Unit 99'), ws.subjects).question);
+  const calendar = structuredClone(ws.sessions);
+  const count = ws.notes.length;
+  const action = parseWorkspaceEdit(JSON.stringify({action:'create_note',title:'ඔක්සිකරණය',content:'ඉලෙක්ට්‍රෝන ඉවත් වීම',subjectId:'chem210',syllabusLinks:{unitIds:['redox']}}), ws, true);
+  assert.ok(action && !action.confirmation);
+  assert.ok(action.apply(ws));
+  assert.equal(ws.notes.length, count + 1);
+  assert.deepEqual(ws.notes.find(note => note.id === action.itemId?.())?.syllabusLinks?.unitIds, ['redox']);
+  assert.deepEqual(ws.sessions, calendar);
+});

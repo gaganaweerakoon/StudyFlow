@@ -1210,10 +1210,16 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                             <div className="pip-action-card-links">
                               {message.actionLinks!.map((link) => (
                                 <button
-                                  key={link.route}
+                                  key={link.itemId ?? link.route}
                                   type="button"
                                   className="pip-action-link"
                                   onClick={() => {
+                                    if (link.route === 'notes' && link.itemId) {
+                                      const note = app.notes.find(item => item.id === link.itemId);
+                                      if (!note) { app.pushToast('This note is no longer available.'); return; }
+                                      app.setNotesSyllabusScope({ subjectId: note.subjectId, unitId: note.syllabusLinks?.unitIds?.[0] });
+                                      app.setSelectedNoteId(note.id);
+                                    }
                                     app.setRoute(link.route);
                                     if (onClose) onClose();
                                   }}

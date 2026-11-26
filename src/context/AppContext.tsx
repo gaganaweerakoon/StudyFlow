@@ -133,6 +133,7 @@ export interface UserPreferences {
 }
 
 interface AppContextValue {
+  durableWorkspace: boolean;
   saveWorkspace: () => Promise<void>;
   recurringSeries: LegacyArchive[string];
   setCalendarProjectionAnchor?: (date: string | null) => void;
@@ -1832,6 +1833,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   return (
     <AppContext.Provider
       value={{
+        durableWorkspace: Boolean(workspace),
         saveWorkspace,
         recurringSeries: archive?.recurring_events ?? [],
         setCalendarProjectionAnchor,

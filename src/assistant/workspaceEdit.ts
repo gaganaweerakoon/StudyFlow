@@ -26,6 +26,7 @@ export interface WorkspaceEdit {
   details?: string[];
   route?: NavRoute;
   routeLabel?: string;
+  itemId?: () => string | undefined;
   apply: (app: Workspace) => boolean;
   applySelected?: (app: Workspace, selectedIds: string[]) => boolean;
 }
@@ -211,7 +212,7 @@ function addTaskLinks(goal: GoalItem, tasks: TaskItem[]): GoalItem {
   return next;
 }
 
-export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit | undefined {
+export function parseWorkspaceEdit(raw: string, app: Workspace, resolvedNoteDestination = false): WorkspaceEdit | undefined {
   try {
     const edit = JSON.parse(raw) as Record<string, unknown>;
     if (!edit || typeof edit !== 'object' || Array.isArray(edit) || typeof edit.action !== 'string') return;
@@ -847,16 +848,18 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       // Replacing existing text is a sensitive operation, regardless of length.
       const replacesContent = Boolean(updating && existing && existing.content.trim() && content !== existing.content.trim());
 
+      let noteId = existing?.id;
       return {
+        itemId: () => noteId,
         action,
-        ...(replacesContent ? { confirmation: true, destructive: true } : edit.syllabusLinks !== undefined ? {confirmation:true} : {}),
+        ...(replacesContent ? { confirmation: true, destructive: true } : (updating || !resolvedNoteDestination) && edit.syllabusLinks !== undefined ? {confirmation:true} : {}),
         ...(edit.syllabusLinks !== undefined ? {details: [`Syllabus links: ${syllabusLinkLabels(noteSubject,parsedLinks.links).join(' · ') || 'Unclassified'}`]} : {}),
         title: replacesContent
           ? `Overwrite note “${name}” (replaces existing content)`
           : `${updating ? 'Update' : 'Create'} note “${name}”`,
         success: `${updating ? 'Updated' : 'Created'} “${name}” in Notes.`,
         route: 'notes',
-        routeLabel: 'Open Notes',
+        routeLabel: 'Open note',
         apply: (current) => {
           if (edit.syllabusLinks !== undefined && !parseSyllabusLinks(current.subjects.find(subject=>subject.id===subjectId), edit.syllabusLinks).valid) return false;
           if (updating && existing) {
@@ -871,10 +874,8 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
               ...(tags ? { tags } : {}),
             });
             current.setSelectedNoteId(existing.id);
-          } else if (
-            !current.notes.some((n) => n.title === name && n.content === content && n.subjectId === subjectId)
-          ) {
-            current.createNote(subjectId, 'fld-all', { title: name, content, ...(parsedLinks.links ? {syllabusLinks:parsedLinks.links} : {}), ...(tags ? { tags } : {}) });
+          } else {
+            noteId = current.createNote(subjectId, 'fld-all', { title: name, content, ...(parsedLinks.links ? {syllabusLinks:parsedLinks.links} : {}), ...(tags ? { tags } : {}) });
           }
           return true;
         },
