@@ -366,18 +366,18 @@ test('starter schedule and tasks anchor dynamically to today real local date', (
 
 
 
-test('custom and countdown timers continue past zero and preserve planned duration', () => {
-  for (const mode of ['Custom', 'Countdown'] as const) {
+test('all timed focus modes continue past zero and preserve planned duration', () => {
+  for (const mode of ['Custom', 'Countdown', 'Pomodoro'] as const) {
     const initial = { ...BASE_TIMER, mode, totalSeconds: 3600, secondsLeft: 3600, elapsedSeconds: 0 };
     const zero = advanceFocusTimerState(initial, 3600);
     assert.equal(zero.running, true);
     assert.equal(zero.completionModalOpen, false);
-    assert.equal(formatFocusCountdown(zero.secondsLeft, zero.elapsedSeconds, zero.totalSeconds), '+00:00:00');
+    assert.equal(formatFocusCountdown(zero.secondsLeft, zero.elapsedSeconds, zero.totalSeconds), '+00.00.00');
     const overtime = advanceFocusTimerState(zero, 720);
     assert.equal(overtime.elapsedSeconds, 4320);
     assert.equal(overtime.secondsLeft, 0);
     assert.equal(overtime.totalSeconds, 3600);
-    assert.equal(formatFocusCountdown(overtime.secondsLeft, overtime.elapsedSeconds, overtime.totalSeconds), '+00:12:00');
+    assert.equal(formatFocusCountdown(overtime.secondsLeft, overtime.elapsedSeconds, overtime.totalSeconds), '+00.12.00');
     assert.deepEqual(advanceFocusTimerState(initial, 4320), overtime);
     const paused = { ...overtime, running: false };
     assert.equal(advanceFocusTimerState(paused, 120), paused);
@@ -387,13 +387,6 @@ test('custom and countdown timers continue past zero and preserve planned durati
     assert.equal(afterBreak.totalSeconds, 3600);
     assert.equal(advanceFocusTimerState({ ...afterBreak, running: true }, 60).elapsedSeconds, 4380);
   }
-});
-
-test('Pomodoro still completes its focus cycle at zero', () => {
-  const done = advanceFocusTimerState({ ...BASE_TIMER, mode: 'Pomodoro' }, 4000);
-  assert.equal(done.running, false);
-  assert.equal(done.completionModalOpen, true);
-  assert.equal(done.elapsedSeconds, BASE_TIMER.totalSeconds);
 });
 
 test('offline phone record continues overtime and requires explicit completion', () => {

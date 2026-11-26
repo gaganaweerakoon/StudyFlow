@@ -140,7 +140,7 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
     }).filter(e => e.end > now.getTime()).sort((a, b) => a.start - b.start).slice(0, 24);
     const running = focus.phase === 'focus' || focus.phase === 'break';
     const stopwatch = focus.origin === 'pc' && focus.pcMode === 'Stopwatch' && focus.phase !== 'break' && focus.phase !== 'break_paused';
-    const overtimeEnabled = (focus.phase === 'focus' || focus.phase === 'paused') && Boolean(focus.localRunId || focus.pcMode === 'Custom' || focus.pcMode === 'Countdown');
+    const overtimeEnabled = (focus.phase === 'focus' || focus.phase === 'paused') && !stopwatch;
     bridge.update(JSON.stringify({
       updatedAt: now.getTime(), syncLabel: connection.lastSyncedLabel,
       profileName: profileName ?? '', theme: settings.theme, accent: settings.accentColor, deepFocus: settings.deepFocus === true,

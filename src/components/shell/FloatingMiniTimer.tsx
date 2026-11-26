@@ -48,8 +48,7 @@ export const FloatingMiniTimer: React.FC = () => {
           focusTimer.secondsLeft,
           focusTimer.elapsedSeconds,
           focusTimer.totalSeconds,
-          focusTimer.phase === 'focus' &&
-            (focusTimer.mode === 'Custom' || focusTimer.mode === 'Countdown'),
+          focusTimer.phase === 'focus',
         );
 
   const progressPct =

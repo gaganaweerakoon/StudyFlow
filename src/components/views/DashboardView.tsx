@@ -448,7 +448,7 @@ export const DashboardView: React.FC = () => {
             : focusTimer.phase === 'focus' && focusTimer.mode === 'Stopwatch'
               ? formatTimerSeconds(focusTimer.elapsedSeconds)
               : formatFocusCountdown(focusTimer.secondsLeft, focusTimer.elapsedSeconds, focusTimer.totalSeconds,
-                  focusTimer.phase === 'focus' && (focusTimer.mode === 'Custom' || focusTimer.mode === 'Countdown'));
+                  focusTimer.phase === 'focus');
 
         return (
           <section key={id} className="grid min-w-0 grid-rows-[auto_1fr_auto] gap-4 rounded-xl p-4" style={surfaceStyle}>

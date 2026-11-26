@@ -556,21 +556,10 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
         if (prev.origin === 'pc' && prev.pcMode === 'Stopwatch' && prev.phase === 'focus') {
           return { ...prev, elapsedActiveSeconds: prev.elapsedActiveSeconds + step };
         }
-        if (prev.phase === 'focus' && ((prev.origin === 'phone' && prev.localRunId) ||
-            (prev.origin === 'pc' && (prev.pcMode === 'Custom' || prev.pcMode === 'Countdown')))) {
+        if (prev.phase === 'focus') {
           return { ...prev, secondsLeft: Math.max(0, prev.secondsLeft - step), elapsedActiveSeconds: prev.elapsedActiveSeconds + step };
         }
         if (prev.secondsLeft <= step) {
-          if (prev.phase === 'focus') {
-            const allowBreakPrompt = settings.breaksEnabled !== false && !(prev.origin === 'phone' && prev.localRunId);
-            return {
-              ...prev,
-              secondsLeft: 0,
-              elapsedActiveSeconds: prev.elapsedActiveSeconds + prev.secondsLeft,
-              phase: prev.origin === 'phone' && prev.localRunId ? 'completed' : 'paused',
-              showBreakSheet: allowBreakPrompt,
-            };
-          }
           // Break finished: if mid-session break, restore paused focus WITHOUT auto-starting!
           if (prev.pausedFocus) {
             return {

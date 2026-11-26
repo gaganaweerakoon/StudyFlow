@@ -252,7 +252,7 @@ export function formatTimerSeconds(totalSeconds: number): string {
 export function formatFocusCountdown(secondsLeft: number, elapsedSeconds: number, totalSeconds: number, allowOvertime = true): string {
   if (allowOvertime && secondsLeft === 0 && totalSeconds > 0 && elapsedSeconds >= totalSeconds) {
     const overtime = Math.max(0, Math.floor(elapsedSeconds - totalSeconds));
-    return `+${String(Math.floor(overtime / 3600)).padStart(2, '0')}:${String(Math.floor(overtime / 60) % 60).padStart(2, '0')}:${String(overtime % 60).padStart(2, '0')}`;
+    return `+${String(Math.floor(overtime / 3600)).padStart(2, '0')}.${String(Math.floor(overtime / 60) % 60).padStart(2, '0')}.${String(overtime % 60).padStart(2, '0')}`;
   }
   return formatTimerSeconds(secondsLeft);
 }

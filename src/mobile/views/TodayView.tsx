@@ -236,7 +236,7 @@ export const TodayView: React.FC = () => {
               >
                 {focus.phase === 'focus' || focus.phase === 'paused'
                   ? focus.pcMode === 'Stopwatch' && focus.origin === 'pc' ? formatCountdownMMSS(focus.elapsedActiveSeconds)
-                    : formatFocusCountdown(focus.secondsLeft, focus.elapsedActiveSeconds, focus.totalSeconds, Boolean(focus.localRunId || focus.pcMode === 'Custom' || focus.pcMode === 'Countdown'))
+                    : formatFocusCountdown(focus.secondsLeft, focus.elapsedActiveSeconds, focus.totalSeconds, focus.pcMode !== 'Stopwatch')
                   : formatCountdownMMSS(focus.secondsLeft)}
               </div>
               <p className="text-[calc(12px*var(--sf-font-scale,1))] text-[var(--text-muted)] mt-1.5">

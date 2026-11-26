@@ -137,7 +137,7 @@ export const FocusTimerView: React.FC = () => {
     focusTimer.mode === 'Stopwatch'
       ? formatTimerSeconds(focusTimer.elapsedSeconds)
       : formatFocusCountdown(effectiveSecondsLeft, focusTimer.elapsedSeconds, effectiveTotalSeconds,
-          !showingCurrentSessionOneClick && focusTimer.phase === 'focus' && (focusTimer.mode === 'Custom' || focusTimer.mode === 'Countdown'));
+          !showingCurrentSessionOneClick && focusTimer.phase === 'focus');
 
   const progressRatio =
     !showingCurrentSessionOneClick &&

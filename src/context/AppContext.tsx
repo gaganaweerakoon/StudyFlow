@@ -542,7 +542,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     return () => window.clearInterval(interval);
   }, [focusTimer.running]);
 
-  const overtimeReached = focusTimer.phase === 'focus' && (focusTimer.mode === 'Custom' || focusTimer.mode === 'Countdown') &&
+  const overtimeReached = focusTimer.mode !== 'Stopwatch' && focusTimer.phase === 'focus' &&
     focusTimer.secondsLeft === 0 && focusTimer.elapsedSeconds >= focusTimer.totalSeconds;
   const overtimeNotified = useRef<number | undefined>(overtimeReached ? focusTimer.startedAtMs : undefined);
   useEffect(() => {

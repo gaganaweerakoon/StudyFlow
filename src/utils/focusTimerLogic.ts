@@ -147,7 +147,7 @@ export function getMobileBlockFocusSeconds(
  * - During a break: decrements break countdown without touching focus `elapsedSeconds`.
  *   When a mid-session break ends (`00:00`), restores `pausedFocus` in PAUSED (`running: false`)
  *   state so focus NEVER auto-starts without explicit user action.
- * - During focus: Custom/Countdown continue into overtime; Pomodoro completes its cycle at zero.
+ * - During focus: timed sessions continue into overtime until explicitly finished.
  *   Stopwatch keeps its existing 10-hour limit.
  */
 export function advanceFocusTimerState(timer: FocusTimerState, seconds: number): FocusTimerState {
@@ -196,23 +196,9 @@ export function advanceFocusTimerState(timer: FocusTimerState, seconds: number):
     return { ...timer, elapsedSeconds: nextElapsed };
   }
 
-  if (timer.mode === 'Custom' || timer.mode === 'Countdown') {
-    return { ...timer, secondsLeft: Math.max(0, timer.secondsLeft - seconds), elapsedSeconds: timer.elapsedSeconds + seconds };
-  }
-
-  if (seconds >= timer.secondsLeft) {
-    return {
-      ...timer,
-      secondsLeft: 0,
-      elapsedSeconds: timer.elapsedSeconds + timer.secondsLeft,
-      running: false,
-      completionModalOpen: true,
-      lastCompletedMinutes: Math.max(1, Math.round((timer.elapsedSeconds + timer.secondsLeft) / 60)),
-    };
-  }
   return {
     ...timer,
-    secondsLeft: timer.secondsLeft - seconds,
+    secondsLeft: Math.max(0, timer.secondsLeft - seconds),
     elapsedSeconds: timer.elapsedSeconds + seconds,
   };
 }

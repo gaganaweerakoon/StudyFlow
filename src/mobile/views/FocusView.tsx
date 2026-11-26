@@ -272,7 +272,7 @@ export const FocusView: React.FC = () => {
             style={{ color: 'var(--text-primary)' }}
           >
             {!activeHeroRemainder && !pcStopwatch && !isBreakPhase && displaySeconds === 0 && focus.elapsedActiveSeconds >= focus.totalSeconds && focus.phase !== 'idle'
-              ? formatFocusCountdown(0, focus.elapsedActiveSeconds, focus.totalSeconds, Boolean(focus.localRunId || focus.pcMode === 'Custom' || focus.pcMode === 'Countdown'))
+              ? formatFocusCountdown(0, focus.elapsedActiveSeconds, focus.totalSeconds, focus.pcMode !== 'Stopwatch')
               : formatCountdownMMSS(displaySeconds)}
           </div>
           <div className="text-[calc(11.5px*var(--sf-font-scale,1))] font-mono-num text-[var(--text-muted)]">
