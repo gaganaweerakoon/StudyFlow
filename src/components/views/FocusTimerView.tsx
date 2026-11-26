@@ -15,7 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { formatHourLabel, formatTimerSeconds } from '../../utils/studyLogic';
+import { formatHourLabel, formatTimerSeconds, formatFocusCountdown } from '../../utils/studyLogic';
 import {
   clampBreakMinutes,
   clampFocusHoursMinutes,
@@ -135,7 +135,8 @@ export const FocusTimerView: React.FC = () => {
     focusTimer.phase === 'focus' &&
     focusTimer.mode === 'Stopwatch'
       ? formatTimerSeconds(focusTimer.elapsedSeconds)
-      : formatTimerSeconds(effectiveSecondsLeft);
+      : formatFocusCountdown(effectiveSecondsLeft, focusTimer.elapsedSeconds, effectiveTotalSeconds,
+          !showingCurrentSessionOneClick && focusTimer.phase === 'focus' && (focusTimer.mode === 'Custom' || focusTimer.mode === 'Countdown'));
 
   const progressRatio =
     !showingCurrentSessionOneClick &&

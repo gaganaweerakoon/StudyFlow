@@ -139,16 +139,17 @@ const AndroidDeviceShell: React.FC<CompanionAppProps> = ({ onBackToDesktop, inst
       return { title: b.title, start: start.getTime(), end: start.getTime() + b.durationMin * 60000 };
     }).filter(e => e.end > now.getTime()).sort((a, b) => a.start - b.start).slice(0, 24);
     const running = focus.phase === 'focus' || focus.phase === 'break';
-    const stopwatch = focus.origin === 'pc' && focus.pcMode === 'Stopwatch';
+    const stopwatch = focus.origin === 'pc' && focus.pcMode === 'Stopwatch' && focus.phase !== 'break' && focus.phase !== 'break_paused';
+    const overtimeEnabled = (focus.phase === 'focus' || focus.phase === 'paused') && Boolean(focus.localRunId || focus.pcMode === 'Custom' || focus.pcMode === 'Countdown');
     bridge.update(JSON.stringify({
       updatedAt: now.getTime(), syncLabel: connection.lastSyncedLabel,
       profileName: profileName ?? '', theme: settings.theme, accent: settings.accentColor, deepFocus: settings.deepFocus === true,
-      focus: { title: focus.sessionTitle, phase: focus.phase, running, stopwatch,
-        seconds: stopwatch ? focus.elapsedActiveSeconds : focus.secondsLeft, total: focus.totalSeconds },
+      focus: { title: focus.sessionTitle, phase: focus.phase, running, stopwatch, overtimeEnabled,
+        seconds: stopwatch ? focus.elapsedActiveSeconds : overtimeEnabled && focus.secondsLeft === 0 ? Math.min(0, focus.totalSeconds - focus.elapsedActiveSeconds) : focus.secondsLeft, total: focus.totalSeconds },
       events,
     }));
   }, [installed, blocks, connection.lastSyncedLabel, profileName, settings.theme, settings.accentColor, settings.deepFocus,
-    focus.phase, focus.sessionTitle, focus.origin, focus.pcMode, focus.secondsLeft, focus.elapsedActiveSeconds, focus.totalSeconds]);
+    focus.phase, focus.sessionTitle, focus.origin, focus.pcMode, focus.localRunId, focus.secondsLeft, focus.elapsedActiveSeconds, focus.totalSeconds]);
 
   // Android system Back navigation via Escape key
   useEffect(() => {

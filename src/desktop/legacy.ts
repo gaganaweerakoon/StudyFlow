@@ -81,8 +81,8 @@ export function mapLegacyWorkspace(archive: LegacyArchive, current: WorkspaceSna
   return {
     ...current,
     legacyArchive: archive,
-    subjects: archive.subjects.filter(row => !row.archived).map(row => ({
-      id: subjectId(row, 'id'), name: text(row, 'name'), code: text(row, 'name'),
+    subjects: archive.subjects.map(row => ({
+      id: subjectId(row, 'id'), name: text(row, 'name'), code: text(row, 'name'), archived: Boolean(row.archived),
       color: /^#[0-9a-f]{6}$/i.test(text(row, 'color')) ? text(row, 'color') : '#4F46E5',
       weeklyTargetHours: number(row, 'weekly_target_min') / 60,
       icon: 'brain', totalHours: 0, lastStudied: '', nextExamDate: '', nextExamTitle: '', instructor: '',
@@ -120,6 +120,7 @@ export function mapLegacyWorkspace(archive: LegacyArchive, current: WorkspaceSna
         completedAt: localDay(new Date(number(row, 'ended_at'))), qualityRating: 0,
       })),
     decks: [{ id: 'review', title: 'General Review', subjectId: '', description: '', lastReviewed: '', retentionRate: 0 }], flashcards: [], exams: [], quizzes: [], challenges: [], xpPoints: 0, notifications: [],
+    rewardLedger: {}, cardReviews: {},
     preferences: { ...current.preferences, name: 'Student', email: '', major: '' },
   };
 }

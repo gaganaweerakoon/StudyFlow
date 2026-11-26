@@ -73,12 +73,16 @@ class StudyFlowFocusWidget : AppWidgetProvider() {
             val now = System.currentTimeMillis()
             val focus = json.optJSONObject("focus") ?: JSONObject()
             val running = focus.optBoolean("running")
-            val stopwatch = focus.optBoolean("stopwatch")
+            val stopwatchMode = focus.optBoolean("stopwatch")
+            val overtimeEnabled = focus.optBoolean("overtimeEnabled")
             val phase = focus.optString("phase")
             val total = max(1L, focus.optLong("total", 1500))
             val updatedAt = json.optLong("updatedAt", now)
             val advance = if (running) max(0L, (now - updatedAt) / 1000) else 0L
-            val seconds = max(0L, focus.optLong("seconds", total) + if (stopwatch) advance else -advance)
+            val signedSeconds = focus.optLong("seconds", total) + if (stopwatchMode) advance else -advance
+            val overtime = overtimeEnabled && signedSeconds <= 0
+            val stopwatch = stopwatchMode || overtime
+            val seconds = if (overtime) -signedSeconds else max(0L, signedSeconds)
             val active = phase in listOf("focus", "break", "paused", "break_paused") && (stopwatch || seconds > 0)
             val events = json.optJSONArray("events")
             val rows = (0 until (events?.length() ?: 0)).mapNotNull { i ->
@@ -93,6 +97,7 @@ class StudyFlowFocusWidget : AppWidgetProvider() {
             }
             val status = when {
                 active && phase == "break" -> "Break"
+                active && overtime -> if (running) "Overtime +" else "Overtime paused +"
                 active && !running -> "Paused"
                 active -> "Focusing"
                 current != null -> "In progress"
@@ -117,9 +122,9 @@ class StudyFlowFocusWidget : AppWidgetProvider() {
                 view.setViewVisibility(R.id.widget_timer, if (active) View.VISIBLE else View.GONE)
                 view.setViewVisibility(R.id.widget_progress, if (active) View.VISIBLE else View.GONE)
                 val base = SystemClock.elapsedRealtime() + if (stopwatch) -seconds * 1000 else seconds * 1000
-                view.setChronometer(R.id.widget_timer, base, null, running && active)
+                view.setChronometer(R.id.widget_timer, base, if (overtime) "+%s" else null, running && active)
                 view.setChronometerCountDown(R.id.widget_timer, !stopwatch)
-                val fraction = (if (stopwatch) seconds else total - seconds).toDouble() / total
+                val fraction = if (overtime) 1.0 else (if (stopwatch) seconds else total - seconds).toDouble() / total
                 view.setProgressBar(R.id.widget_progress, 1000, (fraction.coerceIn(0.0, 1.0) * 1000).toInt(), false)
                 view.setTextViewText(R.id.widget_next, upcoming.getOrNull(0)?.let { time(it.start) + "   " + it.title } ?: "No upcoming study sessions")
                 view.setTextViewText(R.id.widget_next2, upcoming.getOrNull(1)?.let { time(it.start) + "   " + it.title }.orEmpty())

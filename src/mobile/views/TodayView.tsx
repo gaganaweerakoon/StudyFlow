@@ -12,6 +12,7 @@ import {
   Wifi,
 } from 'lucide-react';
 import { useCompanion } from '../CompanionContext';
+import { formatFocusCountdown } from '../../utils/studyLogic';
 import {
   formatCountdownMMSS,
   formatDayLabel,
@@ -233,7 +234,10 @@ export const TodayView: React.FC = () => {
                 className="font-mono-num text-[34px] font-semibold tracking-tight leading-none mt-2"
                 style={{ color: 'var(--text-primary)' }}
               >
-                {formatCountdownMMSS(focus.secondsLeft)}
+                {focus.phase === 'focus' || focus.phase === 'paused'
+                  ? focus.pcMode === 'Stopwatch' && focus.origin === 'pc' ? formatCountdownMMSS(focus.elapsedActiveSeconds)
+                    : formatFocusCountdown(focus.secondsLeft, focus.elapsedActiveSeconds, focus.totalSeconds, Boolean(focus.localRunId || focus.pcMode === 'Custom' || focus.pcMode === 'Countdown'))
+                  : formatCountdownMMSS(focus.secondsLeft)}
               </div>
               <p className="text-[calc(12px*var(--sf-font-scale,1))] text-[var(--text-muted)] mt-1.5">
                 {focus.pendingSyncWhenOnline

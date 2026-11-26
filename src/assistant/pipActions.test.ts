@@ -412,7 +412,7 @@ test('computeWorkspaceDiagnostics calculates overdue tasks, open slots, exams, a
   assert.equal(diag.overdueTasks.length, 1);
   assert.equal(diag.dueFlashcardsCount, 1);
   assert.equal(diag.upcomingExams[0].daysUntil, 5);
-  assert.deepEqual(diag.weakQuizTopics, ['Wittig Reaction']);
+  assert.deepEqual(diag.weakQuizTopics, [], 'aggregate scores alone do not identify weak topics');
   assert.ok(diag.openSlotsToday.length >= 1);
   assert.equal(diag.openSlotsToday[0].startHour, 8);
   assert.equal(diag.openSlotsToday[0].endHour, 9);

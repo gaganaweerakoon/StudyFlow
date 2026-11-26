@@ -189,7 +189,7 @@ export function workspaceContext(
         weeklyGoalHours: diag.weeklyGoalHours,
         openSlotsToday: diag.openSlotsToday.map((s) => s.label),
         openTasksCount: diag.openTasksCount,
-        overdueTasksCount: diag.overdueTasks.length,
+        overdueTasksCount: diag.overdueTasksCount,
         dueFlashcardsCount: diag.dueFlashcardsCount,
         completedFocusSessions: diag.completedFocusSessions,
         focusMinutesLogged: diag.focusMinutesLogged,

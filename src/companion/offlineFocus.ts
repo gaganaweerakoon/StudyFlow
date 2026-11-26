@@ -76,7 +76,7 @@ export function phoneRecord(f: CompanionFocusState, state: OfflineFocusRecord['s
   const baseElapsed = onMidBreak && f.pausedFocus ? f.pausedFocus.elapsedActiveSeconds : f.elapsedActiveSeconds;
   const baseTotal = onMidBreak && f.pausedFocus ? f.pausedFocus.totalSeconds : Math.max(60, f.totalSeconds || f.intervalMinutes * 60);
   const effectiveState: OfflineFocusRecord['state'] = onMidBreak && state === 'running' ? 'paused' : state;
-  const advance = effectiveState === 'running' ? Math.min(baseSecondsLeft, Math.max(0, Math.floor((now - at) / 1000))) : 0;
+  const advance = effectiveState === 'running' ? Math.max(0, Math.floor((now - at) / 1000)) : 0;
   const remaining = Math.max(0, baseSecondsLeft - advance);
   const elapsed = baseElapsed + advance;
   const record: OfflineFocusRecord = {
@@ -85,7 +85,7 @@ export function phoneRecord(f: CompanionFocusState, state: OfflineFocusRecord['s
     ...(f.sessionId !== 'local-focus' && !f.sessionId.startsWith('phone-') ? { calendarSessionId: f.sessionId.slice(0, 128) } : {}),
     startedAt: f.startedAtMs, endedAt: Math.max(f.startedAtMs, now),
     elapsedSeconds: elapsed, totalSeconds: Math.min(36000, Math.max(60, baseTotal)), remainingSeconds: Math.min(Math.min(36000, Math.max(60, baseTotal)), remaining),
-    state: effectiveState === 'running' && remaining === 0 ? 'completed' : effectiveState,
+    state: effectiveState,
   };
   return validOfflineRecord(record) ? record : undefined;
 }
@@ -98,6 +98,6 @@ export function readActiveOfflineRecord(): OfflineFocusRecord | undefined {
       return phoneRecord(f, 'paused', saved.at);
     }
     if (!['focus', 'paused', 'completed'].includes(f.phase)) return;
-    return phoneRecord(f, f.phase === 'focus' ? 'running' : f.phase === 'completed' || f.secondsLeft === 0 ? 'completed' : 'paused', saved.at);
+    return phoneRecord(f, f.phase === 'focus' ? 'running' : f.phase === 'completed' ? 'completed' : 'paused', saved.at);
   } catch { return; }
 }

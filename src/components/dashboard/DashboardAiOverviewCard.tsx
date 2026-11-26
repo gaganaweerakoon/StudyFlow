@@ -175,8 +175,8 @@ export const DashboardAiOverviewCard: React.FC = () => {
         <span aria-hidden="true">·</span>
         <span>
           <strong className="text-[var(--text-primary)] font-semibold">{diagnostics.openTasksCount}</strong> open tasks
-          {diagnostics.overdueTasks.length > 0 && (
-            <span className="text-rose-500 font-semibold"> ({diagnostics.overdueTasks.length} overdue)</span>
+          {diagnostics.overdueTasksCount > 0 && (
+            <span className="text-rose-500 font-semibold"> ({diagnostics.overdueTasksCount} overdue)</span>
           )}
         </span>
         <span aria-hidden="true">·</span>

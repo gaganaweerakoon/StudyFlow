@@ -270,7 +270,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
         const f = saved.focus as CompanionFocusState;
         const passed = f.phase === 'focus' || f.phase === 'break'
           ? Math.max(0, Math.floor((Date.now() - Number(saved.at)) / 1000)) : 0;
-        const elapsed = Math.min(f.secondsLeft, passed);
+        const elapsed = f.phase === 'focus' ? passed : Math.min(f.secondsLeft, passed);
         if (f.phase === 'break' && elapsed >= f.secondsLeft) {
           if (f.pausedFocus) {
             return {
@@ -291,7 +291,6 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
           ...f,
           secondsLeft: Math.max(0, f.secondsLeft - elapsed),
           elapsedActiveSeconds: f.elapsedActiveSeconds + (f.phase === 'focus' ? elapsed : 0),
-          phase: f.phase === 'focus' && elapsed > 0 && elapsed >= f.secondsLeft ? 'completed' : f.phase,
           showFullScreen: false,
         };
       }
@@ -476,9 +475,10 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
     const pcElapsed = timer.running
       ? Math.max(0, Math.floor((remote.serverNowMs - remote.focus.at) / 1000))
       : 0;
-    const secondsLeft = timer.mode === 'Stopwatch'
+    const secondsLeft = timer.mode === 'Stopwatch' && timer.phase === 'focus'
       ? 0 : Math.max(0, timer.secondsLeft - pcElapsed);
-    const elapsed = Math.max(0, timer.elapsedSeconds + pcElapsed);
+    const elapsed = Math.max(0, timer.elapsedSeconds + (timer.phase === 'focus' ?
+      timer.mode === 'Pomodoro' ? Math.min(pcElapsed, timer.secondsLeft) : timer.mode === 'Stopwatch' ? Math.min(pcElapsed, Math.max(0, 36000 - timer.elapsedSeconds)) : pcElapsed : 0));
     const phase: CompanionFocusState['phase'] = timer.completionModalOpen
       ? 'completed'
       : timer.running
@@ -531,17 +531,34 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
     pcWasRunning.current = timer.running;
   }, [live?.pcFocus, live?.connected]);
 
+  const localOvertimeReached = focus.origin === 'phone' && Boolean(focus.localRunId) &&
+    focus.phase === 'focus' && focus.secondsLeft === 0 && focus.elapsedActiveSeconds >= focus.totalSeconds;
+  const localOvertimeNotified = useRef(localOvertimeReached ? focus.localRunId : undefined);
+  useEffect(() => {
+    if (!focus.localRunId) { localOvertimeNotified.current = undefined; return; }
+    if (localOvertimeReached && localOvertimeNotified.current !== focus.localRunId) {
+      localOvertimeNotified.current = focus.localRunId;
+      playSessionStartChime();
+      showBrowserSessionNotification('Planned focus time reached', 'Your session is continuing in overtime. Finish when ready.');
+    }
+  }, [localOvertimeReached, focus.localRunId]);
+
   // Live 1-second timer tick when focus or break is actively running
   useEffect(() => {
     if (focus.phase !== 'focus' && focus.phase !== 'break') return;
     let lastTick = Date.now();
     const interval = window.setInterval(() => {
-      const step = Math.max(1, Math.floor((Date.now() - lastTick) / 1000));
-      lastTick = Date.now();
+      const step = Math.floor((Date.now() - lastTick) / 1000);
+      if (step <= 0) return;
+      lastTick += step * 1000;
       setFocus((prev) => {
         if (prev.phase !== 'focus' && prev.phase !== 'break') return prev;
         if (prev.origin === 'pc' && prev.pcMode === 'Stopwatch' && prev.phase === 'focus') {
           return { ...prev, elapsedActiveSeconds: prev.elapsedActiveSeconds + step };
+        }
+        if (prev.phase === 'focus' && ((prev.origin === 'phone' && prev.localRunId) ||
+            (prev.origin === 'pc' && (prev.pcMode === 'Custom' || prev.pcMode === 'Countdown')))) {
+          return { ...prev, secondsLeft: Math.max(0, prev.secondsLeft - step), elapsedActiveSeconds: prev.elapsedActiveSeconds + step };
         }
         if (prev.secondsLeft <= step) {
           if (prev.phase === 'focus') {
@@ -612,7 +629,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
     ) => {
       // Check if an active 25-min focus interval ends at this exact target minute
       if (
-        currentFocus.phase === 'focus' &&
+        !live && currentFocus.phase === 'focus' &&
         currentFocus.startedAtAbsMin !== null &&
         targetAbsMin >= currentFocus.startedAtAbsMin + currentFocus.intervalMinutes
       ) {
@@ -668,7 +685,7 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
         setActiveBanner(exact);
       }
     },
-    [showPhoneToast]
+    [showPhoneToast, live]
   );
 
   const jumpToAbsMin = useCallback(

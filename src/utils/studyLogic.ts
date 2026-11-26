@@ -247,6 +247,15 @@ export function formatTimerSeconds(totalSeconds: number): string {
   return `${pad(mins)}:${pad(secs)}`;
 }
 
+/** Display a completed countdown as an elapsed overtime, preserving its planned duration. */
+export function formatFocusCountdown(secondsLeft: number, elapsedSeconds: number, totalSeconds: number, allowOvertime = true): string {
+  if (allowOvertime && secondsLeft === 0 && totalSeconds > 0 && elapsedSeconds >= totalSeconds) {
+    const overtime = Math.max(0, Math.floor(elapsedSeconds - totalSeconds));
+    return `+${String(Math.floor(overtime / 3600)).padStart(2, '0')}:${String(Math.floor(overtime / 60) % 60).padStart(2, '0')}:${String(overtime % 60).padStart(2, '0')}`;
+  }
+  return formatTimerSeconds(secondsLeft);
+}
+
 export function formatHourLabel(hourFloat: number): string {
   const h = Math.floor(hourFloat);
   const m = Math.round((hourFloat - h) * 60);

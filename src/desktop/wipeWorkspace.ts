@@ -1,4 +1,5 @@
 import type { WorkspaceSnapshot } from '../context/AppContext';
+import { removeTaskLinks } from '../utils/goalProgress';
 
 export const WIPE_OPTIONS = {
   study: { label: 'Study Data', detail: 'Focus history, notes, goals, exams, flashcards, practice results, and rewards.' },
@@ -14,6 +15,7 @@ function wipeSection(workspace: Omit<WorkspaceSnapshot, 'previousWorkspace'>, se
   const next = { ...workspace, legacyArchive: archive };
   if (section === 'tasks') {
     next.tasks = [];
+    next.goals = removeTaskLinks(next.goals, next.goals.flatMap(goal => goal.milestones.flatMap(milestone => milestone.taskId ? [milestone.taskId] : [])));
     if (archive) archive.tasks = [];
   } else if (section === 'calendar') {
     next.sessions = [];

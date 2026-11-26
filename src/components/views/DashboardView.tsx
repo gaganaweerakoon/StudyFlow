@@ -41,6 +41,7 @@ import {
   calculateSubjectProgress,
   formatHourLabel,
   formatTimerSeconds,
+  formatFocusCountdown,
 } from '../../utils/studyLogic';
 import { extractFirstName, getTimeOfDayGreeting } from '../../firebase/authGateLogic';
 
@@ -444,7 +445,8 @@ export const DashboardView: React.FC = () => {
             ? formatTimerSeconds(activeSessionInfo.remainingSeconds)
             : focusTimer.phase === 'focus' && focusTimer.mode === 'Stopwatch'
               ? formatTimerSeconds(focusTimer.elapsedSeconds)
-              : formatTimerSeconds(focusTimer.secondsLeft);
+              : formatFocusCountdown(focusTimer.secondsLeft, focusTimer.elapsedSeconds, focusTimer.totalSeconds,
+                  focusTimer.phase === 'focus' && (focusTimer.mode === 'Custom' || focusTimer.mode === 'Countdown'));
 
         return (
           <section key={id} className="grid min-w-0 grid-rows-[auto_1fr_auto] gap-4 rounded-xl p-4" style={surfaceStyle}>

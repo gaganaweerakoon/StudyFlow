@@ -1,7 +1,7 @@
 import React from 'react';
 import { Play, Pause, Maximize2, X, Coffee, ArrowLeft } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { formatTimerSeconds } from '../../utils/studyLogic';
+import { formatTimerSeconds, formatFocusCountdown } from '../../utils/studyLogic';
 
 export const FloatingMiniTimer: React.FC = () => {
   const {
@@ -25,7 +25,8 @@ export const FloatingMiniTimer: React.FC = () => {
   const displayTime =
     focusTimer.phase === 'focus' && focusTimer.mode === 'Stopwatch'
       ? formatTimerSeconds(focusTimer.elapsedSeconds)
-      : formatTimerSeconds(focusTimer.secondsLeft);
+      : formatFocusCountdown(focusTimer.secondsLeft, focusTimer.elapsedSeconds, focusTimer.totalSeconds,
+          focusTimer.phase === 'focus' && (focusTimer.mode === 'Custom' || focusTimer.mode === 'Countdown'));
 
   const progressPct =
     focusTimer.phase === 'focus' && focusTimer.mode === 'Stopwatch'

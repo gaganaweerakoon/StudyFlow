@@ -518,6 +518,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     return () => window.clearInterval(interval);
   }, [focusTimer.running]);
 
+  const overtimeReached = focusTimer.phase === 'focus' && (focusTimer.mode === 'Custom' || focusTimer.mode === 'Countdown') &&
+    focusTimer.secondsLeft === 0 && focusTimer.elapsedSeconds >= focusTimer.totalSeconds;
+  const overtimeNotified = useRef<number | undefined>(overtimeReached ? focusTimer.startedAtMs : undefined);
+  useEffect(() => {
+    if (!focusTimer.startedAtMs) { overtimeNotified.current = undefined; return; }
+    if (overtimeReached && overtimeNotified.current !== focusTimer.startedAtMs) {
+      overtimeNotified.current = focusTimer.startedAtMs;
+      playSessionStartChime();
+      if (preferences.desktopNotifications) showBrowserSessionNotification('Planned focus time reached', 'Your session is continuing in overtime. Finish when ready.');
+    }
+  }, [overtimeReached, focusTimer.startedAtMs, preferences.desktopNotifications]);
+
   // Planned-session interruption watcher: chimes & prompts when a scheduled session starts during another timer
   const [pendingSessionPrompt, setPendingSessionPrompt] = useState<PendingSessionPrompt | null>(null);
   const alertedSessionKeysRef = useRef<Set<string>>(new Set());
@@ -1657,6 +1669,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   };
 
   const loadDemoData = () => {
+    if (desktop) {
+      const occupied = Boolean(snapshot.previousWorkspace || snapshot.legacyArchive || focusTimer.running || focusTimer.elapsedSeconds || focusTimer.pausedFocus ||
+        [subjects, tasks, savedSessions, goals, notes, storedFlashcards, exams, quizzes, focusHistory, challenges, notifications].some(items => items.length > 0) ||
+        decks.some(deck => deck.id !== 'review') || folders.some(folder => folder.id !== 'notes') ||
+        Object.keys(rewardLedger).length || Object.keys(cardReviews).length || xpPoints);
+      if (occupied) {
+        window.alert('Demo data cannot replace an existing workspace. Use Explore Demo in the web preview instead.');
+        return;
+      }
+      if (!window.confirm('Load sample data into this empty workspace? Sample records will be saved locally.')) return;
+    }
     setSubjects(INITIAL_SUBJECTS);
     setTasks(INITIAL_TASKS);
     setSessions(INITIAL_SESSIONS);
@@ -1674,6 +1697,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     setChallenges(INITIAL_CHALLENGES);
     setNotifications(INITIAL_NOTIFICATIONS);
     setXpPoints(4280);
+    setRewardLedger({});
+    setCardReviews({});
     pushToast('Loaded sample study workspace data');
   };
 

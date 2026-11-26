@@ -4,6 +4,7 @@ import type { FocusTimerState } from '../context/AppContext';
 import type { CompanionFocusState } from '../mobile/types';
 import type { StudySession } from '../types/studyflow';
 import { formatCountdownMMSS } from '../mobile/companionLogic';
+import { formatFocusCountdown } from './studyLogic';
 import { phoneRecord } from '../companion/offlineFocus';
 import { INITIAL_SESSIONS, INITIAL_TASKS } from '../data/mockData';
 import type { ScheduleBlock } from '../mobile/types';
@@ -363,3 +364,52 @@ test('starter schedule and tasks anchor dynamically to today real local date', (
   );
 });
 
+
+
+test('custom and countdown timers continue past zero and preserve planned duration', () => {
+  for (const mode of ['Custom', 'Countdown'] as const) {
+    const initial = { ...BASE_TIMER, mode, totalSeconds: 3600, secondsLeft: 3600, elapsedSeconds: 0 };
+    const zero = advanceFocusTimerState(initial, 3600);
+    assert.equal(zero.running, true);
+    assert.equal(zero.completionModalOpen, false);
+    assert.equal(formatFocusCountdown(zero.secondsLeft, zero.elapsedSeconds, zero.totalSeconds), '+00:00:00');
+    const overtime = advanceFocusTimerState(zero, 720);
+    assert.equal(overtime.elapsedSeconds, 4320);
+    assert.equal(overtime.secondsLeft, 0);
+    assert.equal(overtime.totalSeconds, 3600);
+    assert.equal(formatFocusCountdown(overtime.secondsLeft, overtime.elapsedSeconds, overtime.totalSeconds), '+00:12:00');
+    assert.deepEqual(advanceFocusTimerState(initial, 4320), overtime);
+    const paused = { ...overtime, running: false };
+    assert.equal(advanceFocusTimerState(paused, 120), paused);
+    const afterBreak = advanceFocusTimerState(takeFocusBreakState(overtime, 5), 300);
+    assert.equal(afterBreak.running, false);
+    assert.equal(afterBreak.elapsedSeconds, 4320);
+    assert.equal(afterBreak.totalSeconds, 3600);
+    assert.equal(advanceFocusTimerState({ ...afterBreak, running: true }, 60).elapsedSeconds, 4380);
+  }
+});
+
+test('Pomodoro still completes its focus cycle at zero', () => {
+  const done = advanceFocusTimerState({ ...BASE_TIMER, mode: 'Pomodoro' }, 4000);
+  assert.equal(done.running, false);
+  assert.equal(done.completionModalOpen, true);
+  assert.equal(done.elapsedSeconds, BASE_TIMER.totalSeconds);
+});
+
+test('offline phone record continues overtime and requires explicit completion', () => {
+  const phone: CompanionFocusState = {
+    localRunId: 'phone-12345678-1234-1234-1234-123456789012', startedAtMs: 1000,
+    sessionId: 'local-focus', subjectId: 'chem', sessionTitle: 'Chemistry', origin: 'phone', phase: 'focus',
+    intervalMinutes: 60, breakMinutes: 5, totalSeconds: 3600, secondsLeft: 10, elapsedActiveSeconds: 3590,
+    startedAtAbsMin: 0, pendingSyncWhenOnline: true, showFullScreen: false, showBreakSheet: false,
+  };
+  const record = phoneRecord(phone, 'running', 3591000, 4321000);
+  assert.ok(record);
+  assert.equal(record.remainingSeconds, 0);
+  assert.equal(record.elapsedSeconds, 4320);
+  assert.equal(record.totalSeconds, 3600);
+  assert.equal(record.state, 'running');
+  const paused = phoneRecord({ ...phone, secondsLeft: 0, elapsedActiveSeconds: 4320, phase: 'paused' }, 'paused', 4321000, 4441000);
+  assert.equal(paused?.state, 'paused');
+  assert.equal(paused?.elapsedSeconds, 4320);
+});

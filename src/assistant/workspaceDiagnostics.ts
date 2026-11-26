@@ -1,3 +1,4 @@
+import { layoutCalendarDay } from '../utils/calendarLayout';
 import type {
   ExamItem,
   FlashcardDeck,
@@ -48,6 +49,7 @@ export interface WorkspaceDiagnostics {
   todayPlannedHours: number;
   upcomingSessionsCount: number;
   openTasksCount: number;
+  overdueTasksCount: number;
   overdueTasks: Array<{ id: string; title: string; dueDate: string; priority: TaskItem['priority']; subjectCode?: string }>;
   highPriorityTasks: Array<{ id: string; title: string; dueDate: string; subjectCode?: string }>;
   upcomingExams: Array<{ id: string; title: string; date: string; daysUntil: number; prepProgress: number; subjectCode?: string }>;
@@ -98,11 +100,11 @@ export function findOpenSlotsForDay(
   minStartHour = 8,
   maxEndHour = 21,
 ): OpenSlot[] {
-  const dayBlocks = sessions
-    .filter((s) => s.date === date)
-    .map((s) => ({
-      start: Math.max(minStartHour, s.startHour),
-      end: Math.min(maxEndHour, s.startHour + s.durationHours),
+  const dayBlocks = layoutCalendarDay(sessions, date)
+    .filter(({ session }) => session.status !== 'missed')
+    .map(({ from, to }) => ({
+      start: Math.max(minStartHour, from),
+      end: Math.min(maxEndHour, to),
     }))
     .filter((b) => b.end > b.start)
     .sort((a, b) => a.start - b.start);
@@ -140,20 +142,21 @@ export function computeWorkspaceDiagnostics(
   const activeSubjects = input.subjects.filter((s) => !s.archived);
   const nextWeekIso = addDays(todayIso, 7);
 
-  const todaySessions = input.sessions.filter((s) => s.date === todayIso);
+  const todaySessions = layoutCalendarDay(input.sessions, todayIso);
   const todayPlannedHours = Number(
     todaySessions
-      .filter((s) => s.countsTowardStudy !== false && s.blockType !== 'sleep' && s.blockType !== 'free')
-      .reduce((acc, s) => acc + s.durationHours, 0)
+      .filter(({ session: s }) => s.countsTowardStudy !== false && s.blockType !== 'sleep' && s.blockType !== 'free')
+      .reduce((acc, block) => acc + block.to - block.from, 0)
       .toFixed(1),
   );
   const upcomingSessionsCount = input.sessions.filter(
-    (s) => s.date >= todayIso && s.date <= nextWeekIso,
+    (s) => s.status === 'upcoming' && s.countsTowardStudy !== false && s.blockType !== 'sleep' && s.blockType !== 'free' && s.date <= nextWeekIso && (s.date > todayIso || todaySessions.some(block => block.session.id === s.id && block.to > currentHour)),
   ).length;
 
   const openTasks = input.tasks.filter((t) => t.status !== 'done');
-  const overdueTasks = openTasks
-    .filter((t) => Boolean(t.dueDate) && t.dueDate < todayIso)
+  const allOverdueTasks = openTasks.filter((t) => Boolean(t.dueDate) && t.dueDate < todayIso);
+  const overdueTasksCount = allOverdueTasks.length;
+  const overdueTasks = allOverdueTasks
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
     .slice(0, 6)
     .map((t) => ({
@@ -209,9 +212,10 @@ export function computeWorkspaceDiagnostics(
 
   const weakTopicSet = new Set<string>();
   for (const quiz of input.quizzes) {
-    if (quiz.lastScore !== undefined && quiz.lastScore < 80) {
-      for (const q of quiz.questions) {
-        if (q.topic?.trim()) weakTopicSet.add(q.topic.trim());
+    const latest = [...(quiz.attempts ?? [])].sort((a, b) => b.at.localeCompare(a.at))[0];
+    if (latest?.review) {
+      for (const q of latest.review.questions) {
+        if (latest.review.marks[q.id]?.correct === false && q.topic?.trim()) weakTopicSet.add(q.topic.trim());
       }
     }
   }
@@ -252,7 +256,7 @@ export function computeWorkspaceDiagnostics(
   // Build concise, grounded instant summary & recommendation (never hardcoded mock copy)
   const parts: string[] = [];
   if (overdueTasks.length > 0) {
-    parts.push(`${overdueTasks.length} overdue ${overdueTasks.length === 1 ? 'task' : 'tasks'}`);
+    parts.push(`${overdueTasksCount} overdue ${overdueTasksCount === 1 ? 'task' : 'tasks'}`);
   }
   if (openTasks.length > 0) {
     parts.push(`${openTasks.length} open ${openTasks.length === 1 ? 'task' : 'tasks'}`);
@@ -292,6 +296,7 @@ export function computeWorkspaceDiagnostics(
     todayPlannedHours,
     upcomingSessionsCount,
     openTasksCount: openTasks.length,
+    overdueTasksCount,
     overdueTasks,
     highPriorityTasks,
     upcomingExams,
@@ -325,6 +330,7 @@ export function buildOverviewPayloadText(diag: WorkspaceDiagnostics): string {
       upcomingSessions7d: diag.upcomingSessionsCount,
       openSlotsToday: diag.openSlotsToday.map((s) => s.label),
       openTasksCount: diag.openTasksCount,
+      overdueTasksCount: diag.overdueTasksCount,
       overdueTasks: diag.overdueTasks,
       highPriorityTasks: diag.highPriorityTasks,
       upcomingExams: diag.upcomingExams,

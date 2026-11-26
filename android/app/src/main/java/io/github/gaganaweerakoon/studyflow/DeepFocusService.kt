@@ -40,7 +40,7 @@ class DeepFocusService : AccessibilityService() {
         val focus = snapshot.optJSONObject("focus") ?: return
         if (!focus.optBoolean("running") || focus.optString("phase") != "focus") return
         val now = System.currentTimeMillis()
-        if (!focus.optBoolean("stopwatch") &&
+        if (!focus.optBoolean("stopwatch") && !focus.optBoolean("overtimeEnabled") &&
             now >= snapshot.optLong("updatedAt", 0L) + focus.optLong("seconds", 0L) * 1000L) return
         if (now - lastWarning < 2500L) return
         lastWarning = now
