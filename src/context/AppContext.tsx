@@ -228,6 +228,7 @@ interface AppContextValue {
   updateDeckLinks: (id: string, subjectId: string, links: FlashcardDeck['syllabusLinks']) => void;
   addDeck: (deck: Omit<FlashcardDeck, 'id' | 'lastReviewed' | 'retentionRate'>) => string;
   deleteDeck: (id: string) => void;
+  deleteFlashcard: (id: string) => void;
   flashcards: FlashcardItem[];
   addFlashcard: (card: Omit<FlashcardItem, 'id' | 'intervalDays' | 'easeFactor' | 'dueToday' | 'mastery'>) => void;
   importFlashcardsBulk: (deckId: string, cards: Array<{ front: string; back: string; hint?: string }>) => number;
@@ -1913,6 +1914,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         flashcards,
         addFlashcard,
         importFlashcardsBulk,
+        deleteFlashcard: id => {
+          setFlashcards(prev => prev.filter(card => card.id !== id));
+          pushToast('Flashcard deleted');
+        },
         reviewFlashcard,
         exams,
         addExam, updateExam, deleteExam,

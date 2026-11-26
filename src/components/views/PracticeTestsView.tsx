@@ -1,3 +1,4 @@
+import { DeleteStudyItem } from '../DeleteStudyItem';
 import { SyllabusResourceBrowser } from '../syllabus/SyllabusResourceBrowser';
 import { SyllabusLinkPicker } from '../syllabus/SyllabusLinkPicker';
 import { useAssistant } from '../../assistant/AssistantContext';
@@ -32,7 +33,7 @@ import { formatTimerSeconds, gradePracticeTest } from '../../utils/studyLogic';
 const AssistantMarkdown = lazy(() => import('../../assistant/AssistantMarkdown'));
 
 export const PracticeTestsView: React.FC = () => {
-  const { quizzes, subjects, updateQuizLinks, recordQuizScore, pushToast, notes, setSelectedNoteId, setRoute, openStudyLab } = useApp();
+  const { quizzes, subjects, deleteQuiz, updateQuizLinks, recordQuizScore, pushToast, notes, setSelectedNoteId, setRoute, openStudyLab } = useApp();
 
   const [activeQuizId, setActiveQuizId] = useState<string | null>(null);
   const [questionIdx, setQuestionIdx] = useState(0);
@@ -599,6 +600,7 @@ export const PracticeTestsView: React.FC = () => {
                   </div>
                 </div>
 
+                <DeleteStudyItem label={qz.title} detail=" and its attempt history" onDelete={() => deleteQuiz(qz.id)} />
                 {/* Quiet syllabus link & history controls */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-[12px]">
                   <span className="inline-flex items-center gap-1.5 min-w-0 text-[var(--text-muted)]">

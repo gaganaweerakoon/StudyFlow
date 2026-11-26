@@ -1,3 +1,4 @@
+import { DeleteStudyItem } from '../DeleteStudyItem';
 import { SyllabusResourceBrowser } from '../syllabus/SyllabusResourceBrowser';
 import { SyllabusLinkPicker } from '../syllabus/SyllabusLinkPicker';
 import { StudyGeneration } from '../../notes/StudyGeneration';
@@ -105,6 +106,8 @@ export const FlashcardsView: React.FC = () => {
     reviewFlashcard,
     setActiveModal,
     pushToast,
+    deleteDeck,
+    deleteFlashcard,
     addDeck,
     updateDeckLinks,
     addSession,
@@ -446,6 +449,12 @@ export const FlashcardsView: React.FC = () => {
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
+                <DeleteStudyItem key={currentCard.id} label="this flashcard" detail="" onDelete={() => {
+                  deleteFlashcard(currentCard.id);
+                  setCardIndex(Math.max(0, Math.min(cardIndex, deckCards.length - 2)));
+                  setFlipped(false);
+                  setShowHint(false);
+                }} />
                 {currentCard.hint && !flipped && (
                   <button
                     type="button"
@@ -989,6 +998,7 @@ export const FlashcardsView: React.FC = () => {
                       )}
                     </div>
 
+                <DeleteStudyItem label={deck.title} detail=" and its cards" onDelete={() => deleteDeck(deck.id)} />
                     {/* Clean quiet syllabus assignment bar */}
                     <div className="flex items-center justify-between gap-2 pt-0.5 text-[12px]">
                       <span className="inline-flex items-center gap-1.5 min-w-0 text-[var(--text-muted)]">
