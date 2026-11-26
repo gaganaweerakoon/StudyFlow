@@ -752,7 +752,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       for await (const event of sendChat(request, key, control.signal)) {
         if (event.type === 'text') {
           responseText += event.text;
-          updateMessage((message) => ({ ...message, text: splitWorkspaceResponse(responseText).text }));
+          if (!allowedTools.length) updateMessage((message) => ({ ...message, text: splitWorkspaceResponse(responseText).text }));
         }
         if (event.type === 'action' && allowedTools.includes(event.action)) {
           if (!validToolArguments(event.action, event.arguments)) {
@@ -1571,6 +1571,15 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       setNotice('');
       try {
         const result = await applyWorkspaceEdits(edits, message.id, selection);
+        if (result.appliedSummaries.length || unsavedResults.current.has(message.id)) {
+          setConversations(items => items.map(chat => {
+            const replyIndex = chat.messages.findIndex(item => item.id === message.id);
+            if (replyIndex < 1) return chat;
+            let userIndex = replyIndex - 1;
+            while (userIndex >= 0 && chat.messages[userIndex].role !== 'user') userIndex--;
+            return { ...chat, messages: chat.messages.map((item, i) => i === userIndex ? { ...item, writeLocked: true } : item) };
+          }));
+        }
         if (result.failedSummaries.length > 0) {
           setNotice(result.failedSummaries.join(' '));
         }

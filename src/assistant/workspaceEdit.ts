@@ -217,6 +217,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace, resolvedNoteDest
     const edit = JSON.parse(raw) as Record<string, unknown>;
     if (!edit || typeof edit !== 'object' || Array.isArray(edit) || typeof edit.action !== 'string') return;
     const action = edit.action;
+    if (typeof edit.subjectId === 'string' && edit.subjectId.trim() && !resolveSubjectId(edit.subjectId, app)) return;
     const title =
       typeof edit.title === 'string' && edit.title.trim() && edit.title.length <= 200
         ? edit.title.trim()
@@ -640,6 +641,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace, resolvedNoteDest
 
     // 2. Start Focus Session
     if (action === 'start_focus_session') {
+      if (app.focusTimer.running || app.focusTimer.elapsedSeconds > 0) return;
       const taskTitle =
         typeof edit.taskTitle === 'string' && edit.taskTitle.trim()
           ? edit.taskTitle.trim().slice(0, 160)
@@ -660,6 +662,7 @@ export function parseWorkspaceEdit(raw: string, app: Workspace, resolvedNoteDest
         route: 'focus',
         routeLabel: 'Open Focus Timer',
         apply: (current) => {
+          if (current.focusTimer.running || current.focusTimer.elapsedSeconds > 0) return false;
           current.setFocusMode(minutes && mode !== 'Custom' ? 'Custom' : mode, minutes);
           current.setFocusContext(subjectId, taskTitle);
           if (autoStart) current.applyPhoneFocusAction({ action: 'start' });

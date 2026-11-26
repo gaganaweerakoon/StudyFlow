@@ -989,3 +989,13 @@ test('a locally resolved unit accepts a single direct note and supplies its exac
   assert.equal(ws.notes.length, count + 1);
   assert.deepEqual(ws.sessions, calendar);
 });
+
+test('Pip cannot replace an active focus timer', () => {
+  const ws = createMockWorkspace();
+  const call = JSON.stringify({action:'start_focus_session',taskTitle:'Redox',minutes:10});
+  const proposed = parseWorkspaceEdit(call, ws);
+  assert.ok(proposed);
+  ws.focusTimer.running = true;
+  assert.equal(parseWorkspaceEdit(call, ws), undefined);
+  assert.equal(proposed.apply(ws), false);
+});
