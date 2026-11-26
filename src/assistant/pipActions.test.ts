@@ -985,5 +985,7 @@ test('a locally resolved unit accepts a single direct note and supplies its exac
   assert.ok(action.apply(ws));
   assert.equal(ws.notes.length, count + 1);
   assert.deepEqual(ws.notes.find(note => note.id === action.itemId?.())?.syllabusLinks?.unitIds, ['redox']);
+  assert.ok(action.apply(ws));
+  assert.equal(ws.notes.length, count + 1);
   assert.deepEqual(ws.sessions, calendar);
 });

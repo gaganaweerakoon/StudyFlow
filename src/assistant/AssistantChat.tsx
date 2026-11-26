@@ -1,3 +1,5 @@
+import { replyBubbles } from './replyBubbles';
+import { flushSync } from 'react-dom';
 import { isDestructiveEdit, reviewSelection } from './reviewPolicy';
 import {
   lazy,
@@ -679,7 +681,7 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
     ];
   }, [app.exams, app.notes, app.selectedNoteId, app.tasks, assistant]);
 
-  function saveReplyAsNote(messageId: string, markdown: string) {
+  async function saveReplyAsNote(messageId: string, markdown: string) {
     const clean = markdown.trim();
     if (!clean) return;
     const headingMatch = clean.match(/^#{1,3}\s+(.+)$/m);
@@ -695,12 +697,14 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
       app.folders.find((f) => f.subjectId && f.subjectId === subjectId)?.id ??
       app.folders[0]?.id ??
       'fld-all';
-    app.createNote(subjectId, folderId, {
-      title,
-      content: clean,
-      tags: ['Pip'],
-    });
-    setSavedNoteMsgId(messageId);
+    const existing = app.notes.find(note => note.title === title && note.content === clean && note.subjectId === subjectId);
+    if (!existing) flushSync(() => { app.createNote(subjectId, folderId, { title, content: clean, tags: ['Pip'] }); });
+    try {
+      await assistant.saveWorkspaceFromView();
+      setSavedNoteMsgId(messageId);
+    } catch {
+      assistant.setNotice('StudyFlow couldn’t save the note. Use Retry save to keep your draft.');
+    }
   }
 
   const headerTitle =
@@ -1153,10 +1157,12 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                   );
                 }
 
+                const bubbles = message.state === 'complete' ? replyBubbles(message.text) : [message.text];
                 return (
                   <div key={message.id} className="pip-row pip-row-assistant">
                     <PipChatAvatar working={message.state === 'streaming'} />
 
+                    <div className="pip-assistant-batch">
                     <article className="pip-message pip-assistant" aria-label="Pip">
                       <div className="pip-message-header">
                         <span className="pip-message-name">Pip</span>
@@ -1169,7 +1175,7 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                         <div className="pip-markdown">
                           <Suspense fallback={<p className="pip-muted">Formatting reply…</p>}>
                             <AssistantMarkdown
-                              text={message.text}
+                              text={bubbles[0] ?? message.text}
                               diagrams={message.state !== 'streaming'}
                             />
                           </Suspense>
@@ -1208,7 +1214,7 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                       {Boolean(message.appliedActions?.length) && (
                         <div className="pip-action-card" role="status">
                           <div className="pip-action-card-list">
-                            {message.appliedActions!.map((summary, idx) => (
+                            {message.appliedActions!.filter(summary => summary !== message.text).map((summary, idx) => (
                               <div key={idx} className="pip-action-card-row">
                                 <CheckCircle2 size={14} className="shrink-0 text-emerald-500 mt-0.5" />
                                 <span>{summary}</span>
@@ -1282,7 +1288,7 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                                 {copied === message.id ? <Check size={12} /> : <Clipboard size={12} />}
                                 <span>{copied === message.id ? 'Copied' : 'Copy'}</span>
                               </button>
-                              <button
+                              {!message.appliedActions?.length && !message.savePending && !pending.length && <button
                                 type="button"
                                 className="pip-copy-btn"
                                 aria-label="Save reply as note"
@@ -1294,8 +1300,8 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                                 ) : (
                                   <FilePlus2 size={12} />
                                 )}
-                                <span>{savedNoteMsgId === message.id ? 'Saved to Notes' : 'Save to Notes'}</span>
-                              </button>
+                                <span>{savedNoteMsgId === message.id ? (app.durableWorkspace ? 'Saved to Notes' : 'Added to preview') : 'Save to Notes'}</span>
+                              </button>}
                             </>
                           )}
                           <button
@@ -1315,6 +1321,14 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                         </div>
                       )}
                     </article>
+                    {bubbles.slice(1).map((bubble, index) => <div key={index} className="pip-message pip-assistant pip-follow-up">
+                      <div className="pip-markdown">
+                        <Suspense fallback={<p className="pip-muted">Formatting reply…</p>}>
+                          <AssistantMarkdown text={bubble} diagrams={false} />
+                        </Suspense>
+                      </div>
+                    </div>)}
+                    </div>
                   </div>
                 );
               })}

@@ -875,7 +875,12 @@ export function parseWorkspaceEdit(raw: string, app: Workspace, resolvedNoteDest
             });
             current.setSelectedNoteId(existing.id);
           } else {
-            noteId = current.createNote(subjectId, 'fld-all', { title: name, content, ...(parsedLinks.links ? {syllabusLinks:parsedLinks.links} : {}), ...(tags ? { tags } : {}) });
+            const sortedIds = (links: string[] | undefined) => (links ?? []).slice().sort().join('\u0000');
+            const matching = current.notes.find(note => note.subjectId === subjectId && note.title === name && note.content === content &&
+              sortedIds(note.syllabusLinks?.unitIds) === sortedIds(parsedLinks.links?.unitIds) &&
+              sortedIds(note.syllabusLinks?.chapterIds) === sortedIds(parsedLinks.links?.chapterIds));
+            noteId = matching?.id ?? current.createNote(subjectId, 'fld-all', { title: name, content,
+              ...(parsedLinks.links ? { syllabusLinks: parsedLinks.links } : {}), ...(tags ? { tags } : {}) });
           }
           return true;
         },

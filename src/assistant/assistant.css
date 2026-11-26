@@ -563,6 +563,9 @@
   gap: 6px;
 }
 
+.pip-assistant-batch { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.pip-follow-up { width: fit-content; max-width: 100%; }
+
 .pip-assistant {
   flex: 1;
   min-width: 0;

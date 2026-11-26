@@ -1,3 +1,4 @@
+import { relevantPreferences } from './studyPreferences';
 import { validToolArguments } from './toolArguments';
 import {chooseCheckIn, type CheckIn} from './checkIns';
 import { noteDestination } from './noteDestination';
@@ -564,7 +565,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     },
   ) {
     const typed = (overridePrompt ?? draft).trim();
-    const currentAttachments = options?.overrideAttachments ?? attachments;
+    const currentAttachments = options?.overrideAttachments ?? (overridePrompt === undefined ? attachments : []);
     if (cooldownUntil > Date.now()) return;
     if ((!typed && !currentAttachments.length) || activeRequest.current || !available) return;
     const { provider } = settings;
@@ -572,6 +573,11 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const targetChatId = active.id;
     const hasDocs = currentAttachments.some((item) => item.kind !== 'image');
     const prompt = typed || (hasDocs ? documentPrompt : imagePrompt);
+    if (!currentAttachments.length && /\b(?:attached (?:file|pdf|document)|uploaded (?:file|pdf|document)|this pdf|the pdf)\b/i.test(typed)) {
+      if (overridePrompt !== undefined) setDraft(typed);
+      setNotice('Attach the PDF or document to this message so I can use it.');
+      return;
+    }
 
     const recordFailedAttempt = (message: string) => {
       setFailedAttempts((items) => [
@@ -605,8 +611,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       }
     }
     if (!isProviderConfigured && !keyStorageError) {
-      if (!overridePrompt) setDraft('');
-      setAttachments([]);
+      if (overridePrompt === undefined) { setDraft(''); setAttachments([]); }
       recordFailedAttempt(
         isTauri()
           ? `Add a ${PROVIDERS[provider].label} API key in AI Settings to send a message.`
@@ -620,7 +625,12 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const clock = requestClock(settings.timezone);
     const toolsAllowed = includeContext && !generateImage;
     const allowedTools = toolsAllowed && !options?.readOnly ? allowedTurnTools(typed) : [];
-    const destination = allowedTools.includes('create_note') ? noteDestination(typed, currentApp.current.subjects) : undefined;
+    const workspace = currentApp.current;
+    const previousNoteId = /\bsame unit\b/i.test(typed)
+      ? baseMsgs.slice().reverse().flatMap(message => message.actionLinks ?? []).find(link => link.route === 'notes')?.itemId
+      : undefined;
+    const previousNote = workspace.notes.find(note => note.id === previousNoteId);
+    const destination = allowedTools.includes('create_note') ? noteDestination(typed, workspace.subjects, previousNote) : undefined;
     if (destination?.question) {
       setConversations(items => items.map(chat => chat.id !== targetChatId ? chat : { ...chat, messages: [...chat.messages,
         { id: createId(), role: 'user', text: typed }, { id: createId(), role: 'assistant', state: 'complete', text: destination.question! }] }));
@@ -639,17 +649,19 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       generateImage,
       allowedTools,
       workspaceActions: allowedTools.length > 0 && provider === 'gemini',
-      context: toolsAllowed ? workspaceContext(currentApp.current, currentPage, prompt, clock).text : '',
+      context: destination?.subjectId && hasDocs
+        ? JSON.stringify({ destination, preferences: relevantPreferences(prompt, workspace.preferences.pipMemory) })
+        : toolsAllowed ? workspaceContext(workspace, currentPage, prompt, clock).text : '',
       clientContext: generateImage
         ? undefined
         : `Current local date and time: ${clock.label}. Resolve relative dates and times using this clock. Default response language: ${settings.language ?? 'match the user’s message'}.`,
       image: attachedImage,
       documents: attachedDocuments.length ? attachedDocuments : undefined,
-      history: generateImage || !/\b(same|previous|before|that one|it again|continue)\b/i.test(typed)
+      history: generateImage || !/\b(same|previous|before|that one|it again|continue|explain that|why)\b/i.test(typed)
         ? []
         : baseMsgs
             .filter((message) => message.text && (message.role === 'user' || message.state === 'complete'))
-            .slice(-CHAT_LIMITS.history)
+            .slice(-4)
             .map(({ role, text }) => ({ role, text })),
     };
     if (activeRequest.current) return;
@@ -692,9 +704,11 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
 
     setBusy(true);
     setNotice('');
-    if (!overridePrompt) setDraft('');
+    if (overridePrompt === undefined) {
+      setDraft('');
+      setAttachments([]);
+    }
     if (currentAttachments.length) setPreviousAttachments(currentAttachments);
-    setAttachments([]);
     updateChat((chat) => ({
       ...chat,
       title:
@@ -1501,6 +1515,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
   }
 
   return {
+    saveWorkspaceFromView: () => currentApp.current.saveWorkspace(),
     async retryWorkspaceSave(id: string) {
       const pending = unsavedResults.current.get(id);
       if (!pending || busy || activeRequest.current) return;
