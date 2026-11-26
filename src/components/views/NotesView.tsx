@@ -1,3 +1,5 @@
+import { SyllabusLinkPicker } from '../syllabus/SyllabusLinkPicker';
+import { chapterNumber, groupedChapters, matchesSyllabusScope, syllabusLinkLabels } from '../../utils/syllabusHierarchy';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bold,
@@ -85,6 +87,7 @@ export const NotesView: React.FC = () => {
     notes,
     selectedNoteId,
     setSelectedNoteId,
+    notesSyllabusScope, setNotesSyllabusScope,
     updateNote,
     createNote,
     deleteNote,
@@ -117,9 +120,12 @@ export const NotesView: React.FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const rightFileInputRef = useRef<HTMLInputElement>(null);
 
+  const scopeSubject = subjects.find(subject => subject.id === notesSyllabusScope.subjectId);
+  const groups = scopeSubject ? groupedChapters(scopeSubject) : [];
   const filteredNotes = notes
     .filter((n) => {
       if (activeFolderId !== 'fld-all' && n.folderId !== activeFolderId) return false;
+      if (!matchesSyllabusScope(n, subjects.find(subject=>subject.id===n.subjectId), notesSyllabusScope)) return false;
       if (
         searchQuery.trim() &&
         !n.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
@@ -131,8 +137,15 @@ export const NotesView: React.FC = () => {
     })
     .sort((a, b) => Number(b.pinned) - Number(a.pinned));
 
-  const activeNote = notes.find((n) => n.id === selectedNoteId) ?? filteredNotes[0] ?? notes[0];
+  const activeNote = filteredNotes.find((n) => n.id === selectedNoteId) ?? filteredNotes[0];
   const activeSubject = subjects.find((s) => s.id === activeNote?.subjectId);
+  function createScopedNote() {
+    const subjectId = notesSyllabusScope.subjectId || activeSubject?.id || subjects[0]?.id || '';
+    const syllabusLinks = notesSyllabusScope.chapterId ? {chapterIds:[notesSyllabusScope.chapterId]} : notesSyllabusScope.unitId ? {unitIds:[notesSyllabusScope.unitId]} : undefined;
+    createNote(subjectId, activeFolderId, {syllabusLinks});
+    setSearchQuery('');
+    setViewMode('edit');
+  }
 
   // If a brand-new empty note is opened, switch straight to Edit mode so typing works immediately
   useEffect(() => {
@@ -597,8 +610,7 @@ export const NotesView: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                createNote(activeSubject?.id ?? subjects[0]?.id ?? '', activeFolderId);
-                setViewMode('edit');
+                createScopedNote();
               }}
               aria-label="Create new note"
               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11.5px] font-medium transition-opacity hover:opacity-95 whitespace-nowrap shrink-0"
@@ -632,6 +644,11 @@ export const NotesView: React.FC = () => {
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
+          </div>
+          <div className="space-y-1">
+            <select aria-label="Filter notes by subject" value={notesSyllabusScope.subjectId} onChange={e=>setNotesSyllabusScope({subjectId:e.target.value})} className="w-full text-xs rounded px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)]"><option value="">All subjects</option>{subjects.map(subject=><option key={subject.id} value={subject.id}>{subject.name}</option>)}</select>
+            {scopeSubject && <select aria-label="Filter notes by unit" value={notesSyllabusScope.unitId ?? ''} onChange={e=>setNotesSyllabusScope({subjectId:scopeSubject.id,unitId:e.target.value || undefined})} className="w-full text-xs rounded px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)]"><option value="">All units</option>{groups.map(({unit,number})=><option key={unit.id} value={unit.id}>{number}. {unit.title}</option>)}</select>}
+            {scopeSubject && <select aria-label="Filter notes by chapter" value={notesSyllabusScope.chapterId ?? ''} onChange={e=>setNotesSyllabusScope({...notesSyllabusScope,chapterId:e.target.value || undefined})} className="w-full text-xs rounded px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)]"><option value="">All chapters</option>{groups.filter(({unit})=>!notesSyllabusScope.unitId || unit.id===notesSyllabusScope.unitId).flatMap(({chapters})=>chapters.map(ch=><option key={ch.id} value={ch.id}>{chapterNumber(scopeSubject,ch.id)} {ch.title}</option>))}</select>}
           </div>
         </div>
 
@@ -719,7 +736,7 @@ export const NotesView: React.FC = () => {
                   >
                     {n.title || 'Untitled Note'}
                   </div>
-                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5">{n.updatedAt}</div>
+                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">{syllabusLinkLabels(sub,n.syllabusLinks).join(' · ') || n.updatedAt}</div>
                 </button>
               );
             })
@@ -996,6 +1013,7 @@ export const NotesView: React.FC = () => {
               style={{ fontFamily: noteFontFamily }}
             />
 
+            {activeSubject && <SyllabusLinkPicker key={activeNote.id + activeSubject.id} subject={activeSubject} links={activeNote.syllabusLinks} onChange={syllabusLinks=>updateNote(activeNote.id,{syllabusLinks})}/>}
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-[var(--text-muted)]">
               <select
                 aria-label="Note subject"
@@ -1125,15 +1143,14 @@ export const NotesView: React.FC = () => {
         </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-3">
-          <div className="text-[15px] font-semibold text-[var(--text-primary)]">No notes yet</div>
+          <div className="text-[15px] font-semibold text-[var(--text-primary)]">{notes.length ? 'No matching notes' : 'No notes yet'}</div>
           <p className="text-[12.5px] text-[var(--text-muted)] max-w-sm">
             Create your first note to start writing in Markdown or importing PDF and Word documents.
           </p>
           <button
             type="button"
             onClick={() => {
-              createNote(subjects[0]?.id ?? '', 'fld-all');
-              setViewMode('edit');
+              createScopedNote();
             }}
             className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12.5px] font-medium"
             style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-fg)' }}

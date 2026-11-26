@@ -51,7 +51,7 @@ import { localDay } from '../assistant/workspaceContext';
 import { resolveOfflineFocus, validOfflineRecord, type OfflineFocusRecord, type OfflineReceipts } from '../companion/offlineFocus';
 import { scheduleFlashcardReview, type ReviewRating } from '../utils/studyLogic';
 import { removeLegacySubject, unassignSubject } from '../utils/subjectReferences';
-import { normalizeSyllabus, moveChapter, moveSyllabusItem, mergeImportedChapters, type IncomingChapter } from '../utils/syllabusHierarchy';
+import { normalizeSyllabus, moveChapter, moveSyllabusItem, mergeImportedChapters, sanitizeSyllabusLinks, removeChapterLink, type SyllabusScope, type IncomingChapter } from '../utils/syllabusHierarchy';
 import { calendarProjectionDates } from '../utils/calendarLayout';
 import {
   advanceFocusTimerState,
@@ -148,6 +148,8 @@ interface AppContextValue {
   setSelectedSubjectId: (id: string | null) => void;
   selectedNoteId: string;
   setSelectedNoteId: (id: string) => void;
+  notesSyllabusScope: SyllabusScope;
+  setNotesSyllabusScope: (scope: SyllabusScope) => void;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   mobileNavOpen: boolean;
@@ -215,7 +217,7 @@ interface AppContextValue {
   createNote: (
     subjectId: string,
     folderId: string,
-    draft?: Partial<Pick<NoteItem, 'title' | 'content' | 'attachments' | 'pdf' | 'originalFont' | 'fontMode' | 'tags'>>
+    draft?: Partial<Pick<NoteItem, 'title' | 'content' | 'attachments' | 'pdf' | 'originalFont' | 'fontMode' | 'tags' | 'syllabusLinks'>>
   ) => string;
 
   decks: FlashcardDeck[];
@@ -335,6 +337,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const [route, setRoute] = useState<NavRoute>('dashboard');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string>(() => (initial?.notes ?? (desktop ? [] : INITIAL_NOTES))[0]?.id ?? '');
+  const [notesSyllabusScope, setNotesSyllabusScope] = useState<SyllabusScope>({subjectId: ''});
+  useEffect(() => { if (route !== 'notes') setNotesSyllabusScope({subjectId: ''}); }, [route]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -1308,7 +1312,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
           };
         })
       );
-      pushToast('Chapter deleted');
+      setNotes(previous => previous.map(note => removeChapterLink(note, subjectId, chapterId)));
+      pushToast('Chapter deleted; linked notes kept');
     },
     [pushToast]
   );
@@ -1459,20 +1464,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
 
   // Notes mutations
   const updateNote = useCallback((id: string, patch: Partial<NoteItem>) => {
-    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
-  }, []);
+    setNotes((prev) => prev.map((n) => {
+      if (n.id !== id) return n;
+      const next = {...n, ...patch};
+      return {...next, syllabusLinks: sanitizeSyllabusLinks(subjects.find(subject => subject.id === next.subjectId), next.syllabusLinks)};
+    }));
+  }, [subjects]);
 
   const createNote = useCallback(
     (
       subjectId: string,
       folderId: string,
-      draft?: Partial<Pick<NoteItem, 'title' | 'content' | 'attachments' | 'pdf' | 'originalFont' | 'fontMode' | 'tags'>>
+      draft?: Partial<Pick<NoteItem, 'title' | 'content' | 'attachments' | 'pdf' | 'originalFont' | 'fontMode' | 'tags' | 'syllabusLinks'>>
     ) => {
       const id = `note-${crypto.randomUUID()}`;
       const newNote: NoteItem = {
         id,
         folderId: folderId === 'fld-all' ? folders[0]?.id ?? 'notes' : folderId,
         subjectId,
+        syllabusLinks: sanitizeSyllabusLinks(subjects.find(subject => subject.id === subjectId), draft?.syllabusLinks),
         title: draft?.title ?? 'Untitled Study Note',
         updatedAt: 'Just now',
         pinned: false,
@@ -1490,7 +1500,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       pushToast('New note created');
       return id;
     },
-    [pushToast, folders]
+    [pushToast, folders, subjects]
   );
 
   // Flashcards mutations
@@ -1764,6 +1774,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         setSelectedSubjectId,
         selectedNoteId,
         setSelectedNoteId,
+        notesSyllabusScope, setNotesSyllabusScope,
         sidebarCollapsed,
         setSidebarCollapsed,
         mobileNavOpen,

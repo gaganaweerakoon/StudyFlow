@@ -2,7 +2,7 @@ import type { LegacyArchive } from '../desktop/legacy';
 
 /** Preserve linked records while clearing only the deleted subject reference. */
 export function unassignSubject<T extends { subjectId?: string }>(items: T[], subjectId: string): T[] {
-  return items.map(item => item.subjectId === subjectId ? { ...item, subjectId: '' } : item);
+  return items.map(item => item.subjectId === subjectId ? { ...item, subjectId: '', ...('syllabusLinks' in item ? {syllabusLinks: undefined} : {}) } : item);
 }
 
 /** Recurring series may use either the legacy numeric ID or the current subject ID. */

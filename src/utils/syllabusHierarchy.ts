@@ -87,3 +87,44 @@ export function mergeImportedChapters(subject: Subject, incoming: IncomingChapte
   }
   return { ...normalized, units, chapters };
 }
+
+export interface SyllabusLinks { unitIds?: string[]; chapterIds?: string[] }
+export interface SyllabusScope { subjectId: string; unitId?: string; chapterId?: string }
+
+/** Links use stable IDs; unit membership of a chapter is always derived, never duplicated. */
+export function sanitizeSyllabusLinks(subject: Subject | undefined, links: SyllabusLinks | undefined): SyllabusLinks | undefined {
+  if (!subject || !links) return undefined;
+  const normalized = normalizeSyllabus(subject);
+  const unitIds = [...new Set(links.unitIds ?? [])].filter(id => normalized.units?.some(unit => unit.id === id));
+  const chapterIds = [...new Set(links.chapterIds ?? [])].filter(id => normalized.chapters.some(ch => ch.id === id));
+  return unitIds.length || chapterIds.length ? { unitIds, chapterIds } : undefined;
+}
+export function matchesSyllabusScope(item: {subjectId: string; syllabusLinks?: SyllabusLinks}, subject: Subject | undefined, scope: SyllabusScope): boolean {
+  if (scope.subjectId && item.subjectId !== scope.subjectId) return false;
+  const links = item.syllabusLinks;
+  if (scope.chapterId) return !!links?.chapterIds?.includes(scope.chapterId);
+  if (scope.unitId) return !!links?.unitIds?.includes(scope.unitId) || !!subject && normalizeSyllabus(subject).chapters.some(ch => ch.unitId === scope.unitId && links?.chapterIds?.includes(ch.id));
+  return true;
+}
+export function removeChapterLink<T extends {subjectId: string; syllabusLinks?: SyllabusLinks}>(item: T, subjectId: string, chapterId: string): T {
+  if (item.subjectId !== subjectId || !item.syllabusLinks?.chapterIds?.includes(chapterId)) return item;
+  return { ...item, syllabusLinks: {...item.syllabusLinks, chapterIds: item.syllabusLinks.chapterIds.filter(id => id !== chapterId)} };
+}
+export function syllabusLinkLabels(subject: Subject | undefined, links: SyllabusLinks | undefined): string[] {
+  if (!subject || !links) return [];
+  const normalized = normalizeSyllabus(subject);
+  return [...(normalized.units ?? []).flatMap((unit,index) => links.unitIds?.includes(unit.id) ? [`${index+1}. ${unit.title}`] : []), ...normalized.chapters.flatMap(ch => links.chapterIds?.includes(ch.id) ? [`${chapterNumber(normalized,ch.id)} ${ch.title}`] : [])];
+}
+
+/** Reject unknown or cross-subject IDs rather than silently trusting model output. */
+export function parseSyllabusLinks(subject: Subject | undefined, raw: unknown): {valid: boolean; links?: SyllabusLinks} {
+  if (raw === undefined) return {valid: true};
+  if (!subject || !raw || typeof raw !== 'object' || Array.isArray(raw)) return {valid:false};
+  const data = raw as Record<string, unknown>;
+  if (Object.keys(data).some(key => key !== 'unitIds' && key !== 'chapterIds')) return {valid:false};
+  for (const key of ['unitIds','chapterIds'] as const) if (data[key] !== undefined && (!Array.isArray(data[key]) || (data[key] as unknown[]).length > 100 || (data[key] as unknown[]).some(id=>typeof id !== 'string'))) return {valid:false};
+  const requested = {unitIds:[...new Set((data.unitIds ?? []) as string[])],chapterIds:[...new Set((data.chapterIds ?? []) as string[])]};
+  const links = sanitizeSyllabusLinks(subject, requested);
+  if ((links?.unitIds?.length ?? 0) !== requested.unitIds.length || (links?.chapterIds?.length ?? 0) !== requested.chapterIds.length) return {valid:false};
+  return {valid:true, links:links ?? {unitIds:[],chapterIds:[]}};
+}

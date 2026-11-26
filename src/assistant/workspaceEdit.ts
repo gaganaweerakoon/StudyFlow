@@ -1,3 +1,4 @@
+import { parseSyllabusLinks, syllabusLinkLabels } from '../utils/syllabusHierarchy';
 import { readGeneratedCards, readGeneratedQuestions } from '../notes/generatedStudyItems';
 import type { useApp } from '../context/AppContext';
 import type { ExamItem, GoalItem, GoalMilestone, NavRoute, StudySession, TaskItem } from '../types/studyflow';
@@ -805,6 +806,10 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
       const content = typeof edit.content === 'string' ? edit.content.trim() : '';
       if (!name || !content || content.length > 60000 || (updating && !existing)) return;
       const subjectId = resolveSubjectId(edit.subjectId, app) || existing?.subjectId || '';
+      if (typeof edit.subjectId === 'string' && edit.subjectId.trim() && !resolveSubjectId(edit.subjectId, app)) return;
+      const noteSubject = app.subjects.find(subject => subject.id === subjectId);
+      const parsedLinks = parseSyllabusLinks(noteSubject, edit.syllabusLinks);
+      if (!parsedLinks.valid) return;
       const tags = Array.isArray(edit.tags)
         ? edit.tags.filter((t): t is string => typeof t === 'string' && Boolean(t.trim())).slice(0, 8)
         : undefined;
@@ -814,7 +819,8 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
 
       return {
         action,
-        ...(replacesContent ? { confirmation: true, destructive: true } : {}),
+        ...(replacesContent ? { confirmation: true, destructive: true } : edit.syllabusLinks !== undefined ? {confirmation:true} : {}),
+        ...(edit.syllabusLinks !== undefined ? {details: [`Syllabus links: ${syllabusLinkLabels(noteSubject,parsedLinks.links).join(' · ') || 'Unclassified'}`]} : {}),
         title: replacesContent
           ? `Overwrite note “${name}” (replaces existing content)`
           : `${updating ? 'Update' : 'Create'} note “${name}”`,
@@ -822,20 +828,23 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
         route: 'notes',
         routeLabel: 'Open Notes',
         apply: (current) => {
+          if (edit.syllabusLinks !== undefined && !parseSyllabusLinks(current.subjects.find(subject=>subject.id===subjectId), edit.syllabusLinks).valid) return false;
           if (updating && existing) {
             const latest = current.notes.find((n) => n.id === existing.id);
             if (!latest || latest.content !== existing.content) return false;
             current.updateNote(existing.id, {
               title: name,
               content,
+              subjectId,
               updatedAt: 'Just now',
+              ...(edit.syllabusLinks !== undefined ? {syllabusLinks: parsedLinks.links} : subjectId !== existing.subjectId ? {syllabusLinks: undefined} : {}),
               ...(tags ? { tags } : {}),
             });
             current.setSelectedNoteId(existing.id);
           } else if (
             !current.notes.some((n) => n.title === name && n.content === content && n.subjectId === subjectId)
           ) {
-            current.createNote(subjectId, 'fld-all', { title: name, content, ...(tags ? { tags } : {}) });
+            current.createNote(subjectId, 'fld-all', { title: name, content, ...(parsedLinks.links ? {syllabusLinks:parsedLinks.links} : {}), ...(tags ? { tags } : {}) });
           }
           return true;
         },

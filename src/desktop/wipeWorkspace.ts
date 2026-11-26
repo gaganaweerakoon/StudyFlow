@@ -22,7 +22,7 @@ function wipeSection(workspace: Omit<WorkspaceSnapshot, 'previousWorkspace'>, se
     next.removedOccurrences = [];
     if (archive) for (const table of ['schedule_events', 'recurring_events', 'recurrence_exceptions', 'recurrence_overrides']) archive[table] = [];
   } else if (section === 'subjects') {
-    const unassign = <T extends { subjectId?: string }>(items: T[]) => items.map(item => ({ ...item, subjectId: '' }));
+    const unassign = <T extends { subjectId?: string }>(items: T[]) => items.map(item => ({ ...item, subjectId: '', ...('syllabusLinks' in item ? {syllabusLinks: undefined} : {}) }));
     next.subjects = [];
     next.tasks = unassign(next.tasks);
     next.sessions = unassign(next.sessions);

@@ -656,6 +656,7 @@
     "parameters": {
       "type": "object",
       "properties": {
+        "syllabusLinks": { "type": "object", "description": "Stable IDs of selected subject units and chapters. Multiple links are allowed; omit to preserve existing links.", "properties": { "unitIds": { "type": "array", "items": { "type": "string" } }, "chapterIds": { "type": "array", "items": { "type": "string" } } } },
         "title": {
           "type": "string"
         },
@@ -686,6 +687,7 @@
     "parameters": {
       "type": "object",
       "properties": {
+        "syllabusLinks": { "type": "object", "description": "Stable IDs of selected subject units and chapters. Multiple links are allowed; omit to preserve existing links.", "properties": { "unitIds": { "type": "array", "items": { "type": "string" } }, "chapterIds": { "type": "array", "items": { "type": "string" } } } },
         "id": {
           "type": "string"
         },

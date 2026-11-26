@@ -35,7 +35,7 @@ import { useApp } from '../../context/AppContext';
 import { markdownToPlainPreview } from '../../assistant/markdownNormalize';
 import type { ChapterItem, Subject, TopicItem } from '../../types/studyflow';
 import { calculateSubjectProgress } from '../../utils/studyLogic';
-import { chapterNumber, groupedChapters, isChapterArchived, syllabusUnits } from '../../utils/syllabusHierarchy';
+import { chapterNumber, chapterUnit, groupedChapters, isChapterArchived, syllabusUnits } from '../../utils/syllabusHierarchy';
 
 type DetailTab = 'chapters' | 'overview' | 'tasks' | 'notes' | 'flashcards' | 'performance';
 type RootSectionTab = 'subjects' | 'chapters';
@@ -84,7 +84,7 @@ export const SubjectsView: React.FC = () => {
     updateTopicConfidence,
     tasks,
     toggleTaskStatus,
-    notes,
+    notes, createNote, setNotesSyllabusScope,
     setSelectedNoteId,
     decks,
     flashcards,
@@ -803,7 +803,7 @@ export const SubjectsView: React.FC = () => {
           <p className="text-[12.5px] text-[var(--text-secondary)] leading-relaxed">
             {deleteTarget.kind === 'subject'
               ? `"${deleteTarget.subject.name}" and its ${deleteTarget.subject.chapters.length} chapter${deleteTarget.subject.chapters.length === 1 ? '' : 's'} will be permanently removed. Linked tasks, sessions, notes, goals, tests and other records will be kept as unassigned. You can archive it instead to keep the syllabus and its progress.`
-              : `"${deleteTarget.chapter.title}" and its ${deleteTarget.chapter.topics.length} topic${deleteTarget.chapter.topics.length === 1 ? '' : 's'} will be permanently removed.`}
+              : `"${deleteTarget.chapter.title}" and its ${deleteTarget.chapter.topics.length} topic${deleteTarget.chapter.topics.length === 1 ? '' : 's'} will be permanently removed. Linked notes will be kept; only this chapter association is cleared.`}
           </p>
           <div className="flex justify-end gap-2 pt-2">
             <button
@@ -881,6 +881,7 @@ export const SubjectsView: React.FC = () => {
                 >
                   {activeSubject.code}
                 </button>
+                <span aria-hidden="true">/</span><span>{chapterUnit(activeSubject, activeChapter)?.title}</span>
                 {isChapterArchived(activeSubject, activeChapter) && (
                   <>
                     <span aria-hidden="true">·</span>
@@ -894,7 +895,9 @@ export const SubjectsView: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+            <button type="button" onClick={()=>{ const scope={subjectId:activeSubject.id,unitId:chapterUnit(activeSubject,activeChapter)?.id,chapterId:activeChapter.id}; setNotesSyllabusScope(scope); setRoute('notes'); }} className="rounded-lg px-3 py-2 text-xs border border-[var(--border-subtle)]">Linked notes ({notes.filter(note=>note.subjectId===activeSubject.id && note.syllabusLinks?.chapterIds?.includes(activeChapter.id)).length})</button>
+            <button type="button" onClick={()=>{createNote(activeSubject.id,'fld-all',{title:activeChapter.title,syllabusLinks:{chapterIds:[activeChapter.id]}}); setNotesSyllabusScope({subjectId:activeSubject.id,unitId:chapterUnit(activeSubject,activeChapter)?.id,chapterId:activeChapter.id}); setRoute('notes');}} className="rounded-lg px-3 py-2 text-xs bg-[var(--accent)] text-[var(--accent-fg)]">+ Create Note</button>
             <button
               type="button"
               onClick={() => openEditChapterModal(activeSubject.id, activeChapter)}
@@ -1389,6 +1392,8 @@ export const SubjectsView: React.FC = () => {
                   <button type="button" aria-label="Move unit down" onClick={() => reorderUnit(activeSubject.id, unit.id, 1)} className="px-1.5 text-xs">↓</button>
                   <button type="button" onClick={() => setUnitDraft({subjectId: activeSubject.id, unitId: unit.id, title: unit.title})} className="px-1.5 text-xs">Rename</button>
                   <button type="button" onClick={() => updateUnit(activeSubject.id, unit.id, {archived: !unit.archived})} className="px-1.5 text-xs">{unit.archived ? 'Restore' : 'Archive'}</button>
+                  <button type="button" onClick={()=>{setNotesSyllabusScope({subjectId:activeSubject.id,unitId:unit.id});setRoute('notes');}} className="px-1.5 text-xs">Notes</button>
+                  <button type="button" onClick={()=>{createNote(activeSubject.id,'fld-all',{title:unit.title,syllabusLinks:{unitIds:[unit.id]}});setNotesSyllabusScope({subjectId:activeSubject.id,unitId:unit.id});setRoute('notes');}} className="px-1.5 text-xs">+ Note</button>
                   {!unit.archived && <button type="button" onClick={() => openAddChapterModal(activeSubject.id, unit.id)} className="px-1.5 text-xs text-[var(--accent)]">+ Chapter</button>}
                 </div>
                 {expanded && (groupChapters.length === 0 ? <p className="text-xs text-[var(--text-muted)] pl-6">No chapters in this view.</p> : viewMode === 'grid' ? <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">

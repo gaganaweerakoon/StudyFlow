@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Subject, ChapterItem } from '../types/studyflow';
-import { chapterNumber, groupedChapters, isChapterArchived, mergeImportedChapters, moveChapter, moveSyllabusItem, normalizeSyllabus } from './syllabusHierarchy';
+import { chapterNumber, groupedChapters, isChapterArchived, mergeImportedChapters, moveChapter, moveSyllabusItem, normalizeSyllabus, matchesSyllabusScope, sanitizeSyllabusLinks, removeChapterLink, parseSyllabusLinks, syllabusLinkLabels } from './syllabusHierarchy';
 const chapter = (id: string, title = id, unitId?: string): ChapterItem => ({id, title, unitId, topics: [{id: `topic-${id}`, title: 'Theory', completed: true, confidence: 4, difficulty: 'medium', revisionStatus: 'mastered'}]});
 const subject = (chapters: ChapterItem[], units?: Subject['units']): Subject => ({id:'chem', code:'CHEM', name:'Chemistry', color:'#123456', icon:'flask', instructor:'', totalHours:0, weeklyTargetHours:0, lastStudied:'', nextExamDate:'', nextExamTitle:'', currentGrade:'', targetGrade:'', chapters, units});
 test('migration preserves chapter and topic identities, progress, and archive flags', () => {
@@ -42,4 +42,23 @@ test('import merges within the correct unit and keeps progress, even with identi
   assert.equal(groupedChapters(imported)[1].unit.title,'Physics');
   assert.equal(chapterNumber(imported,'b'),'2.1');
   assert.deepEqual(mergeImportedChapters(imported,[{...chapter('duplicate','Bonding'),unitTitle:'Physics'}]).chapters.map(c=>c.id),['a','b']);
+});
+
+
+test('multi-chapter note links resolve membership and preserve identity after a chapter moves', () => {
+  const original = subject([chapter('a','A','u1'),chapter('b','B','u2')],[{id:'u1',title:'First'},{id:'u2',title:'Second'}]);
+  const links = sanitizeSyllabusLinks(original,{unitIds:['u1','missing'],chapterIds:['a','a','b','invalid']});
+  assert.deepEqual(links,{unitIds:['u1'],chapterIds:['a','b']});
+  const note = {id:'note',subjectId:'chem',syllabusLinks:links};
+  assert.equal(matchesSyllabusScope(note,original,{subjectId:'chem',chapterId:'a'}),true);
+  assert.equal(matchesSyllabusScope(note,original,{subjectId:'chem',unitId:'u2'}),true);
+  assert.equal(matchesSyllabusScope(note,original,{subjectId:'other'}),false);
+  const moved={...original,chapters:original.chapters.map(ch=>({...ch,unitId:'u1'}))};
+  assert.equal(matchesSyllabusScope(note,moved,{subjectId:'chem',unitId:'u2'}),false);
+  assert.ok(syllabusLinkLabels(moved,links).includes('1.2 B'));
+  assert.deepEqual(removeChapterLink(note,'chem','a').syllabusLinks?.chapterIds,['b']);
+  assert.deepEqual(note.syllabusLinks?.chapterIds,['a','b']);
+  assert.equal(parseSyllabusLinks(original,{chapterIds:['other']}).valid,false);
+  assert.equal(parseSyllabusLinks(original,{chapterIds:['a','b']}).valid,true);
+  assert.equal(sanitizeSyllabusLinks(undefined,links),undefined);
 });

@@ -345,6 +345,7 @@ export function workspaceContext(
           id: note.id,
           title: clip(note.title),
           subjectId: note.subjectId,
+          syllabusLinks: note.syllabusLinks,
           tags: note.tags.slice(0, 6),
           isSelected: note.id === app.selectedNoteId,
           content:
@@ -364,6 +365,7 @@ export function workspaceContext(
         id: note.id,
         title: clip(note.title),
         subjectId: note.subjectId,
+        syllabusLinks: note.syllabusLinks,
       })),
     );
   }

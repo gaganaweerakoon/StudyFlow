@@ -1,4 +1,4 @@
-import type { Subject } from '../types/studyflow';
+import type { Subject, NoteItem } from '../types/studyflow';
 import { mergeImportedChapters, type IncomingChapter } from '../utils/syllabusHierarchy';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -92,7 +92,7 @@ function createMockWorkspace(): Workspace {
       milestones: [],
     },
   ];
-  const notes = [
+  const notes: NoteItem[] = [
     {
       id: 'note-1',
       folderId: 'notes',
@@ -104,6 +104,7 @@ function createMockWorkspace(): Workspace {
       content: '## Primary Standards\nCommon primary standards include Na₂CO₃, KIO₃, and K₂Cr₂O₇. They must have high purity and stable molar mass.',
       linkedResources: [],
       attachments: [],
+      pdfHighlights: [],
     },
   ];
   const decks = [
@@ -358,7 +359,7 @@ function createMockWorkspace(): Workspace {
       const idx = exams.findIndex((x) => x.id === id);
       if (idx >= 0) exams.splice(idx, 1);
     },
-    createNote(subjectId: string, folderId: string, draft?: { title?: string; content?: string }) {
+    createNote(subjectId: string, folderId: string, draft?: { title?: string; content?: string; syllabusLinks?: NoteItem['syllabusLinks'] }) {
       const id = `note-${notes.length + 1}`;
       notes.push({
         id,
@@ -371,6 +372,8 @@ function createMockWorkspace(): Workspace {
         tags: [],
         linkedResources: [],
         attachments: [],
+        pdfHighlights: [],
+        syllabusLinks: draft?.syllabusLinks,
       });
       return id;
     },
@@ -930,4 +933,14 @@ test('link existing tasks is idempotent and unlink preserves task', () => {
   assert.equal(unlink.apply(ws), true);
   assert.equal(ws.goals[0].milestones.length, 0);
   assert.equal(ws.tasks.length, 1);
+});
+
+
+test('Pip note links accept real syllabus IDs and reject invalid references', () => {
+  const ws = createMockWorkspace();
+  const action = parseWorkspaceEdit(JSON.stringify({action:'create_note',title:'Linked note',content:'Theory',subjectId:'chem210',syllabusLinks:{chapterIds:['ch1','ch1']}}),ws);
+  assert.ok(action?.confirmation);
+  assert.equal(action.apply(ws),true);
+  assert.deepEqual(ws.notes.find(note=>note.title==='Linked note')?.syllabusLinks?.chapterIds,['ch1']);
+  assert.equal(parseWorkspaceEdit(JSON.stringify({action:'create_note',title:'Bad note',content:'Theory',subjectId:'chem210',syllabusLinks:{chapterIds:['missing']}}),ws),undefined);
 });

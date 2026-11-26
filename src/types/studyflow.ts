@@ -152,6 +152,7 @@ export interface PdfHighlight {
 }
 
 export interface NoteItem {
+  syllabusLinks?: import('../utils/syllabusHierarchy').SyllabusLinks;
   pdf?: import('../notes/pdf').PdfSource;
   originalFont?: string;
   fontMode?: 'original' | 'unicode' | 'sans' | 'serif' | 'mono';
