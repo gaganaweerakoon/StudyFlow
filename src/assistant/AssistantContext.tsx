@@ -1,3 +1,4 @@
+import { allowedTurnTools } from './turnPermissions';
 import { normalizeReviewEdits, selectedReviewAction } from './reviewPolicy';
 import { flushSync } from 'react-dom';
 import { invoke, isTauri } from '@tauri-apps/api/core';
@@ -480,6 +481,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     options?: {
       overrideAttachments?: PipAttachment[];
       baseMessages?: ChatMessage[];
+      readOnly?: boolean;
     },
   ) {
     const typed = (overridePrompt ?? draft).trim();
@@ -537,6 +539,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const baseMsgs = options?.baseMessages ?? active.messages;
     const clock = requestClock(settings.timezone);
     const toolsAllowed = includeContext && !generateImage;
+    const allowedTools = toolsAllowed && !options?.readOnly ? allowedTurnTools(typed) : [];
     const attachedImage = currentAttachments.find((item) => item.image)?.image;
     const attachedDocuments: ChatDocument[] = currentAttachments
       .filter((item): item is PipAttachment & { document: ChatDocument } => Boolean(item.document))
@@ -548,7 +551,8 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
       model,
       maxOutput: 0,
       generateImage,
-      workspaceActions: toolsAllowed && provider === 'gemini',
+      allowedTools,
+      workspaceActions: allowedTools.length > 0 && provider === 'gemini',
       context: toolsAllowed ? workspaceContext(currentApp.current, currentPage, prompt, clock).text : '',
       clientContext: generateImage
         ? undefined
@@ -628,7 +632,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           responseText += event.text;
           updateMessage((message) => ({ ...message, text: splitWorkspaceResponse(responseText).text }));
         }
-        if (event.type === 'action') {
+        if (event.type === 'action' && allowedTools.includes(event.action)) {
           const serialized = JSON.stringify({ ...event.arguments, action: event.action });
           if (!seenActions.has(serialized)) {
             seenActions.add(serialized);
@@ -653,17 +657,19 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         if (event.type === 'done') {
           status = 'complete';
           setNotice('');
-          const { text, commands: legacyCommands } = splitWorkspaceResponse(responseText, true);
-          const allRawCommands = actionCalls.length ? actionCalls : legacyCommands;
+          const { text } = splitWorkspaceResponse(responseText, true);
+          const allRawCommands = actionCalls;
 
           if (!allRawCommands.length) {
-            finalAssistantText = text;
-            updateMessage((message) => ({ ...message, text }));
+            finalAssistantText = allowedTools.length && !text.trim().endsWith('?')
+              ? 'No change was saved. Which item and destination should I use?'
+              : text;
+            updateMessage((message) => ({ ...message, text: finalAssistantText }));
           } else if (!event.truncated && toolsAllowed) {
             const parsedEdits: WorkspaceEdit[] = [];
             for (const rawCmd of allRawCommands) {
               const parsed = parseWorkspaceEdit(rawCmd, currentApp.current);
-              if (parsed) parsedEdits.push(parsed);
+              if (parsed && allowedTools.includes(parsed.action)) parsedEdits.push(parsed);
             }
 
             if (!parsedEdits.length) {
@@ -679,16 +685,16 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
               const immediate = normalizedEdits.filter((e) => !e.confirmation);
               const confirmRequired = normalizedEdits.filter((e) => e.confirmation);
 
-              let finalText = text.trim();
+              let finalText = '';
               if (immediate.length > 0) {
                 const result = await applyWorkspaceEdits(immediate);
-                if (result.appliedSummaries.length > 0) {
+                if (result.saved && result.appliedSummaries.length > 0) {
                   appliedActions = result.appliedSummaries;
                   actionLinks = result.links;
                 }
                 if (!finalText) {
                   finalText =
-                    result.appliedSummaries.length === 1
+                    !result.saved ? result.failedSummaries.join('\n') : result.appliedSummaries.length === 1
                       ? result.appliedSummaries[0]
                       : result.appliedSummaries.length > 1
                         ? `Applied ${result.appliedSummaries.length} updates to your StudyFlow workspace.`

@@ -119,6 +119,7 @@ export interface ChatRequest {
   clientContext?: string;
   studyGeneration?: StudyGenerationKind;
   workspaceActions?: boolean;
+  allowedTools?: string[];
   history: ChatTurn[];
   image?: ChatImage;
   documents?: ChatDocument[];

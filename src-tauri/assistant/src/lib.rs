@@ -50,6 +50,8 @@ pub struct ChatRequest {
     study_generation: Option<String>,
     #[serde(default)]
     workspace_actions: bool,
+    #[serde(default)]
+    allowed_tools: Vec<String>,
     history: Vec<Turn>,
     image: Option<Image>,
     #[serde(default)]
@@ -149,7 +151,7 @@ fn make_request(client: &Client, request: &ChatRequest, key: &str) -> RequestBui
         system.push('\n');
         system.push_str(extra);
     }
-    let tools_enabled = request.workspace_actions && schema.is_none();
+    let tools_enabled = request.workspace_actions && !request.allowed_tools.is_empty() && schema.is_none();
     if tools_enabled {
         system.push_str("\nFor explicit workspace changes, use the appropriate functions. Use create_goal with milestoneSteps and their due dates when creating a goal and its milestones in one request. Ask for clarification if the target is ambiguous.");
     }
@@ -184,7 +186,7 @@ fn make_request(client: &Client, request: &ChatRequest, key: &str) -> RequestBui
     let mut body = json!({"systemInstruction":{"parts":[{"text":system}]},"generationConfig":config,"contents":contents});
     if tools_enabled {
         let tools: Vec<Value> = serde_json::from_str(WORKSPACE_TOOLS).expect("valid workspace tools");
-        let declarations: Vec<_> = tools.iter().map(|tool| json!({
+        let declarations: Vec<_> = tools.iter().filter(|tool| request.allowed_tools.iter().any(|name| tool["name"].as_str() == Some(name.as_str()))).map(|tool| json!({
             "name":tool["name"], "description":tool["description"], "parametersJsonSchema":tool["parameters"]
         })).collect();
         body["tools"] = json!([{"functionDeclarations":declarations}]);
@@ -366,7 +368,7 @@ pub async fn stream(
             for part in event["candidates"][0]["content"]["parts"].as_array().into_iter().flatten() {
                 let call = &part["functionCall"];
                 let name = call["name"].as_str().unwrap_or("");
-                if part["thought"] != true && call["args"].is_object() && tools.iter().any(|tool| tool["name"].as_str() == Some(name)) {
+                if part["thought"] != true && call["args"].is_object() && request.allowed_tools.iter().any(|allowed| allowed == name) && tools.iter().any(|tool| tool["name"].as_str() == Some(name)) {
                     reply.text = true;
                     emit(json!({"type":"action","action":name,"arguments":call["args"]}))?;
                 }

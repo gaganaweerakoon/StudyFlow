@@ -72,6 +72,7 @@ function isRequest(value: unknown): value is ChatRequest {
   ) {
     return false;
   }
+  if (value.allowedTools !== undefined && (!Array.isArray(value.allowedTools) || !value.allowedTools.every(tool => typeof tool === 'string'))) return false;
   if (value.workspaceActions !== undefined && typeof value.workspaceActions !== 'boolean') return false;
   if (
     value.studyGeneration !== undefined &&

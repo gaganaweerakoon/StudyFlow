@@ -9,7 +9,7 @@ export function normalizeReviewEdits(edits: WorkspaceEdit[]): WorkspaceEdit[] {
   const additions = edits.filter(isAddition).reduce((n, edit) => n + (edit.reviewItems?.length || 1), 0);
   return edits.map(edit => {
     if (isDestructiveEdit(edit)) return { ...edit, confirmation: true, reviewKind: 'destructive' };
-    if (isAddition(edit) && (additions >= 2 || edit.reviewItems?.length)) {
+    if (edits.length > 1 || edit.action === 'update_event' || (isAddition(edit) && (additions >= 2 || edit.reviewItems?.length))) {
       return { ...edit, confirmation: true, reviewKind: 'approval' };
     }
     return edit;
