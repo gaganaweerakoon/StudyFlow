@@ -212,6 +212,8 @@ interface AppContextValue {
   updateGoal: (id: string, patch: Partial<GoalItem>) => void;
   deleteGoal: (id: string) => void;
 
+  createFolder: (name: string, subjectId?: string, unitId?: string) => string;
+  renameFolder: (id: string, name: string) => void;
   folders: NoteFolder[];
   notes: NoteItem[];
   deleteNote: (id: string) => void;
@@ -1540,11 +1542,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       draft?: Partial<Pick<NoteItem, 'title' | 'content' | 'attachments' | 'pdf' | 'originalFont' | 'fontMode' | 'tags' | 'syllabusLinks'>>
     ) => {
       const id = `note-${crypto.randomUUID()}`;
+      const folder = folders.find(item => item.id === folderId);
+      subjectId = folder?.subjectId || subjectId;
+      const links = folder?.unitId
+        ? { ...draft?.syllabusLinks, unitIds: [...(draft?.syllabusLinks?.unitIds ?? []), folder.unitId] }
+        : draft?.syllabusLinks;
       const newNote: NoteItem = {
         id,
-        folderId: folderId === 'fld-all' ? folders[0]?.id ?? 'notes' : folderId,
+        folderId: folderId === 'fld-all' ? 'notes' : folderId,
         subjectId,
-        syllabusLinks: sanitizeSyllabusLinks(subjects.find(subject => subject.id === subjectId), draft?.syllabusLinks),
+        syllabusLinks: sanitizeSyllabusLinks(subjects.find(subject => subject.id === subjectId), links),
         title: draft?.title ?? 'Untitled Study Note',
         updatedAt: 'Just now',
         pinned: false,
@@ -1889,6 +1896,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
         updateGoal,
         deleteGoal,
         folders,
+        createFolder: (name, subjectId, unitId) => {
+          const id = crypto.randomUUID();
+          setFolders(prev => [...prev, { id, name, subjectId, unitId }]);
+          return id;
+        },
+        renameFolder: (id, name) => setFolders(prev => prev.map(folder => folder.id === id ? {...folder, name} : folder)),
         notes,
         deleteNote: id => setNotes(prev => prev.filter(note => note.id !== id)),
         updateNote,

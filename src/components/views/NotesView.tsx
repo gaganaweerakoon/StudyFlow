@@ -1,6 +1,7 @@
 import { buildExcerptPrompt, excerptFromSelection, excerptFromText, MAX_NOTE_EXCERPT, selectionActions, type NoteExcerpt, type SelectionAction } from '../../utils/noteSelection';
+import { NoteFolderTree } from './NoteFolderTree';
 import { SyllabusLinkPicker } from '../syllabus/SyllabusLinkPicker';
-import { formatChapterTitle, formatUnitTitle, groupedChapters, matchesSyllabusScope, syllabusLinkLabels } from '../../utils/syllabusHierarchy';
+import { formatChapterTitle, groupedChapters, matchesSyllabusScope, syllabusLinkLabels } from '../../utils/syllabusHierarchy';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bold,
@@ -16,7 +17,6 @@ import {
   FileSpreadsheet,
   FileText,
   FlaskConical,
-  Folder,
   Heading2,
   Image as ImageIcon,
   Italic,
@@ -640,40 +640,14 @@ export const NotesView: React.FC = () => {
             )}
           </div>
           <div className="space-y-1">
-            <select aria-label="Filter notes by subject" value={notesSyllabusScope.subjectId} onChange={e=>setNotesSyllabusScope({subjectId:e.target.value})} className="w-full text-xs rounded px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)]"><option value="">All subjects</option>{subjects.map(subject=><option key={subject.id} value={subject.id}>{subject.name}</option>)}</select>
-            {scopeSubject && <select aria-label="Filter notes by unit" value={notesSyllabusScope.unitId ?? ''} onChange={e=>setNotesSyllabusScope({subjectId:scopeSubject.id,unitId:e.target.value || undefined})} className="w-full text-xs rounded px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)]"><option value="">All units</option>{groups.map(({unit,number})=><option key={unit.id} value={unit.id}>{formatUnitTitle(number, unit.title)}</option>)}</select>}
             {scopeSubject && <select aria-label="Filter notes by chapter" value={notesSyllabusScope.chapterId ?? ''} onChange={e=>setNotesSyllabusScope({...notesSyllabusScope,chapterId:e.target.value || undefined})} className="w-full text-xs rounded px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)]"><option value="">All chapters</option>{groups.filter(({unit})=>!notesSyllabusScope.unitId || unit.id===notesSyllabusScope.unitId).flatMap(({chapters})=>chapters.map(ch=><option key={ch.id} value={ch.id}>{formatChapterTitle(scopeSubject, ch)}</option>))}</select>}
           </div>
         </div>
 
-        {/* Folder Navigation */}
-        <div className="px-2 py-2 space-y-0.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-          {folders.map((fld) => {
-            const active = activeFolderId === fld.id;
-            const count =
-              fld.id === 'fld-all'
-                ? notes.length
-                : notes.filter((n) => n.folderId === fld.id).length;
-            return (
-              <button
-                key={fld.id}
-                type="button"
-                onClick={() => setActiveFolderId(fld.id)}
-                className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-left transition-colors"
-                style={{
-                  backgroundColor: active ? 'var(--accent-soft)' : 'transparent',
-                  color: active ? 'var(--accent)' : 'var(--text-secondary)',
-                }}
-              >
-                <span className="flex items-center gap-2 min-w-0">
-                  <Folder className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{fld.name}</span>
-                </span>
-                <span className="tabular-nums text-[11px] opacity-70 shrink-0">{count}</span>
-              </button>
-            );
-          })}
-        </div>
+        <NoteFolderTree folderId={activeFolderId} select={(scope, id) => {
+          setActiveFolderId(id);
+          setNotesSyllabusScope(scope);
+        }} />
 
         {/* Notes List */}
         <div className="flex-1 overflow-y-auto divide-y divide-[var(--border-subtle)]">
@@ -994,10 +968,24 @@ export const NotesView: React.FC = () => {
 
             {activeSubject && <SyllabusLinkPicker key={activeNote.id + activeSubject.id} subject={activeSubject} links={activeNote.syllabusLinks} onChange={syllabusLinks=>updateNote(activeNote.id,{syllabusLinks})}/>}
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-[var(--text-muted)]">
+              <select aria-label="Move note to folder" value={activeNote.folderId}
+                className="rounded bg-[var(--bg-surface)] px-2 py-1"
+                onChange={event => {
+                  const folder = folders.find(item => item.id === event.target.value);
+                  const links = activeNote.syllabusLinks;
+                  updateNote(activeNote.id, {
+                    folderId: event.target.value,
+                    syllabusLinks: folder?.unitId ? { ...links, unitIds: [...(links?.unitIds ?? []), folder.unitId] } : links,
+                  });
+                }}>
+                <option value="notes">{folders.find(folder => folder.id === 'notes')?.name ?? 'General notes'}</option>
+                {folders.filter(folder => folder.id !== 'notes' && folder.id !== 'fld-all' && (!folder.subjectId || folder.subjectId === activeNote.subjectId)).map(folder =>
+                  <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+              </select>
               <select
                 aria-label="Note subject"
                 value={activeNote.subjectId}
-                onChange={(e) => updateNote(activeNote.id, { subjectId: e.target.value })}
+                onChange={(e) => updateNote(activeNote.id, { subjectId: e.target.value, folderId: 'notes' })}
                 className="h-7 rounded-md px-2 text-[12px] font-medium text-[var(--text-secondary)]"
                 style={{
                   backgroundColor: 'var(--bg-surface-subtle)',
@@ -1635,7 +1623,7 @@ export const NotesView: React.FC = () => {
           activeNoteId={activeNote?.id}
           subjects={subjects}
           folders={folders}
-          defaultSubjectId={activeSubject?.id ?? subjects[0]?.id ?? ''}
+          defaultSubjectId={scopeSubject?.id ?? activeSubject?.id ?? subjects[0]?.id ?? ''}
           defaultFolderId={activeFolderId}
           onConfirm={handleConfirmMarkdownImport}
           onClose={() => setPendingImport(null)}

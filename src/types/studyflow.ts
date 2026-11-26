@@ -170,6 +170,7 @@ export interface NoteItem {
 }
 
 export interface NoteFolder {
+  unitId?: string;
   id: string;
   name: string;
   subjectId?: string;
