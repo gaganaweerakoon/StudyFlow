@@ -1,3 +1,4 @@
+import type { Subject } from '../types/studyflow';
 import { mergeImportedChapters, type IncomingChapter } from '../utils/syllabusHierarchy';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,16 +9,21 @@ import { readGeneratedCards, readGeneratedQuestions } from '../notes/generatedSt
 import { normalizeMarkdownForDisplay } from './markdownNormalize';
 
 function createMockWorkspace(): Workspace {
-  const subjects = [
+  const subjects: Subject[] = [
     {
       id: 'chem210',
       code: 'CHEM 210',
       name: 'Organic Chemistry II',
       color: '#4F46E5',
       instructor: 'Dr. Patel',
-      credits: 4,
-      targetHoursPerWeek: 8,
-      completedHoursThisWeek: 5,
+      icon: 'flask',
+      totalHours: 5,
+      weeklyTargetHours: 8,
+      lastStudied: '2026-11-23',
+      nextExamDate: '2026-11-28',
+      nextExamTitle: 'Midterm III',
+      currentGrade: '',
+      targetGrade: 'A',
       chapters: [
         {
           id: 'ch1',
