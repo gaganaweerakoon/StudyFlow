@@ -22,7 +22,7 @@ fn main() -> Result<(), String> {
             for attempt in 0..3 {
                 let request = serde_json::from_value(json!({
                     "provider":"gemini","model":model,"prompt":prompt,"context":"","history":[],
-                    "maxOutput":16384,"workspaceActions":tools,"studyGeneration":generation
+                    "maxOutput":16384,"workspaceActions":tools,"allowedTools":if tools {vec!["create_goal"]} else {vec![]},"studyGeneration":generation
                 })).map_err(|_| "Invalid smoke test fixture.")?;
                 let received = std::cell::RefCell::new(Vec::<Value>::new());
                 let result = tauri::async_runtime::block_on(studyflow_assistant::stream(

@@ -1,0 +1,52 @@
+name: Pip live Gemini and Windows persistence
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.5'
+      - run: bun install --frozen-lockfile
+      - run: npm install --prefix "$env:RUNNER_TEMP/driver" playwright-core@1.55.0 --no-audit --no-fund
+      - name: Check the production native crates
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml -p studyflow-storage -p studyflow-assistant
+      - name: Compile the disposable WebView fixture without bundling
+        shell: pwsh
+        run: |
+          Copy-Item tests/pip/index.html index.html -Force
+          Copy-Item tests/pip/ci-credentials.rs src-tauri/src/credentials.rs -Force
+          $main = Get-Content -Raw src-tauri/src/main.rs
+          $main.Replace('fn main() {','fn main() { credentials::initialize();') | Set-Content src-tauri/src/main.rs
+          $conf = Get-Content -Raw src-tauri/tauri.conf.json | ConvertFrom-Json
+          $conf.identifier = 'io.studyflow.pip-acceptance'
+          $conf | ConvertTo-Json -Depth 20 | Set-Content src-tauri/tauri.conf.json
+          bun run build
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo build --release --locked --manifest-path src-tauri/Cargo.toml --features tauri/custom-protocol --bin studyflow
+      - name: Start the native app with the test credential
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if (-not $env:GEMINI_API_KEY) { throw 'Missing repository test credential' }
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=9222 --remote-debugging-address=127.0.0.1'
+          Start-Process src-tauri/target/release/studyflow.exe
+      - name: Test two chat turns and reopen the SQLite workspace
+        run: |
+          $env:PIP_DRIVER="$env:RUNNER_TEMP/driver/node_modules/playwright-core"
+          $env:PIP_NATIVE_DB="$env:LOCALAPPDATA/io.studyflow.pip-acceptance/studyflow.sqlite"
+          $ready = $false
+          foreach ($i in 1..60) {
+            try { $ready = (Invoke-RestMethod http://127.0.0.1:9222/json/list).Count -gt 0 } catch {}
+            if ($ready) { break }
+            Start-Sleep -Seconds 1
+          }
+          node tests/pip/acceptance.cjs

@@ -84,6 +84,7 @@ export interface Conversation {
 }
 
 export interface FailedAttempt {
+  readOnly?: boolean;
   id: string;
   conversationId: string;
   prompt: string;
@@ -533,6 +534,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
         ...items,
         {
           id: createId(),
+          readOnly: options?.readOnly,
           conversationId: targetChatId,
           prompt,
           attachments: currentAttachments,
@@ -720,7 +722,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
 
             if (!parsedEdits.length) {
               finalAssistantText =
-                text || 'I couldn’t apply that change automatically. Check the target details and try again.';
+                'No change was saved. Which item and destination should I use?';
               updateMessage((message) => ({
                 ...message,
                 text: finalAssistantText,
@@ -775,6 +777,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           if (event.truncated) {
             setNotice('The reply reached its token limit. Ask Pip to continue from where it stopped.');
           }
+          break;
         }
       }
       if (status !== 'complete') {
@@ -817,7 +820,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
           appliedActions,
           actionLinks,
         }));
-        if (status === 'complete' && shouldAutoTitle) {
+        if (status === 'complete' && shouldAutoTitle && !isTauri()) {
           void generateAiChatTitle(targetChatId, prompt, finalAssistantText || responseText, provider, model, key);
         }
       }
@@ -855,7 +858,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     const target = failedAttempts.find((item) => item.id === id);
     if (!target) return;
     setFailedAttempts((items) => items.filter((item) => item.id !== id));
-    void send(false, target.prompt, { overrideAttachments: target.attachments });
+    void send(false, target.prompt, { overrideAttachments: target.attachments, readOnly: target.readOnly });
   }
 
   function editFailedAttempt(id: string) {
@@ -863,9 +866,7 @@ function useAssistantController(desktopUsage?: DesktopUsage, desktopHistory?: De
     if (!target) return;
     setFailedAttempts((items) => items.filter((item) => item.id !== id));
     setDraft(target.prompt);
-    if (target.attachments.length) {
-      setAttachments(target.attachments);
-    }
+    setAttachments(target.attachments);
   }
 
   function editAndResendMessage(messageId: string, nextPrompt: string) {
