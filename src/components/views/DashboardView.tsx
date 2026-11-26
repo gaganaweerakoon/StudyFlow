@@ -34,7 +34,7 @@ import {
   currentStudySessionRemaining,
   formatHoursMinutesCompact,
 } from '../../utils/focusTimerLogic';
-import { studyChart } from '../../utils/workspaceMetrics';
+import { plannedProgress, plannedStudyHours, studyChart } from '../../utils/workspaceMetrics';
 import { DASHBOARD_CHART_DATA } from '../../data/mockData';
 import {
   calculateStudyAdherence,
@@ -114,10 +114,11 @@ export const DashboardView: React.FC = () => {
     }
     return list;
   })();
-  const dailyStudyHours = legacyCalendar ? studyChart('daily', sessions, focusHistory)[0].actual : 3.4;
+  const dailyStudyHours = studyChart('daily', sessions, focusHistory, { date: now })[0].actual;
+  const dailyPlan = plannedStudyHours(sessions, 'daily', now);
   const weekly = calculateStudyAdherence(studyChart('weekly', sessions, focusHistory, { date: now, creditCompletedBlocks: true }));
   const weeklyProgress = weekly.totalPlanned > 0 ? Math.min(100, weekly.totalActual / weekly.totalPlanned * 100) : 0;
-  const dailyGoalPct = Math.min(100, Math.round((dailyStudyHours / preferences.dailyGoalHours) * 100));
+  const dailyGoalPct = plannedProgress(dailyStudyHours, dailyPlan);
 
   const isVisible = (id: string) => dashboardWidgets.find((w) => w.id === id)?.visible ?? true;
   const widgetOrder = (id: string) => dashboardWidgets.findIndex((w) => w.id === id);
@@ -144,11 +145,11 @@ export const DashboardView: React.FC = () => {
                     {dailyStudyHours.toFixed(1)}h
                   </span>
                   <span className="text-[12px] text-[var(--text-muted)] font-mono-num">
-                    / {preferences.dailyGoalHours}h
+                    {dailyPlan > 0 ? `/ ${dailyPlan.toFixed(1)}h` : ''}
                   </span>
                 </div>
                 <div className="mt-1 text-[11.5px] text-[var(--text-secondary)]">
-                  {dailyGoalPct}% of daily goal
+                  {dailyPlan > 0 ? `${dailyGoalPct}% of today's plan` : 'No study blocks planned today'}
                 </div>
               </div>
               <svg width="46" height="46" viewBox="0 0 46 46" className="shrink-0 -rotate-90" aria-hidden="true">

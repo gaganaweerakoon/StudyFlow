@@ -1,3 +1,4 @@
+import { plannedStudyHours } from '../utils/workspaceMetrics';
 import { layoutCalendarDay } from '../utils/calendarLayout';
 import type {
   ExamItem,
@@ -143,12 +144,8 @@ export function computeWorkspaceDiagnostics(
   const nextWeekIso = addDays(todayIso, 7);
 
   const todaySessions = layoutCalendarDay(input.sessions, todayIso);
-  const todayPlannedHours = Number(
-    todaySessions
-      .filter(({ session: s }) => s.countsTowardStudy !== false && s.blockType !== 'sleep' && s.blockType !== 'free')
-      .reduce((acc, block) => acc + block.to - block.from, 0)
-      .toFixed(1),
-  );
+  const planDate = new Date(todayIso + 'T12:00:00');
+  const todayPlannedHours = plannedStudyHours(input.sessions, 'daily', planDate);
   const upcomingSessionsCount = input.sessions.filter(
     (s) => s.status === 'upcoming' && s.countsTowardStudy !== false && s.blockType !== 'sleep' && s.blockType !== 'free' && s.date <= nextWeekIso && (s.date > todayIso || todaySessions.some(block => block.session.id === s.id && block.to > currentHour)),
   ).length;
@@ -313,8 +310,8 @@ export function computeWorkspaceDiagnostics(
     subjectsSummary,
     notesCount: input.notes.length,
     openSlotsToday,
-    dailyGoalHours: input.dailyGoalHours ?? 4,
-    weeklyGoalHours: input.weeklyGoalHours ?? 25,
+    dailyGoalHours: todayPlannedHours,
+    weeklyGoalHours: plannedStudyHours(input.sessions, 'weekly', planDate),
     instantSummary,
     instantRecommendation,
   };

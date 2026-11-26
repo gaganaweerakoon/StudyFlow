@@ -51,6 +51,7 @@ import { localDay } from '../assistant/workspaceContext';
 import { resolveOfflineFocus, validOfflineRecord, type OfflineFocusRecord, type OfflineReceipts } from '../companion/offlineFocus';
 import { scheduleFlashcardReview, type ReviewRating } from '../utils/studyLogic';
 import { removeLegacySubject, unassignSubject } from '../utils/subjectReferences';
+import { calendarProjectionDates } from '../utils/calendarLayout';
 import {
   advanceFocusTimerState,
   clampBreakMinutes,
@@ -131,6 +132,7 @@ export interface UserPreferences {
 interface AppContextValue {
   saveWorkspace: () => Promise<void>;
   recurringSeries: LegacyArchive[string];
+  setCalendarProjectionAnchor?: (date: string | null) => void;
   updateRecurringSeries?: (id: number, title: string, startHour: number, durationHours: number, fields?: Pick<StudySession, 'blockType' | 'countsTowardStudy' | 'alarms'>, subjectId?: string, weekdays?: number[]) => void;
   wipeData?: (sections: WipeSection[]) => Promise<void>;
   importLegacyBackup?: () => Promise<void>;
@@ -398,19 +400,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
 
   const [removedOccurrences, setRemovedOccurrences] = useState(initial?.removedOccurrences ?? []);
   const [archive, setArchive] = useState(initial?.legacyArchive);
-  const calendarDay = localDay();
+  const [calendarDay, setCalendarDay] = useState(() => localDay());
+  const [calendarProjectionAnchor, setCalendarProjectionAnchor] = useState<string | null>(null);
+  useEffect(() => {
+    const id = window.setInterval(() => setCalendarDay(localDay()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
   const sessions = useMemo(() => {
     if (!archive) return savedSessions;
-    const today = new Date(calendarDay + 'T12:00:00');
-    const first = new Date(today.getFullYear(), today.getMonth(), -6, 12);
-    const dates = Array.from({ length: 68 }, (_, offset) => {
-      const date = new Date(first);
-      date.setDate(first.getDate() + offset);
-      return localDay(date);
-    });
+    const dates = calendarProjectionDates(calendarDay, calendarProjectionAnchor ?? calendarDay);
     const overridden = new Set([...savedSessions.map(item => item.id), ...removedOccurrences]);
     return [...savedSessions, ...legacyOccurrences(archive, dates).filter(item => !overridden.has(item.id))];
-  }, [archive, calendarDay, removedOccurrences, savedSessions]);
+  }, [archive, calendarDay, calendarProjectionAnchor, removedOccurrences, savedSessions]);
 
   // Record timer commands and phase changes. The clock itself advances from the timestamp.
   const focusClock = useMemo(() => ({ at: Date.now(), timer: focusTimer }), [
@@ -1719,6 +1720,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
       value={{
         saveWorkspace,
         recurringSeries: archive?.recurring_events ?? [],
+        setCalendarProjectionAnchor,
         updateRecurringSeries,
         importLegacyBackup,
         wipeData,

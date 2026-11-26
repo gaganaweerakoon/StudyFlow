@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { localDay } from '../../assistant/workspaceContext';
+import { plannedStudyHours } from '../../utils/workspaceMetrics';
 import {
   applyMilestoneAdd,
   applyMilestoneRemove,
@@ -126,6 +127,7 @@ export const GoalsView: React.FC = () => {
     toggleTaskStatus,
     setRoute,
     focusHistory,
+    sessions,
     preferences,
     updatePreferences,
     pushToast,
@@ -632,7 +634,7 @@ export const GoalsView: React.FC = () => {
   }
   const chartData = subjects.map((subject) => ({
     subject: subject.code || subject.name,
-    target: subject.weeklyTargetHours,
+    target: plannedStudyHours(sessions, 'weekly', today, subject.id),
     actual: Number(((weeklyMinutes.get(subject.id) ?? 0) / 60).toFixed(2)),
   }));
   const achievedHistory = goals

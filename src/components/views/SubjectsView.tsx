@@ -108,7 +108,6 @@ export const SubjectsView: React.FC = () => {
   const [editSubCode, setEditSubCode] = useState('');
   const [editSubName, setEditSubName] = useState('');
   const [editSubInstructor, setEditSubInstructor] = useState('');
-  const [editSubTarget, setEditSubTarget] = useState(6);
   const [editSubCurrentGrade, setEditSubCurrentGrade] = useState('');
   const [editSubTargetGrade, setEditSubTargetGrade] = useState('');
   const [editSubColor, setEditSubColor] = useState(SUBJECT_SWATCHES[0]);
@@ -171,7 +170,7 @@ export const SubjectsView: React.FC = () => {
   function weeklyProgress(id: string) {
     const blocks = sessions.filter((s) => s.subjectId === id && s.countsTowardStudy !== false);
     const history = focusHistory.filter((h) => h.subjectId === id);
-    const weekly = studyChart('weekly', blocks, history, { creditCompletedBlocks: true });
+    const weekly = studyChart('weekly', blocks, history);
     const total = weekly.reduce((sum, day) => sum + day.planned, 0);
     const completed = weekly.reduce((sum, day) => sum + day.actual, 0);
     return {
@@ -212,7 +211,6 @@ export const SubjectsView: React.FC = () => {
     setEditSubCode(sub.code);
     setEditSubName(sub.name);
     setEditSubInstructor(sub.instructor);
-    setEditSubTarget(sub.weeklyTargetHours);
     setEditSubCurrentGrade(sub.currentGrade);
     setEditSubTargetGrade(sub.targetGrade);
     setEditSubColor(sub.color);
@@ -225,7 +223,6 @@ export const SubjectsView: React.FC = () => {
       code: editSubCode.trim().toUpperCase(),
       name: editSubName.trim(),
       instructor: editSubInstructor.trim() || 'Faculty Instructor',
-      weeklyTargetHours: Math.max(1, editSubTarget || 1),
       currentGrade: editSubCurrentGrade.trim() || '—',
       targetGrade: editSubTargetGrade.trim() || 'A',
       color: editSubColor,
@@ -608,21 +605,7 @@ export const SubjectsView: React.FC = () => {
                 style={inputStyle}
               />
             </div>
-            <div>
-              <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
-                Weekly Target (hrs)
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={40}
-                step={0.5}
-                value={editSubTarget}
-                onChange={(e) => setEditSubTarget(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg text-[13px] font-mono-num"
-                style={inputStyle}
-              />
-            </div>
+            <p className="self-center text-[12px] text-[var(--text-muted)]">Weekly study targets follow your calendar plan.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1148,7 +1131,7 @@ export const SubjectsView: React.FC = () => {
       { wk: 'Wk 9', hours: 6.4, quiz: 84 },
       { wk: 'Wk 10', hours: 7.1, quiz: 87 },
       { wk: 'Wk 11', hours: 7.8, quiz: 90 },
-      { wk: 'Wk 12', hours: activeSubject.weeklyTargetHours, quiz: 92 },
+      { wk: 'Wk 12', hours: weeklyProgress(activeSubject.id).total, quiz: 92 },
     ];
 
     return (
@@ -1506,7 +1489,7 @@ export const SubjectsView: React.FC = () => {
                     {activeSubject.totalHours}h
                   </div>
                   <div className="text-[11.5px] text-[var(--text-muted)]">
-                    Weekly target: {activeSubject.weeklyTargetHours}h
+                    Weekly plan: {weeklyProgress(activeSubject.id).total}h
                   </div>
                 </div>
                 <div className="rounded-xl p-4" style={surfaceStyle}>

@@ -3,6 +3,33 @@ import type { FocusHistoryItem, StudySession } from '../types/studyflow';
 
 import { layoutCalendarDay } from './calendarLayout';
 
+/** One planned occurrence is counted once per calendar day, including overnight slices. */
+export function plannedBlocksForDay(sessions: StudySession[], date: string) {
+  const seen = new Set<string>();
+  return layoutCalendarDay(sessions, date).filter(({ session }) => {
+    if (seen.has(session.id) || session.countsTowardStudy === false || session.blockType === 'sleep' || session.blockType === 'free') return false;
+    seen.add(session.id);
+    return true;
+  });
+}
+
+export function plannedStudyHours(sessions: StudySession[], range: 'daily' | 'weekly', date = new Date(), subjectId?: string) {
+  const start = new Date(date);
+  start.setHours(12, 0, 0, 0);
+  if (range === 'weekly') start.setDate(start.getDate() - (start.getDay() + 6) % 7);
+  const eligible = subjectId === undefined ? sessions : sessions.filter(s => s.subjectId === subjectId);
+  let hours = 0;
+  for (let i = 0; i < (range === 'daily' ? 1 : 7); i++) {
+    for (const block of plannedBlocksForDay(eligible, localDay(start))) hours += block.to - block.from;
+    start.setDate(start.getDate() + 1);
+  }
+  return hours;
+}
+
+export function plannedProgress(actual: number, planned: number) {
+  return planned > 0 ? Math.min(100, Math.max(0, Math.round(actual / planned * 100))) : 0;
+}
+
 export type StudyRange = 'daily' | 'weekly' | 'monthly';
 
 function loggedHoursByBlock(sessions: StudySession[], history: FocusHistoryItem[]) {
@@ -45,8 +72,7 @@ export function studyChart(range: StudyRange, sessions: StudySession[], history:
     let completed = 0;
     const cursor = new Date(from + 'T12:00:00');
     while (localDay(cursor) < until) {
-      for (const block of layoutCalendarDay(sessions, localDay(cursor))) {
-        if (block.session.countsTowardStudy === false || block.session.blockType === 'sleep' || block.session.blockType === 'free') continue;
+      for (const block of plannedBlocksForDay(sessions, localDay(cursor))) {
         const hours = block.to - block.from;
         planned += hours;
         if (logged && block.session.status === 'completed') {

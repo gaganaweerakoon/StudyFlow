@@ -39,3 +39,19 @@ export function currentStudySession(sessions: StudySession[], now = new Date()) 
     session.countsTowardStudy !== false && session.blockType !== 'sleep' && session.blockType !== 'free',
   ).sort((a, b) => b.session.date.localeCompare(a.session.date) || b.session.startHour - a.session.startHour || a.session.id.localeCompare(b.session.id))[0]?.session;
 }
+
+/** Projection windows include preceding overnight/weekly blocks and the following month. */
+export function calendarProjectionDates(todayIso: string, anchorIso = todayIso): string[] {
+  const dates = new Set<string>();
+  for (const iso of new Set([todayIso, anchorIso])) {
+    const day = new Date(iso + 'T12:00:00');
+    if (!Number.isFinite(day.getTime())) continue;
+    const first = new Date(day.getFullYear(), day.getMonth(), -6, 12);
+    for (let offset = 0; offset < 68; offset++) {
+      const date = new Date(first);
+      date.setDate(first.getDate() + offset);
+      dates.add(localDay(date));
+    }
+  }
+  return [...dates].sort();
+}

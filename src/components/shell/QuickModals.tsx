@@ -43,7 +43,6 @@ export const QuickModals: React.FC = () => {
   const [subName, setSubName] = useState('');
   const [subInstructor, setSubInstructor] = useState('');
   const [subColor, setSubColor] = useState(SUBJECT_SWATCHES[0]);
-  const [subTarget, setSubTarget] = useState(6);
 
   // Session form
   const [sesTitle, setSesTitle] = useState('');
@@ -132,7 +131,7 @@ export const QuickModals: React.FC = () => {
       color: subColor,
       icon: 'code',
       totalHours: 0,
-      weeklyTargetHours: subTarget,
+      weeklyTargetHours: 0,
       lastStudied: 'Just added',
       nextExamDate: (() => {
         const d = new Date();
@@ -547,20 +546,7 @@ export const QuickModals: React.FC = () => {
                       style={inputStyle}
                     />
                   </div>
-                  <div>
-                    <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1">
-                      Weekly Target (hrs)
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={25}
-                      value={subTarget}
-                      onChange={(e) => setSubTarget(Number(e.target.value))}
-                      className="w-full px-3 py-2 rounded-lg text-[13px] font-mono-num"
-                      style={inputStyle}
-                    />
-                  </div>
+                  <p className="self-center text-[12px] text-[var(--text-muted)]">Study targets follow your calendar plan.</p>
                 </div>
                 <div>
                   <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1.5">

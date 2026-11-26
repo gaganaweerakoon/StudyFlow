@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { plannedProgress, plannedStudyHours } from '../../utils/workspaceMetrics';
 import { formatHourLabel, formatTimerSeconds, formatFocusCountdown } from '../../utils/studyLogic';
 import {
   clampBreakMinutes,
@@ -194,8 +195,9 @@ export const FocusTimerView: React.FC = () => {
     [todayHistory],
   );
 
-  const goalMinutes = Math.max(1, preferences.dailyGoalHours * 60);
-  const dailyGoalPct = Math.min(100, Math.round((todayMinutes / goalMinutes) * 100));
+  const dailyPlan = plannedStudyHours(sessions, 'daily', now);
+  const goalMinutes = dailyPlan * 60;
+  const dailyGoalPct = plannedProgress(todayMinutes, goalMinutes);
 
   const todaySessions = useMemo(
     () =>
@@ -834,7 +836,7 @@ export const FocusTimerView: React.FC = () => {
               <strong className="font-mono-num font-medium text-[var(--text-primary)]">
                 {formatHoursMinutesCompact(todayMinutes * 60)}
               </strong>{' '}
-              of {preferences.dailyGoalHours}h target
+              {dailyPlan > 0 ? `of ${dailyPlan.toFixed(1)}h planned` : '· no study blocks planned'}
             </span>
             <span aria-hidden="true">·</span>
             <span className="font-mono-num">
@@ -902,13 +904,13 @@ export const FocusTimerView: React.FC = () => {
                 />
               </div>
               <span className="font-mono-num text-[12px] font-medium text-[var(--text-primary)] tabular-nums whitespace-nowrap">
-                {dailyGoalPct}%
+                {dailyPlan > 0 ? `${dailyGoalPct}%` : 'No plan'}
               </span>
             </div>
 
             <div className="flex items-center gap-3 text-[12px] text-[var(--text-muted)] whitespace-nowrap">
               <span className="font-mono-num">
-                {formatHoursMinutesCompact(todayMinutes * 60)} / {preferences.dailyGoalHours}h
+                {formatHoursMinutesCompact(todayMinutes * 60)}{dailyPlan > 0 ? ` / ${dailyPlan.toFixed(1)}h` : ' · no plan'}
               </span>
               <button
                 type="button"

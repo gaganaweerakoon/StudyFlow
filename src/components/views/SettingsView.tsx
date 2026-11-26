@@ -418,39 +418,9 @@ export const SettingsView: React.FC = () => {
               <h2 className="font-display text-[16px] font-semibold text-[var(--text-primary)]">
                 Study Preferences
               </h2>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-[13px] mb-1.5">
-                    <span className="text-[var(--text-primary)]">Daily Study Target</span>
-                    <span className="font-mono-num font-semibold text-[var(--accent)]">{preferences.dailyGoalHours} hrs/day</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={1}
-                    max={10}
-                    step={0.5}
-                    value={preferences.dailyGoalHours}
-                    onChange={(e) => updatePreferences({ dailyGoalHours: Number(e.target.value) })}
-                    className="w-full accent-[var(--accent)]"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-[13px] mb-1.5">
-                    <span className="text-[var(--text-primary)]">Weekly Study Target</span>
-                    <span className="font-mono-num font-semibold text-[var(--accent)]">{preferences.weeklyGoalHours} hrs/week</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={10}
-                    max={55}
-                    step={1}
-                    value={preferences.weeklyGoalHours}
-                    onChange={(e) => updatePreferences({ weeklyGoalHours: Number(e.target.value) })}
-                    className="w-full accent-[var(--accent)]"
-                  />
-                </div>
-              </div>
+              <p className="text-[13px] text-[var(--text-secondary)]">
+                Daily and weekly study targets come from planned study blocks and classes in your calendar. Edit your plan in the Study Planner; sleep, free time and non-study blocks are excluded.
+              </p>
             </div>
           )}
 

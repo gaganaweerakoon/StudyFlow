@@ -29,6 +29,7 @@ import { useApp } from '../../context/AppContext';
 import { recurringSeriesTemplate, recurringWeekdays } from '../../desktop/legacy';
 import type { StudySession, TaskItem } from '../../types/studyflow';
 import { layoutCalendarDay } from '../../utils/calendarLayout';
+import { plannedBlocksForDay } from '../../utils/workspaceMetrics';
 import { formatHourLabel } from '../../utils/studyLogic';
 import { CalendarBlockFields, readCalendarBlockFields, RepeatWeekdays } from '../shell/CalendarBlockFields';
 import { readSessionTimeFields, SessionTimeFields } from '../shell/SessionTimeFields';
@@ -116,11 +117,11 @@ export const PlannerView: React.FC = () => {
     legacyCalendar,
     subjects,
     tasks,
-    preferences,
     addSession,
     updateSession,
     updateRecurringSeries,
     recurringSeries,
+    setCalendarProjectionAnchor,
     deleteSession,
     setFocusContext,
     setRoute,
@@ -138,6 +139,10 @@ export const PlannerView: React.FC = () => {
 
   const [viewMode, setViewMode] = useState<PlannerMode>('week');
   const [anchorDate, setAnchorDate] = useState<string>(todayIso);
+  useEffect(() => {
+    setCalendarProjectionAnchor?.(anchorDate);
+    return () => setCalendarProjectionAnchor?.(null);
+  }, [anchorDate, setCalendarProjectionAnchor]);
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
   const [studyOnly, setStudyOnly] = useState<boolean>(false);
   const [agendaQuery, setAgendaQuery] = useState<string>('');
@@ -261,14 +266,9 @@ export const PlannerView: React.FC = () => {
     () => new Map(weekDays.map((day) => [day.date, layoutCalendarDay(visibleSessions, day.date)])),
     [weekDays, visibleSessions],
   );
-  const allBlocksByDate = useMemo(
-    () => new Map(weekDays.map((day) => [day.date, layoutCalendarDay(sessions, day.date)])),
-    [weekDays, sessions],
-  );
 
   const getWorkloadForDate = (dateIso: string) =>
-    (allBlocksByDate.get(dateIso) ?? layoutCalendarDay(sessions, dateIso))
-      .filter((block) => isStudyBlock(block.session))
+    plannedBlocksForDay(sessions, dateIso)
       .reduce((total, block) => total + (block.to - block.from), 0);
 
   // Weekly metrics & per-subject breakdown for the currently viewed week
@@ -282,9 +282,8 @@ export const PlannerView: React.FC = () => {
     const countedIds = new Set<string>();
 
     for (const day of weekDays) {
-      const blocks = allBlocksByDate.get(day.date) ?? [];
+      const blocks = plannedBlocksForDay(sessions, day.date);
       for (const block of blocks) {
-        if (!isStudyBlock(block.session)) continue;
         const hrs = block.to - block.from;
         totalStudyHours += hrs;
         if (block.session.status === 'completed') completedHours += hrs;
@@ -319,7 +318,7 @@ export const PlannerView: React.FC = () => {
       missedCount,
       subjectBreakdown,
     };
-  }, [weekDays, allBlocksByDate, subjects]);
+  }, [weekDays, sessions, subjects]);
 
   // Month grid cells
   const monthMeta = useMemo(() => {
@@ -724,9 +723,7 @@ export const PlannerView: React.FC = () => {
     );
   };
 
-  const dailyGoal = Math.max(1, preferences.dailyGoalHours || 4.5);
-  const weeklyGoal = Math.max(1, preferences.weeklyGoalHours || 32);
-  const weeklyGoalPct = Math.min(100, Math.round((weekSummary.totalStudyHours / weeklyGoal) * 100));
+  const weeklyGoalPct = weekSummary.totalStudyHours > 0 ? Math.min(100, Math.round((weekSummary.completedHours / weekSummary.totalStudyHours) * 100)) : 0;
 
   return (
     <div className="space-y-3.5 pb-6">
@@ -924,9 +921,9 @@ export const PlannerView: React.FC = () => {
                   </div>
                   {displayedDays.map((d) => {
                     const loadHrs = getWorkloadForDate(d.date);
-                    const loadPct = Math.min(100, Math.round((loadHrs / dailyGoal) * 100));
+                    const completedHrs = plannedBlocksForDay(sessions, d.date).filter(block => block.session.status === 'completed').reduce((sum, block) => sum + block.to - block.from, 0);
+                    const loadPct = loadHrs > 0 ? Math.min(100, Math.round(completedHrs / loadHrs * 100)) : 0;
                     const isFocusedDay = d.date === anchorDate;
-                    const overloaded = loadHrs > dailyGoal * 1.25;
 
                     return (
                       <div
@@ -975,10 +972,10 @@ export const PlannerView: React.FC = () => {
                           </button>
                         </div>
 
-                        {/* Daily workload bar against dailyGoalHours */}
+                        {/* Completed scheduled blocks vs planned study time */}
                         <div
                           className="mt-1.5 flex items-center gap-1.5"
-                          title={`${loadHrs.toFixed(1)}h of ${dailyGoal}h daily goal`}
+                          title={`${completedHrs.toFixed(1)}h completed / ${loadHrs.toFixed(1)}h planned`}
                         >
                           <div
                             className="flex-1 h-1 rounded-full overflow-hidden"
@@ -988,7 +985,7 @@ export const PlannerView: React.FC = () => {
                               className="h-full rounded-full transition-all"
                               style={{
                                 width: `${loadPct}%`,
-                                backgroundColor: overloaded ? '#D97706' : 'var(--accent)',
+                                backgroundColor: 'var(--accent)',
                               }}
                             />
                           </div>
@@ -1749,7 +1746,7 @@ export const PlannerView: React.FC = () => {
                 Weekly Study Load
               </h2>
               <span className="font-mono-num text-[12px] text-[var(--text-secondary)] tabular-nums">
-                {weekSummary.totalStudyHours}h / {weeklyGoal}h
+                {weekSummary.totalStudyHours}h planned
               </span>
             </div>
 
