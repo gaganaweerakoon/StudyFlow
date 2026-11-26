@@ -47,6 +47,14 @@ private fun request(origin: String, path: String, credential: String?, body: JSO
 }
 
 object PipDeliverySettings {
+    fun schedule(context: Context): Boolean {
+        val scheduler = context.getSystemService(JobScheduler::class.java)
+        val job = JobInfo.Builder(JOB, ComponentName(context, PipDeliveryJob::class.java))
+            .setPeriodic(15 * 60_000L).setPersisted(true)
+            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).build()
+        return scheduler.schedule(job) == JobScheduler.RESULT_SUCCESS
+    }
+
     fun show(activity: Activity) {
         val prefs = activity.getSharedPreferences(STORE, Context.MODE_PRIVATE)
         val scheduler = activity.getSystemService(JobScheduler::class.java)
@@ -70,10 +78,7 @@ object PipDeliverySettings {
                         require(claim.matches(Regex("[A-Za-z0-9_-]{43}")))
                         val token = request(origin, "/v1/claim", null, JSONObject().put("pairingCode", claim)).getString("phoneToken")
                         require(token.matches(Regex("[A-Za-z0-9_-]{43}")))
-                        val job = JobInfo.Builder(JOB, ComponentName(activity, PipDeliveryJob::class.java))
-                            .setPeriodic(15 * 60_000L).setPersisted(true)
-                            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).build()
-                        check(scheduler.schedule(job) == JobScheduler.RESULT_SUCCESS)
+                        check(schedule(activity))
                         prefs.edit().putString("origin", origin).putString("token", token).apply()
                     }.isSuccess
                     activity.runOnUiThread {
