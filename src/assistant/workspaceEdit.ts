@@ -920,8 +920,8 @@ export function parseWorkspaceEdit(raw: string, app: Workspace): WorkspaceEdit |
         action,
         confirmation: true,
         destructive: true,
-        title: `Delete subject “${subject.code ? `${subject.code} — ` : ''}${subject.name}” and its syllabus chapters`,
-        success: `Deleted subject “${subject.name}”.`,
+        title: `Delete subject “${subject.code ? `${subject.code} — ` : ''}${subject.name}” and its syllabus chapters (linked study records become unassigned)`,
+        success: `Deleted subject “${subject.name}”; linked study records were kept as unassigned.`,
         route: 'subjects',
         routeLabel: 'Open Subjects',
         apply: (current) => {

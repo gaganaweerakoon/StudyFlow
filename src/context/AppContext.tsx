@@ -50,6 +50,7 @@ import { chooseLegacyBackup, legacyOccurrences, mapLegacyWorkspace, type LegacyA
 import { localDay } from '../assistant/workspaceContext';
 import { resolveOfflineFocus, validOfflineRecord, type OfflineFocusRecord, type OfflineReceipts } from '../companion/offlineFocus';
 import { scheduleFlashcardReview, type ReviewRating } from '../utils/studyLogic';
+import { removeLegacySubject, unassignSubject } from '../utils/subjectReferences';
 import {
   advanceFocusTimerState,
   clampBreakMinutes,
@@ -1228,8 +1229,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
   const deleteSubject = useCallback(
     (subjectId: string) => {
       setSubjects((prev) => prev.filter((sub) => sub.id !== subjectId));
+      setTasks(prev => unassignSubject(prev, subjectId));
+      setSessions(prev => unassignSubject(prev, subjectId));
+      setGoals(prev => unassignSubject(prev, subjectId));
+      setNotes(prev => unassignSubject(prev, subjectId));
+      setFolders(prev => unassignSubject(prev, subjectId));
+      setDecks(prev => unassignSubject(prev, subjectId));
+      setQuizzes(prev => unassignSubject(prev, subjectId));
+      setExams(prev => unassignSubject(prev, subjectId));
+      setFocusHistory(prev => unassignSubject(prev, subjectId));
+      setFocusTimer(prev => prev.subjectId === subjectId ? { ...prev, subjectId: '' } : prev);
+      setArchive(prev => removeLegacySubject(prev, subjectId));
       setSelectedSubjectId((curr) => (curr === subjectId ? null : curr));
-      pushToast('Subject deleted');
+      pushToast('Subject deleted; linked records kept as unassigned');
     },
     [pushToast]
   );

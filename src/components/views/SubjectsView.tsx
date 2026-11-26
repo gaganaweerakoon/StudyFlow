@@ -799,7 +799,7 @@ export const SubjectsView: React.FC = () => {
           </h2>
           <p className="text-[12.5px] text-[var(--text-secondary)] leading-relaxed">
             {deleteTarget.kind === 'subject'
-              ? `"${deleteTarget.subject.name}" and its ${deleteTarget.subject.chapters.length} chapter${deleteTarget.subject.chapters.length === 1 ? '' : 's'} will be permanently removed. You can archive it instead to keep your progress.`
+              ? `"${deleteTarget.subject.name}" and its ${deleteTarget.subject.chapters.length} chapter${deleteTarget.subject.chapters.length === 1 ? '' : 's'} will be permanently removed. Linked tasks, sessions, notes, goals, tests and other records will be kept as unassigned. You can archive it instead to keep the syllabus and its progress.`
               : `"${deleteTarget.chapter.title}" and its ${deleteTarget.chapter.topics.length} topic${deleteTarget.chapter.topics.length === 1 ? '' : 's'} will be permanently removed.`}
           </p>
           <div className="flex justify-end gap-2 pt-2">
