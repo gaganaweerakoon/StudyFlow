@@ -32,6 +32,16 @@ jobs:
       - name: All regression tests
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: node --import tsx --test src/utils/*.test.ts src/assistant/*.test.ts src/companion/*.test.ts src/firebase/*.test.ts src/mobile/*.test.ts src/lab/*.test.ts server/*.test.ts server/companion/*.test.mjs
+      - name: Exercise Pip in a disposable browser workspace
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pip-browser" playwright@1.55.0 --no-audit --no-fund
+          "$RUNNER_TEMP/pip-browser/node_modules/.bin/playwright" install --with-deps chromium
+          node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173 --strictPort &
+          VITE_PID=$!
+          trap 'kill "$VITE_PID" 2>/dev/null || true' EXIT
+          curl --fail --silent --retry 15 --retry-connrefused --retry-delay 1 http://127.0.0.1:4173/tests/pip/ >/dev/null
+          PIP_DRIVER="$RUNNER_TEMP/pip-browser/node_modules/playwright" node tests/pip/acceptance.cjs
       - name: TypeScript check
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: bun run lint
