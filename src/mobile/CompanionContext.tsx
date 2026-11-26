@@ -531,6 +531,15 @@ export const CompanionProvider: React.FC<{ children: React.ReactNode; live?: Liv
     pcWasRunning.current = timer.running;
   }, [live?.pcFocus, live?.connected]);
 
+  const actionPhase = focus.phase;
+  const lastActionPhase = useRef(actionPhase);
+  useEffect(() => {
+    if (lastActionPhase.current !== actionPhase) {
+      playSessionStartChime();
+      lastActionPhase.current = actionPhase;
+    }
+  }, [actionPhase]);
+
   const localOvertimeReached = focus.origin === 'phone' && Boolean(focus.localRunId) &&
     focus.phase === 'focus' && focus.secondsLeft === 0 && focus.elapsedActiveSeconds >= focus.totalSeconds;
   const localOvertimeNotified = useRef(localOvertimeReached ? focus.localRunId : undefined);

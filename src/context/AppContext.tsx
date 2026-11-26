@@ -542,6 +542,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode; workspace?: Work
     return () => window.clearInterval(interval);
   }, [focusTimer.running]);
 
+  const actionPhase = focusTimer.completionModalOpen ? 'finished' : focusTimer.phase + (focusTimer.running ? '-running' : '-paused');
+  const lastActionPhase = useRef(actionPhase);
+  useEffect(() => {
+    if (lastActionPhase.current !== actionPhase) {
+      playSessionStartChime();
+      lastActionPhase.current = actionPhase;
+    }
+  }, [actionPhase]);
+
   const overtimeReached = focusTimer.mode !== 'Stopwatch' && focusTimer.phase === 'focus' &&
     focusTimer.secondsLeft === 0 && focusTimer.elapsedSeconds >= focusTimer.totalSeconds;
   const overtimeNotified = useRef<number | undefined>(overtimeReached ? focusTimer.startedAtMs : undefined);
