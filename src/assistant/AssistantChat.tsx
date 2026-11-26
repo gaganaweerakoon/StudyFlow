@@ -1252,6 +1252,11 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                             <AssistantMarkdown
                               text={bubbles[0] ?? message.text}
                               diagrams={message.state !== 'streaming'}
+                              busy={assistant.busy}
+                              onSendPrompt={(promptText) => {
+                                follow.current = true;
+                                void assistant.send(false, promptText);
+                              }}
                             />
                           </Suspense>
                         </div>
@@ -1405,7 +1410,15 @@ export function AssistantChat({ onClose }: { onClose?: () => void }) {
                     {bubbles.slice(1).map((bubble, index) => <div key={index} className="pip-message pip-assistant pip-follow-up">
                       <div className="pip-markdown">
                         <Suspense fallback={<p className="pip-muted">Formatting reply…</p>}>
-                          <AssistantMarkdown text={bubble} diagrams={false} />
+                          <AssistantMarkdown
+                            text={bubble}
+                            diagrams={message.state !== 'streaming'}
+                            busy={assistant.busy}
+                            onSendPrompt={(promptText) => {
+                              follow.current = true;
+                              void assistant.send(false, promptText);
+                            }}
+                          />
                         </Suspense>
                       </div>
                     </div>)}

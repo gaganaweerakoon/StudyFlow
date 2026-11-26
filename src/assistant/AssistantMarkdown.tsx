@@ -5,7 +5,10 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { AssistantDiagram } from './AssistantDiagram';
+import { InteractiveWidget } from './InteractiveWidget';
 import { NoteDiagram } from './NoteDiagram';
+import { PromptOptionsCard } from './PromptOptionsCard';
+import { parseInteractiveSpec, parsePromptSpec } from './interactiveSchema';
 import { normalizeMarkdownForDisplay } from './markdownNormalize';
 import type { PdfFigure } from '../notes/pdfMarkdown';
 
@@ -16,6 +19,8 @@ interface AssistantMarkdownProps {
   figures?: PdfFigure[];
   allowDataImages?: boolean;
   dirAuto?: boolean;
+  onSendPrompt?: (text: string) => void;
+  busy?: boolean;
 }
 
 export default memo(function AssistantMarkdown({
@@ -25,6 +30,8 @@ export default memo(function AssistantMarkdown({
   figures,
   allowDataImages = false,
   dirAuto = false,
+  onSendPrompt,
+  busy = false,
 }: AssistantMarkdownProps) {
   const dirProp = dirAuto ? ({ dir: 'auto' as const } as const) : {};
   const normalized = useMemo(() => normalizeMarkdownForDisplay(text), [text]);
@@ -57,6 +64,51 @@ export default memo(function AssistantMarkdown({
           ) {
             const cls = (child.props.className ?? '').toLowerCase();
             const rawCode = child.props.children.trim();
+
+            if (cls === 'language-pip-interactive' || cls === 'language-interactive') {
+              if (!diagrams && !noteDiagrams) {
+                return (
+                  <div className="pip-diagram-streaming" role="status">
+                    Building interactive simulator…
+                  </div>
+                );
+              }
+              const spec = parseInteractiveSpec(rawCode);
+              if (spec) {
+                return (
+                  <InteractiveWidget
+                    spec={spec}
+                    onSendPrompt={noteDiagrams ? undefined : onSendPrompt}
+                    busy={busy}
+                  />
+                );
+              }
+            }
+
+            if (
+              cls === 'language-pip-prompt' ||
+              cls === 'language-pip-options' ||
+              cls === 'language-pip-clarify'
+            ) {
+              if (!diagrams && !noteDiagrams) {
+                return (
+                  <div className="pip-diagram-streaming" role="status">
+                    Preparing interactive options…
+                  </div>
+                );
+              }
+              const promptSpec = parsePromptSpec(rawCode);
+              if (promptSpec) {
+                return (
+                  <PromptOptionsCard
+                    spec={promptSpec}
+                    onSendPrompt={noteDiagrams ? undefined : onSendPrompt}
+                    busy={busy}
+                  />
+                );
+              }
+            }
+
             const isExplicitSvg = cls === 'language-svg';
             const looksLikeSvg =
               (cls === 'language-xml' || cls === 'language-html' || !cls) &&
