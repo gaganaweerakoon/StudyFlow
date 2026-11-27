@@ -196,10 +196,10 @@ export function detectUserFollowUpRequest(input: {
     .reverse()
     .find((m) => m.role === 'assistant' && m.followUpOffer && !m.followUpOffer.accepted && !m.followUpOffer.dismissed);
 
-  if (
-    lastAssistantWithOffer?.followUpOffer &&
-    /^(yes|yeah|yep|sure|okay|ok|please|please do|sounds good|do it|check in|ඔව්|හරි)\b/i.test(trimmed)
-  ) {
+  const acceptsOffer =
+    /^(yes|yeah|yep|sure|okay|ok|please|please do|sounds good|do it|check in)\b/i.test(trimmed) ||
+    /^(?:ඔව්|හරි)[.!]*$/.test(trimmed);
+  if (lastAssistantWithOffer?.followUpOffer && acceptsOffer) {
     const offer = lastAssistantWithOffer.followUpOffer;
     return {
       acceptedOfferMessageId: lastAssistantWithOffer.id,

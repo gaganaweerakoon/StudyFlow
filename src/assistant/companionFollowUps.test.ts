@@ -81,7 +81,7 @@ test('detectUserFollowUpRequest saves direct "check in after chemistry tonight" 
   assert.match(res.followUp.topic, /Chemistry/i);
 });
 
-test('detectUserFollowUpRequest saves agreed follow-up when user says "yes" to Pip offer', () => {
+test('detectUserFollowUpRequest accepts English and Sinhala replies to a pending offer', () => {
   const now = Date.parse('2026-11-26T15:00:00Z');
   const clock = requestClock('UTC', new Date(now));
   const offerMsg: CompanionMessage = {
@@ -104,18 +104,24 @@ test('detectUserFollowUpRequest saves agreed follow-up when user says "yes" to P
     },
   };
 
-  const res = detectUserFollowUpRequest({
-    userText: 'sure, please do',
+  const accept = (userText: string) => detectUserFollowUpRequest({
+    userText,
     recentMessages: [offerMsg],
     clock,
     now,
     sessions,
     subjects,
   });
-  assert.equal(res.acceptedOfferMessageId, 'cmp-1');
-  assert.ok(res.followUp);
-  assert.equal(res.followUp.topic, 'Chemistry Redox Revision');
-  assert.equal(res.followUp.dueTime, '19:30');
+
+  for (const reply of ['sure, please do', 'ඔව්', 'හරි!']) {
+    const res = accept(reply);
+    assert.equal(res.acceptedOfferMessageId, 'cmp-1', reply);
+    assert.equal(res.followUp?.topic, 'Chemistry Redox Revision');
+    assert.equal(res.followUp?.dueTime, '19:30');
+  }
+  assert.equal(accept('හරිද?').followUp, undefined);
+  assert.equal(accept('හරි?').followUp, undefined);
+  assert.equal(accept('ඔව්, නමුත් එපා.').followUp, undefined);
 });
 
 test('buildRescheduledFollowUp updates dueDate, dueTime, and dueAt cleanly', () => {
